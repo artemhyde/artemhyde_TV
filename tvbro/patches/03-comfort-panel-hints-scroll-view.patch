@@ -1,0 +1,3499 @@
+diff --git a/app/common/src/main/java/com/phlox/tvwebbrowser/ux/UxHooks.kt b/app/common/src/main/java/com/phlox/tvwebbrowser/ux/UxHooks.kt
+new file mode 100644
+index 0000000..65fd5d4
+--- /dev/null
++++ b/app/common/src/main/java/com/phlox/tvwebbrowser/ux/UxHooks.kt
+@@ -0,0 +1,58 @@
++package com.phlox.tvwebbrowser.ux
++
++import com.phlox.tvwebbrowser.AppContext
++
++/**
++ * Small switches of the remote-control additions of the TV UI. They live in the app prefs (no field in
++ * [com.phlox.tvwebbrowser.Config], so merges with the upstream do not touch it).
++ */
++object UxSettings {
++    const val TAP_SCROLL_KEY = "ux_tap_scroll"
++    const val SUGGESTIONS_KEY = "ux_suggestions"
++
++    private fun prefs() = AppContext.provideConfig().prefs
++
++    /**
++     * A short tap of Up or Down scrolls the page by 40% of the screen and a hold on with the cursor hidden;
++     * Up at the top of the page opens the address bar
++     */
++    var tapScroll: Boolean
++        get() = prefs().getBoolean(TAP_SCROLL_KEY, true)
++        set(value) {
++            prefs().edit().putBoolean(TAP_SCROLL_KEY, value).apply()
++        }
++
++    /** The address bar asks the search engine for suggestions (the typed text leaves the TV) */
++    var suggestions: Boolean
++        get() = prefs().getBoolean(SUGGESTIONS_KEY, true)
++        set(value) {
++            prefs().edit().putBoolean(SUGGESTIONS_KEY, value).apply()
++        }
++}
++
++/**
++ * Where the shell and the engines meet without knowing each other: the TV shell sets the functions while it
++ * lives, the cursor (module `common`) and the home page script interface (WebView engine) call them.
++ * All of them are called on the main thread; null while the shell does not listen (the phone UI).
++ */
++object UxHooks {
++    /** Whether the page of the current tab is scrolled to its very top */
++    @Volatile
++    var isPageAtTop: (() -> Boolean)? = null
++
++    /** A short tap of Up at the top of the page; true if the shell took it (the address bar opens) */
++    @Volatile
++    var onUpAtTop: (() -> Boolean)? = null
++
++    /** Opens the address bar with search suggestions over the page */
++    @Volatile
++    var openQuickBar: (() -> Unit)? = null
++
++    /** The hotkeys of page up and down: scrolls the page by a part of the screen (down or up) */
++    @Volatile
++    var scrollPage: ((down: Boolean) -> Unit)? = null
++
++    /** The cursor starts to scroll the page for a tap or a hold of Up or Down: the shell can check that the page moved */
++    @Volatile
++    var onScrollKey: (() -> Unit)? = null
++}
+diff --git a/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorDrawerDelegate.kt b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorDrawerDelegate.kt
+index 97538df..d8a5272 100644
+--- a/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorDrawerDelegate.kt
++++ b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorDrawerDelegate.kt
+@@ -13,6 +13,8 @@ import android.view.ViewConfiguration
+ import android.view.WindowManager
+ import com.phlox.tvwebbrowser.AppContext
+ import com.phlox.tvwebbrowser.Config
++import com.phlox.tvwebbrowser.ux.UxHooks
++import com.phlox.tvwebbrowser.ux.UxSettings
+ 
+ /**
+  * The virtual cursor: D-pad key handling, movement, visibility timing, press and grab state.
+@@ -133,6 +135,35 @@ class CursorDrawerDelegate(val context: Context, val surface: View, private val
+         }
+     }
+ 
++    /** Page scrolling by the Up and Down keys: a tap flips the page, a hold scrolls it or moves the cursor */
++    private val pageScroller = SmoothPageScroller(object : SmoothPageScroller.Host {
++        override val pageHeight: Int get() = surface.height
++        override val isAttached: Boolean get() = surface.isAttachedToWindow
++        override fun scrollBy(dy: Int) = scroller.scrollBy(0, dy, cursorPosition, allowScrollHack = !dpadCenterPressed)
++        override fun onScrollEnded() = scroller.cancelScrollHack()
++    })
++
++    private val pageScrollKeys = PageScrollKeys(object : PageScrollKeys.Host {
++        override fun isActive(): Boolean = UxSettings.tapScroll && !dpadCenterPressed && !grabMode
++        override fun isCursorShown(): Boolean = !isCursorDisappear
++        override fun flip(direction: Int) {
++            UxHooks.onScrollKey?.invoke()
++            pageScroller.flip(direction)
++        }
++        override fun startHold(direction: Int) {
++            UxHooks.onScrollKey?.invoke()
++            pageScroller.startHold(direction)
++        }
++        override fun stopHold() = pageScroller.stopHold()
++        override fun passToCursor(event: KeyEvent, direction: Int) =
++            handleDirectionKeyEvent(event, UNCHANGED, direction, true)
++        override fun upAtTop(): Boolean =
++            UxHooks.isPageAtTop?.invoke() == true && UxHooks.onUpAtTop?.invoke() == true
++    })
++
++    /** Scrolls the page by a part of the screen, smoothly (the keys and hotkeys of page up and down) */
++    fun scrollPage(direction: Int) = pageScroller.flip(direction)
++
+     private val isCursorDisappear: Boolean
+         get() {
+             val newTime = System.currentTimeMillis()
+@@ -187,6 +218,8 @@ class CursorDrawerDelegate(val context: Context, val surface: View, private val
+     fun cancelActiveGestures() {
+         surface.removeCallbacks(longPressRunnable)
+         surface.removeCallbacks(cursorUpdateRunnable)
++        pageScrollKeys.cancel()
++        pageScroller.cancel()
+         endPress(cancel = true)
+         scroller.cancelScrollHack()
+         pointer.detach()
+@@ -226,6 +259,7 @@ class CursorDrawerDelegate(val context: Context, val surface: View, private val
+                 return true
+             }
+             KeyEvent.KEYCODE_DPAD_UP -> {
++                if (pageScrollKeys.onKey(event, -1)) return true
+                 if (event.action == KeyEvent.ACTION_DOWN) {
+                     handleDirectionKeyEvent(event, UNCHANGED, -1, true)
+                 } else if (event.action == KeyEvent.ACTION_UP) {
+@@ -234,6 +268,7 @@ class CursorDrawerDelegate(val context: Context, val surface: View, private val
+                 return true
+             }
+             KeyEvent.KEYCODE_DPAD_DOWN -> {
++                if (pageScrollKeys.onKey(event, 1)) return true
+                 if (event.action == KeyEvent.ACTION_DOWN) {
+                     handleDirectionKeyEvent(event, UNCHANGED, 1, true)
+                 } else if (event.action == KeyEvent.ACTION_UP) {
+diff --git a/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorRenderer.kt b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorRenderer.kt
+index dc0d94a..06d1a15 100644
+--- a/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorRenderer.kt
++++ b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/CursorRenderer.kt
+@@ -24,8 +24,8 @@ class CursorRenderer(context: Context) {
+         val displaySize = Point()
+         @Suppress("DEPRECATION")
+         wm.defaultDisplay.getSize(displaySize)
+-        strokeWidth = (displaySize.x / 400).toFloat()
+-        cursorRadius = displaySize.x / 100
++        strokeWidth = (displaySize.x / 280).toFloat()
++        cursorRadius = displaySize.x / 85
+         cursorRadiusPressed = cursorRadius - Utils.D2P(context, 5f).toInt()
+     }
+ 
+@@ -35,11 +35,12 @@ class CursorRenderer(context: Context) {
+         val cy = position.y
+         val radius = if (pressed) cursorRadiusPressed.toFloat() else cursorRadius * radiusMultiplier
+ 
+-        paint.color = if (grab) Color.argb(128, 200, 200, 255) else Color.argb(128, 255, 255, 255)
++        paint.color = if (grab) Color.argb(150, 200, 200, 255) else Color.argb(140, 255, 255, 255)
+         paint.style = Paint.Style.FILL
+         canvas.drawCircle(cx, cy, radius, paint)
+ 
+-        paint.color = Color.GRAY
++        //a blue ring reads on light and dark pages alike (no shadow: the GPU of a TV is weak)
++        paint.color = if (grab) RING_GRAB else RING
+         paint.strokeWidth = strokeWidth
+         paint.style = Paint.Style.STROKE
+         canvas.drawCircle(cx, cy, radius, paint)
+@@ -50,4 +51,9 @@ class CursorRenderer(context: Context) {
+             canvas.drawLine(cx, cy - halfRadius, cx, cy + halfRadius, paint)
+         }
+     }
++
++    private companion object {
++        val RING = Color.rgb(47, 111, 224)
++        val RING_GRAB = Color.rgb(123, 97, 255)
++    }
+ }
+diff --git a/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/PageScrollKeys.kt b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/PageScrollKeys.kt
+new file mode 100644
+index 0000000..00152fa
+--- /dev/null
++++ b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/PageScrollKeys.kt
+@@ -0,0 +1,117 @@
++package com.phlox.tvwebbrowser.widgets.cursor
++
++import android.os.Handler
++import android.os.Looper
++import android.view.KeyEvent
++
++/**
++ * What the Up and Down keys of the remote do on a page:
++ *  - a tap (released within [HOLD_MS]) scrolls the page by a part of the screen ([Host.flip]); at the top
++ *    of the page a tap of Up is offered to the shell first ([Host.upAtTop]: the address bar opens);
++ *  - a hold: with the cursor on screen the cursor moves as before ([Host.passToCursor]), with the cursor
++ *    hidden the page scrolls on ([Host.startHold]) until the key is released.
++ * The decision waits [HOLD_MS], so the first move of a held cursor starts that much later. Left, Right and
++ * OK are not handled here; OK wakes the cursor.
++ */
++class PageScrollKeys(private val host: Host) {
++    interface Host {
++        /** The setting is on and no click or grab is in progress */
++        fun isActive(): Boolean
++        /** The cursor is on screen (it hides after a few seconds without keys) */
++        fun isCursorShown(): Boolean
++        fun flip(direction: Int)
++        fun startHold(direction: Int)
++        fun stopHold()
++        /** The held key is the cursor's again: it gets the key down it would have had at [HOLD_MS] earlier */
++        fun passToCursor(event: KeyEvent, direction: Int)
++        /** A tap of Up: true if the page is at its top and the shell took the key */
++        fun upAtTop(): Boolean
++    }
++
++    private enum class State { IDLE, PENDING, SCROLLING, CURSOR }
++
++    private var state = State.IDLE
++    private var keyCode = 0
++    private var direction = 0
++    private var downEvent: KeyEvent? = null
++    private val handler = Handler(Looper.getMainLooper())
++    private val holdRunnable = Runnable { onHold() }
++
++    /**
++     * An Up (direction -1) or Down (1) key event.
++     * @return true if it is taken, false if the cursor handles it as before
++     */
++    fun onKey(event: KeyEvent, direction: Int): Boolean {
++        return when (event.action) {
++            KeyEvent.ACTION_DOWN -> onDown(event, direction)
++            KeyEvent.ACTION_UP -> onUp(event)
++            else -> false
++        }
++    }
++
++    private fun onDown(event: KeyEvent, direction: Int): Boolean {
++        if (event.repeatCount > 0) {
++            //the repeats of a key that was decided on: taken while the page waits or scrolls, the cursor's otherwise
++            return event.keyCode == keyCode && (state == State.PENDING || state == State.SCROLLING)
++        }
++        //the other key of the pair is held already: the cursor deals with it
++        if (state == State.CURSOR) return false
++        if (!host.isActive()) return false
++        if (state != State.IDLE) cancel()
++        state = State.PENDING
++        keyCode = event.keyCode
++        this.direction = direction
++        downEvent = event
++        handler.postDelayed(holdRunnable, HOLD_MS)
++        return true
++    }
++
++    private fun onUp(event: KeyEvent): Boolean {
++        if (event.keyCode != keyCode || state == State.IDLE) return false
++        val wasState = state
++        val wasDirection = direction
++        handler.removeCallbacks(holdRunnable)
++        state = State.IDLE
++        downEvent = null
++        keyCode = 0
++        return when (wasState) {
++            State.PENDING -> {
++                if (!(wasDirection < 0 && host.upAtTop())) host.flip(wasDirection)
++                true
++            }
++            State.SCROLLING -> {
++                host.stopHold()
++                true
++            }
++            //the cursor tracks this key: its own handler ends it
++            State.CURSOR, State.IDLE -> false
++        }
++    }
++
++    private fun onHold() {
++        val event = downEvent ?: return
++        if (state != State.PENDING) return
++        if (host.isCursorShown()) {
++            state = State.CURSOR
++            downEvent = null
++            host.passToCursor(event, direction)
++        } else {
++            state = State.SCROLLING
++            host.startHold(direction)
++        }
++    }
++
++    /** Forgets the key in flight (the cursor is turned off, another key came) */
++    fun cancel() {
++        handler.removeCallbacks(holdRunnable)
++        if (state == State.SCROLLING) host.stopHold()
++        state = State.IDLE
++        downEvent = null
++        keyCode = 0
++    }
++
++    companion object {
++        /** A key released earlier than this was a tap */
++        const val HOLD_MS = 200L
++    }
++}
+diff --git a/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/SmoothPageScroller.kt b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/SmoothPageScroller.kt
+new file mode 100644
+index 0000000..d3bcaf6
+--- /dev/null
++++ b/app/common/src/main/java/com/phlox/tvwebbrowser/widgets/cursor/SmoothPageScroller.kt
+@@ -0,0 +1,173 @@
++package com.phlox.tvwebbrowser.widgets.cursor
++
++import android.view.Choreographer
++import android.view.animation.PathInterpolator
++import kotlin.math.abs
++import kotlin.math.exp
++
++/**
++ * Scrolls the page smoothly, one step per frame, from the time of the frame (so a slow frame makes a longer
++ * step and the speed does not change):
++ *  - [flip]: a tap of Up or Down, [FLIP_FRACTION] of the page height with an ease out; taps in a row add up;
++ *  - [startHold] / [stopHold]: a hold, the speed grows to [HOLD_PAGES_PER_SECOND] pages per second within
++ *    [HOLD_RAMP_SECONDS] and, after the key is released, dies away in a few frames.
++ * The steps go to [Host.scrollBy], which is the scroller of the cursor (mouse wheel, view scrolling or the
++ * touch drag, whatever the page takes).
++ */
++class SmoothPageScroller(private val host: Host) {
++    interface Host {
++        /** The height of the area the page is shown in, pixels */
++        val pageHeight: Int
++        val isAttached: Boolean
++        /** Scrolls the page down by [dy] pixels (up if negative) */
++        fun scrollBy(dy: Int)
++        /** Nothing moves any more: the touch drag of a scroller that needs one ends */
++        fun onScrollEnded()
++    }
++
++    private val choreographer: Choreographer by lazy { Choreographer.getInstance() }
++
++    //a flip: [flipTotal] pixels on the curve in [FLIP_NANOS], [flipDone] of them already scrolled
++    private var flipTotal = 0f
++    private var flipDone = 0f
++    private var flipStart = 0L
++
++    //a hold: the direction (-1, 0, 1), when it started, the speed now (pixels per second, also while it dies away)
++    private var holdDirection = 0
++    private var holdStart = 0L
++    private var velocity = 0f
++
++    private var carry = 0f
++    private var lastFrame = 0L
++    private var scheduled = false
++
++    private val frameCallback = Choreographer.FrameCallback { frameTimeNanos -> onFrame(frameTimeNanos) }
++
++    /** Scrolls by a part of the page in the [direction] (-1 up, 1 down) */
++    fun flip(direction: Int) {
++        val height = host.pageHeight
++        if (height <= 0 || !host.isAttached) return
++        //a hold that dies away goes on under the flip
++        holdDirection = 0
++        //the unfinished part of the earlier flip joins the new one, at most two pages ahead
++        val limit = height * MAX_PAGES_AHEAD
++        flipTotal = ((flipTotal - flipDone) + direction * height * FLIP_FRACTION).coerceIn(-limit, limit)
++        flipDone = 0f
++        flipStart = 0L
++        schedule()
++    }
++
++    /** The key is held: the page speeds up in the [direction] until [stopHold] */
++    fun startHold(direction: Int) {
++        if (host.pageHeight <= 0 || !host.isAttached) return
++        flipTotal = 0f
++        flipDone = 0f
++        holdDirection = direction
++        holdStart = 0L
++        schedule()
++    }
++
++    fun stopHold() {
++        holdDirection = 0
++    }
++
++    /** Stops at once (the cursor is turned off, the view goes away) */
++    fun cancel() {
++        if (scheduled) {
++            choreographer.removeFrameCallback(frameCallback)
++            scheduled = false
++        }
++        val moving = flipTotal != 0f || holdDirection != 0 || velocity != 0f
++        reset()
++        if (moving) host.onScrollEnded()
++    }
++
++    private fun reset() {
++        flipTotal = 0f
++        flipDone = 0f
++        flipStart = 0L
++        holdDirection = 0
++        holdStart = 0L
++        velocity = 0f
++        carry = 0f
++        lastFrame = 0L
++    }
++
++    private fun schedule() {
++        if (scheduled) return
++        scheduled = true
++        choreographer.postFrameCallback(frameCallback)
++    }
++
++    private fun onFrame(now: Long) {
++        scheduled = false
++        if (!host.isAttached) {
++            reset()
++            return
++        }
++        val dt = if (lastFrame == 0L) FIRST_FRAME_SECONDS else ((now - lastFrame) / NANOS_PER_SECOND).coerceIn(MIN_FRAME_SECONDS, MAX_FRAME_SECONDS)
++        lastFrame = now
++
++        var move = 0f
++        if (flipTotal != 0f) {
++            if (flipStart == 0L) flipStart = now
++            val t = ((now - flipStart).toFloat() / FLIP_NANOS).coerceIn(0f, 1f)
++            val target = flipTotal * FLIP_CURVE.getInterpolation(t)
++            move += target - flipDone
++            flipDone = target
++            if (t >= 1f) {
++                flipTotal = 0f
++                flipDone = 0f
++                flipStart = 0L
++            }
++        }
++        if (holdDirection != 0) {
++            if (holdStart == 0L) holdStart = now
++            val ramp = ((now - holdStart) / NANOS_PER_SECOND / HOLD_RAMP_SECONDS).coerceIn(0f, 1f)
++            //smoothstep: starts and arrives softly
++            val eased = ramp * ramp * (3f - 2f * ramp)
++            velocity = holdDirection * host.pageHeight * HOLD_PAGES_PER_SECOND * eased
++            move += velocity * dt
++        } else if (velocity != 0f) {
++            velocity *= exp(-dt / COAST_SECONDS)
++            if (abs(velocity) < MIN_COAST_SPEED) velocity = 0f
++            move += velocity * dt
++        }
++
++        carry += move
++        val whole = carry.toInt()
++        if (whole != 0) {
++            carry -= whole
++            host.scrollBy(whole)
++        }
++
++        if (flipTotal != 0f || holdDirection != 0 || velocity != 0f) {
++            schedule()
++        } else {
++            carry = 0f
++            lastFrame = 0L
++            host.onScrollEnded()
++        }
++    }
++
++    companion object {
++        /** A tap scrolls by this part of the page height */
++        const val FLIP_FRACTION = 0.4f
++        private const val MAX_PAGES_AHEAD = 2f
++        private const val FLIP_NANOS = 320_000_000L
++        /** Pages per second at full speed of a hold */
++        const val HOLD_PAGES_PER_SECOND = 1.6f
++        private const val HOLD_RAMP_SECONDS = 0.35f
++        /** The time constant of the speed dying away after a hold */
++        private const val COAST_SECONDS = 0.09f
++        private const val MIN_COAST_SPEED = 40f
++
++        private const val NANOS_PER_SECOND = 1_000_000_000f
++        private const val FIRST_FRAME_SECONDS = 1f / 60f
++        private const val MIN_FRAME_SECONDS = 0.004f
++        private const val MAX_FRAME_SECONDS = 0.05f
++
++        /** Starts with a push, slows down to a soft stop */
++        private val FLIP_CURVE = PathInterpolator(0.25f, 0.1f, 0.1f, 1f)
++    }
++}
+diff --git a/app/src/main/assets/pages/home/home.css b/app/src/main/assets/pages/home/home.css
+new file mode 100644
+index 0000000..1f4f451
+--- /dev/null
++++ b/app/src/main/assets/pages/home/home.css
+@@ -0,0 +1,383 @@
++/*
++The home page of the TV: dark glass, a big search pill and a grid of 4x2 tiles. Sizes are parts of the
++screen width (vw), so the page looks the same on any TV resolution. No blur, no shadows, no animation but a
++short transition of the hovered tile (the cursor of the browser hovers like a mouse): the GPU of a TV box is weak.
++*/
++:root {
++    --glass: rgba(255, 255, 255, 0.09);
++    --glass-hi: rgba(255, 255, 255, 0.18);
++    --line: rgba(255, 255, 255, 0.16);
++    --ring: #a5d0ff;
++    --ink: #f4f7fb;
++    --ink-soft: rgba(244, 247, 251, 0.6);
++    --menu: rgba(16, 21, 28, 0.97);
++}
++
++* {
++    box-sizing: border-box;
++}
++
++html, body {
++    margin: 0;
++    padding: 0;
++    width: 100%;
++    height: 100%;
++}
++
++body {
++    color: var(--ink);
++    background-color: #0b0f14;
++    background-image: radial-gradient(120% 80% at 50% -10%, #223149 0%, #121a26 48%, #0b0f14 100%);
++    font-family: Roboto, "Noto Sans", sans-serif;
++    overflow: hidden;
++    -webkit-user-select: none;
++    user-select: none;
++}
++
++.page {
++    position: absolute;
++    left: 0;
++    top: 0;
++    width: 100%;
++    height: 100%;
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    padding-top: 15vh;
++    overflow: hidden;
++}
++
++/* the search pill */
++.wrapper {
++    width: 62vw;
++}
++
++.search_box {
++    display: flex;
++    align-items: center;
++    height: 6.8vw;
++    padding: 0 1.1vw;
++    border-radius: 3.4vw;
++    background: var(--glass);
++    border: 0.15vw solid var(--line);
++}
++
++.dropdown {
++    position: relative;
++    width: 6.2vw;
++    height: 100%;
++    display: flex;
++    align-items: center;
++    cursor: pointer;
++}
++
++.dropdown .default_option {
++    width: 3.8vw;
++    height: 3.8vw;
++    margin-left: 0.7vw;
++    border-radius: 0.9vw;
++    background: url(favicons/google.png) no-repeat center;
++    background-size: contain;
++}
++
++.dropdown:before {
++    content: "";
++    position: absolute;
++    top: 3.2vw;
++    right: 0.7vw;
++    border: 0.5vw solid transparent;
++    border-top-color: var(--ink-soft);
++}
++
++.dropdown ul {
++    display: none;
++    position: absolute;
++    top: 100%;
++    left: 0;
++    z-index: 5;
++    width: 20vw;
++    margin: 0.5vw 0 0;
++    padding: 0.8vw;
++    list-style: none;
++    font-size: 1.9vw;
++    color: var(--ink);
++    background: var(--menu);
++    border: 0.12vw solid var(--line);
++    border-radius: 1.5vw;
++}
++
++.dropdown ul.active {
++    display: block;
++}
++
++.dropdown ul li {
++    display: flex;
++    align-items: center;
++    padding: 0.7vw 0.9vw;
++    border-radius: 1vw;
++}
++
++.dropdown ul li:hover {
++    background: var(--glass-hi);
++}
++
++.dropdown ul li img {
++    width: 2.4vw;
++    height: 2.4vw;
++    margin-right: 1vw;
++}
++
++.search_field {
++    flex: 1;
++    min-width: 0;
++    height: 100%;
++    display: flex;
++    align-items: center;
++    border-left: 0.12vw solid var(--line);
++}
++
++.search_field .input {
++    flex: 1;
++    min-width: 0;
++    height: 100%;
++    margin: 0;
++    padding: 0 1.4vw;
++    border: 0;
++    outline: none;
++    background: transparent;
++    color: var(--ink);
++    font-family: inherit;
++    font-size: 2.3vw;
++}
++
++.search_field .input::placeholder {
++    color: var(--ink-soft);
++}
++
++.search_action_container {
++    width: 4.8vw;
++    height: 4.8vw;
++    border-radius: 50%;
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    cursor: pointer;
++}
++
++.search_action_container:hover {
++    background: var(--glass-hi);
++}
++
++.search_action_container .mic,
++.search_action_container .lenz {
++    width: 2.4vw;
++    height: 2.4vw;
++    background-repeat: no-repeat;
++    background-position: center;
++    background-size: contain;
++}
++
++.search_action_container .mic {
++    background-image: url(mic.svg);
++}
++
++.search_action_container .lenz {
++    background-image: url(search.svg);
++    display: none;
++}
++
++/* the tiles */
++#suggestions {
++    width: 62vw;
++    margin-top: 6vh;
++    display: grid;
++    grid-template-columns: repeat(4, 1fr);
++    gap: 1.5vw;
++}
++
++.cell {
++    min-width: 0;
++    cursor: pointer;
++}
++
++.sugg {
++    position: relative;
++    height: 11.2vw;
++    padding: 1vw 0.8vw;
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    border-radius: 1.8vw;
++    background: var(--glass);
++    border: 0.15vw solid var(--line);
++    transition: background-color 0.12s, border-color 0.12s, transform 0.12s;
++}
++
++.cell:hover .sugg {
++    background: var(--glass-hi);
++    border-color: var(--ring);
++    transform: translateY(-0.25vw);
++}
++
++.sugg-ico {
++    width: 5vw;
++    height: 5vw;
++    padding: 0.5vw;
++    margin: 0 0 1vw;
++    border-radius: 1.2vw;
++    background: #ffffff;
++    object-fit: contain;
++}
++
++.sugg-title {
++    display: block;
++    max-width: 100%;
++    font-size: 1.75vw;
++    font-weight: 600;
++    line-height: 2.4vw;
++    text-align: center;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++}
++
++.sugg-title.empty {
++    visibility: hidden;
++}
++
++/* the description (the address) takes room the tile needs for the icon */
++.sugg-desk {
++    display: none;
++}
++
++/* a free place of the grid of bookmarks */
++.sugg:has(.sugg-title.empty) {
++    opacity: 0.25;
++}
++
++.more {
++    display: none;
++    position: absolute;
++    top: 0.5vw;
++    right: 0.5vw;
++    width: 2vw;
++    height: 2vw;
++    padding: 0.45vw;
++    border-radius: 50%;
++    filter: invert(1);
++    cursor: pointer;
++}
++
++.more:hover {
++    background: var(--glass-hi);
++}
++
++/* a light page where the system theme is light */
++@media (prefers-color-scheme: light) {
++    :root {
++        --glass: rgba(255, 255, 255, 0.72);
++        --glass-hi: #ffffff;
++        --line: rgba(20, 40, 70, 0.16);
++        --ring: #2f6fe0;
++        --ink: #1b2430;
++        --ink-soft: rgba(27, 36, 48, 0.55);
++        --menu: rgba(255, 255, 255, 0.98);
++    }
++    body {
++        background-color: #e9f0f8;
++        background-image: radial-gradient(120% 80% at 50% -10%, #ffffff 0%, #e9f0f8 60%, #dbe6f2 100%);
++    }
++    .sugg-ico {
++        background: #f3f6fa;
++    }
++    .more {
++        filter: none;
++    }
++}
++
++/* phones (narrow, or short in landscape): sizes in CSS pixels, two columns */
++@media (max-width: 600px), (max-height: 420px) {
++    .page {
++        padding-top: 24px;
++    }
++    .wrapper, #suggestions {
++        width: calc(100% - 32px);
++        max-width: 576px;
++    }
++    .search_box {
++        height: 48px;
++        padding: 0 8px;
++        border-radius: 24px;
++    }
++    .dropdown {
++        width: 52px;
++    }
++    .dropdown .default_option {
++        width: 28px;
++        height: 28px;
++        margin-left: 6px;
++        border-radius: 6px;
++    }
++    .dropdown:before {
++        top: 21px;
++        right: 4px;
++        border-width: 4px;
++    }
++    .dropdown ul {
++        width: 200px;
++        padding: 8px;
++        font-size: 16px;
++        border-radius: 12px;
++    }
++    .dropdown ul li {
++        padding: 8px;
++        border-radius: 8px;
++    }
++    .dropdown ul li img {
++        width: 20px;
++        height: 20px;
++        margin-right: 8px;
++    }
++    .search_field .input {
++        padding: 0 12px;
++        font-size: 16px;
++    }
++    .search_action_container {
++        width: 40px;
++        height: 40px;
++    }
++    .search_action_container .mic,
++    .search_action_container .lenz {
++        width: 22px;
++        height: 22px;
++    }
++    #suggestions {
++        margin-top: 24px;
++        grid-template-columns: repeat(2, 1fr);
++        gap: 12px;
++    }
++    .sugg {
++        height: 88px;
++        padding: 8px;
++        border-radius: 12px;
++    }
++    .sugg-ico {
++        width: 36px;
++        height: 36px;
++        padding: 4px;
++        margin-bottom: 6px;
++        border-radius: 8px;
++    }
++    .sugg-title {
++        font-size: 14px;
++        line-height: 18px;
++    }
++    .more {
++        width: 24px;
++        height: 24px;
++        padding: 6px;
++        top: 2px;
++        right: 2px;
++    }
++}
+diff --git a/app/src/main/assets/pages/home/index.html b/app/src/main/assets/pages/home/index.html
+index b4bd42b..7eb1490 100644
+--- a/app/src/main/assets/pages/home/index.html
++++ b/app/src/main/assets/pages/home/index.html
+@@ -2,440 +2,17 @@
+ <html>
+ <head>
+     <title>TV Bro: Home</title>
++    <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+-    <style>
+-body {
+-    color:#343a3c;
+-    background-color:#EDF6FF;
+-}
+-@media (prefers-color-scheme: dark) {
+-    body {
+-        color:#f8f9fa;
+-        background-color:#343a3c;
+-    }    
+-}
+-
+-#suggestions {
+-    width: 65vw;
+-    margin: auto;
+-    table-layout: fixed;
+-    outline: none;
+-    position: relative;
+-    top: 18vh;
+-    -webkit-border-horizontal-spacing: 1vw;
+-    -webkit-border-vertical-spacing: 2vh !important;
+-    border-spacing: 1vw;
+-}
+-
+-td {
+-    overflow: hidden;
+-    white-space: nowrap;
+-    word-wrap: break-word;
+-    outline:none;
+-}
+-
+-.sugg {
+-    padding: 1vh 1vw;
+-    white-space: nowrap;
+-    word-wrap: break-word;
+-    transition: .5s;
+-    color: #4F4F4F;
+-    background: #FFFFFF;
+-    box-shadow: 0px 1px 12px rgb(134 192 255 / 16%);
+-    border: 2px solid #FFFFFF;
+-    border-radius: 0.5vw;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .sugg {
+-        color: #f8f9fa;
+-        background: #1e2122;
+-        box-shadow: 0px 1px 12px rgb(0 0 0 / 16%);
+-        border: 2px solid #343a3c;
+-    }
+-}
+-.sugg:hover {
+-    transition:.5s;
+-    background: #F3F6FA;
+-    border: 2px solid #A5D0FF;
+-    border-radius: 12px;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .sugg:hover {
+-        background: #343a3c;
+-        border: 2px solid #A5D0FF;
+-        border-radius: 12px;
+-    }
+-}
+-.sugg:hover > div:nth-child(2) {
+-    color: #6666aa;
+-}
+-.sugg-ico {
+-    width: 4vw;
+-    float: left;
+-    color-scheme: only light;
+-}
+-.sugg-title {
+-    display: block;
+-    max-width: 90%;
+-    margin-left: 5vw;
+-    font-family: 'Roboto';
+-    font-style: normal;
+-    font-weight: 600;
+-    font-size: 1.3vw;
+-    line-height: 2.5vw;
+-    background-color: transparent;
+-}
+-.sugg-title.empty {
+-    background-color: #fcfcfc;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .sugg-title.empty {
+-        background-color: #1f2425;
+-        border-radius: 12px;
+-    }
+-}
+-.ellipsize, .sugg-title, .sugg-desk{
+-    text-overflow: ellipsis;
+-    overflow: hidden;
+-}
+-.sugg-desk {
+-    display: block;
+-    color: #BDBDBD;
+-    margin-left: 5vw;
+-    font-family: 'Roboto';
+-    font-style: normal;
+-    font-weight: 400;
+-    font-size: 1vw;
+-    line-height: 1.5vw;
+-    background-color: transparent;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .sugg-desk {
+-        color: #f8f9fa;
+-    }
+-}
+-.sugg-desk.empty {
+-    background-color: #fafafa;
+-    border-radius: 12px;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .sugg-desk.empty {
+-        background-color: #1f2425;
+-    }
+-}
+-.more {
+-    width: 1vw;
+-    float: right;
+-    margin-top: 1vh;
+-    cursor: pointer;
+-    display: none;
+-}
+-.logo {
+-    width: 10vw;
+-    height: 7.5vw;
+-    margin-top: 5vh;
+-    background-image: url("logo.png");
+-    background-repeat: no-repeat;
+-    background-position: center;
+-    background-size: contain;
+-    position: absolute;
+-    color-scheme: only light;
+-}
+-
+-.wrapper {
+-    position: relative;
+-    top: 15vh;
+-    width: 63vw;
+-    margin: auto;
+-}
+-
+-.search_box{
+-    background: #fff;
+-    border-radius: 0.5vw;
+-    height: 3vw;
+-    display: flex;
+-    padding: 0.5vw;
+-    box-shadow: 0 8px 6px -10px #b3c6ff;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .search_box{
+-        background: #1e2122;
+-        box-shadow: 0 8px 6px -10px #000000;
+-    }
+-}
+-
+-.wrapper .search_box .dropdown{
+-  width: 7vw;
+-  border-right: 2px solid #dde2f1;
+-  color: #9fa3b1;
+-  position: relative;
+-  cursor: pointer;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .wrapper .search_box .dropdown{
+-        border-right: 2px solid #343a3c;
+-        color: #f8f9fa;
+-    }
+-}
+-
+-.wrapper .search_box .dropdown .default_option{
+-    display: block;
+-    background: url(favicons/google.png) no-repeat;
+-    width: 3vw;
+-    height: 3vw;
+-    margin-left: 1vw;
+-    background-size: 3vw;
+-    border: none;
+-}
+-
+-.wrapper .search_box .dropdown ul{
+-    z-index: 1;
+-    position: absolute;
+-    font-size: 2vw;
+-    list-style-type: none;
+-    background: #fff;
+-    width: 16vw;
+-    border-radius: 0.5vw;
+-    padding: 1vw;
+-    display: none;
+-    box-shadow: 0.5vw 0.5vw 2vw -0.5vw #b3c6ff;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .wrapper .search_box .dropdown ul{
+-        background: #1e2122;
+-        box-shadow: 0.5vw 0.5vw 2vw -0.5vw #000000;
+-    }
+-}
+-
+-.wrapper .search_box .dropdown ul.active{
+-  display: block;
+-}
+-
+-.wrapper .search_box .dropdown ul li{
+-  padding-bottom: 20px;
+-}
+-
+-.wrapper .search_box .dropdown ul li img {
+-    width: 2vw;
+-    height: 2vw;
+-    display: block;
+-    float: left;
+-    margin-right: 0.5vw;
+-    color-scheme: only light;
+-}
+-
+-.wrapper .search_box .dropdown ul li:last-child{
+-  padding-bottom: 0;
+-}
+-
+-.wrapper .search_box .dropdown ul li:hover{
+-  color: #6f768d;
+-}
+-
+-.wrapper .search_box .dropdown:before{
+-    content: "";
+-    position: absolute;
+-    top: 1.2vw;
+-    right: 1vw;
+-    border: 0.45vw solid;
+-    border-color: #5078ef transparent transparent transparent;
+-}
+-
+-.wrapper .search_box .search_field{
+-  width: 100%;
+-  height: 100%;
+-  position: relative;
+-  display: flex;
+-}
+-
+-.wrapper .search_box .search_field .input{
+-    width: 100%;
+-    height: 100%;
+-    border: 0px;
+-    font-size: 1.5vw;
+-    padding-left: 1vw;
+-    padding-right: 3vw;
+-    color: #6f768d;
+-    flex-grow: 1;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .wrapper .search_box .search_field .input{
+-        color: #f8f9fa;
+-        background-color: #1e2122;
+-    }
+-}
+-
+-.wrapper .search_box .search_field .fas{
+-  position: absolute;
+-  top: 10px;
+-  right: 10px;
+-  font-size: 22px;
+-  color: #5078ef;
+-  cursor: pointer;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .wrapper .search_box .search_field .fas{
+-        color: #f8f9fa;
+-    }
+-}
+-
+-.wrapper .search_box .search_action_container{
+-    border-left: 2px solid #dde2f1;
+-    width: 4vw;
+-    cursor: pointer;
+-    margin-left: 2px;
+-}
+-@media (prefers-color-scheme: dark) {
+-    .wrapper .search_box .search_action_container{
+-        border-left: 2px solid #343a3c;
+-    }
+-}
+-
+-.wrapper .search_box .search_action_container .mic{
+-    width: 3vw;
+-    height: 2.4vw;
+-    margin: 0.3vw;
+-    background-image: url(mic.svg);
+-    background-repeat: no-repeat;
+-    background-position: center;
+-    background-size: contain;
+-}
+-
+-.wrapper .search_box .search_action_container .lenz{
+-    width: 3vw;
+-    height: 2.4vw;
+-    margin: 0.3vw;
+-    background-image: url(search.svg);
+-    background-repeat: no-repeat;
+-    background-position: center;
+-    background-size: contain;
+-    display: none;
+-}
+-
+-::-webkit-input-placeholder { /* Chrome/Opera/Safari */
+-    color: #9fa3b1;
+-}
+-::-moz-placeholder { /* Firefox 19+ */
+-    color: #9fa3b1;
+-}
+-
+-/*
+-Phones (narrow, or short in landscape): sizes in CSS pixels (dp) instead of parts of the screen,
+-the logo and the search bar in the flow, the speed dial in two columns of 56px tiles.
+-*/
+-@media (max-width: 600px), (max-height: 420px) {
+-    #suggestions {
+-        width: calc(100% - 8px);
+-        max-width: 600px;
+-        top: 0;
+-        margin: 4px auto 16px;
+-        -webkit-border-horizontal-spacing: 12px;
+-        -webkit-border-vertical-spacing: 12px !important;
+-        border-spacing: 12px;
+-    }
+-    .sugg {
+-        box-sizing: border-box;
+-        height: 56px;
+-        padding: 8px 10px;
+-        border-radius: 8px;
+-    }
+-    .sugg:hover {
+-        border-radius: 8px;
+-    }
+-    .sugg-ico {
+-        width: 32px;
+-        height: 32px;
+-        margin-top: 2px;
+-        border-radius: 6px;
+-    }
+-    .sugg-title {
+-        margin-left: 42px;
+-        font-size: 14px;
+-        line-height: 20px;
+-    }
+-    .sugg-desk {
+-        margin-left: 42px;
+-        font-size: 12px;
+-        line-height: 16px;
+-    }
+-    /* a bigger touch target over the right edge of the tile */
+-    .more {
+-        width: 16px;
+-        padding: 10px 8px;
+-        margin: -8px -10px 0 0;
+-    }
+-    .logo {
+-        position: relative;
+-        width: 96px;
+-        height: 72px;
+-        margin: 24px auto 0;
+-    }
+-    .wrapper {
+-        top: 0;
+-        width: calc(100% - 32px);
+-        max-width: 576px;
+-        margin: 16px auto 0;
+-    }
+-    .search_box {
+-        height: 40px;
+-        padding: 4px;
+-        border-radius: 8px;
+-    }
+-    .wrapper .search_box .dropdown {
+-        width: 56px;
+-    }
+-    .wrapper .search_box .dropdown .default_option {
+-        width: 28px;
+-        height: 28px;
+-        margin: 6px 0 0 6px;
+-        background-size: 28px;
+-    }
+-    .wrapper .search_box .dropdown:before {
+-        top: 18px;
+-        right: 6px;
+-        border-width: 5px;
+-    }
+-    .wrapper .search_box .dropdown ul {
+-        font-size: 16px;
+-        width: 180px;
+-        padding: 12px;
+-        border-radius: 8px;
+-        box-shadow: 4px 4px 16px -4px #b3c6ff;
+-    }
+-    .wrapper .search_box .dropdown ul li img {
+-        width: 20px;
+-        height: 20px;
+-        margin-right: 8px;
+-    }
+-    .wrapper .search_box .search_field .input {
+-        font-size: 16px;
+-        padding-left: 12px;
+-        padding-right: 8px;
+-    }
+-    .wrapper .search_box .search_action_container {
+-        width: 44px;
+-    }
+-    .wrapper .search_box .search_action_container .mic,
+-    .wrapper .search_box .search_action_container .lenz {
+-        width: 36px;
+-        height: 24px;
+-        margin: 8px 4px;
+-    }
+-}
+-@media (prefers-color-scheme: dark) and (max-width: 600px), (prefers-color-scheme: dark) and (max-height: 420px) {
+-    .wrapper .search_box .dropdown ul {
+-        box-shadow: 4px 4px 16px -4px #000000;
+-    }
+-}
+-    </style>
++    <meta name="color-scheme" content="dark light">
++    <link rel="stylesheet" href="home.css">
+ </head>
+ <body>
+-<div style="height: 100%; width: 100%; position: absolute; left: 0; top: 0; overflow-x: hidden;">
+-    <div class="logo"></div>
++<div class="page">
+     <div class="wrapper">
+-        <div class="search_box">
++        <div class="search_box" id="search-box">
+             <div class="dropdown">
+-                <div class="default_option"></div>  
++                <div class="default_option"></div>
+                 <ul id="search-engines-list">
+                   <li data-engine="google"><img src="favicons/google.png" /> Google</li>
+                   <li data-engine="bing"><img src="favicons/bing.png" /> Bing</li>
+@@ -455,82 +32,19 @@ the logo and the search bar in the flow, the speed dial in two columns of 56px t
+             </div>
+         </div>
+     </div>
+-    <table cellspacing="32" id="suggestions">
+-        <tr>
+-            <td data-index="0">
+-                <div class="sugg" style="margin-left: 0;" id="sugg0">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>                    
+-                </div>
+-            </td>
+-            <td data-index="1">
+-                <div class="sugg" style="margin-left: 0;" id="sugg1">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-        </tr>
+-        <tr>
+-            <td data-index="2">
+-                <div class="sugg" style="margin-left: 0;" id="sugg2">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-            <td data-index="3">
+-                <div class="sugg" style="margin-left: 0;" id="sugg3">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-        </tr>
+-        <tr>
+-            <td data-index="4">
+-                <div class="sugg" style="margin-left: 0;" id="sugg4">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-            <td data-index="5">
+-                <div class="sugg" style="margin-left: 0;" id="sugg5">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-        </tr>
+-        <tr>
+-            <td data-index="6">
+-                <div class="sugg" style="margin-left: 0;" id="sugg6">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-            <td data-index="7">
+-                <div class="sugg" style="margin-left: 0;" id="sugg7">
+-                    <img class="sugg-ico" />
+-                    <img src="more.svg" class="more" />
+-                    <div class="sugg-title">&nbsp;</div>
+-                    <div class="sugg-desk">&nbsp;</div>
+-                </div>
+-            </td>
+-        </tr>
+-    </table>
++    <div id="suggestions">
++        <div class="cell" data-index="0"><div class="sugg" id="sugg0"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="1"><div class="sugg" id="sugg1"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="2"><div class="sugg" id="sugg2"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="3"><div class="sugg" id="sugg3"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="4"><div class="sugg" id="sugg4"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="5"><div class="sugg" id="sugg5"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="6"><div class="sugg" id="sugg6"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++        <div class="cell" data-index="7"><div class="sugg" id="sugg7"><img class="sugg-ico" /><img src="more.svg" class="more" /><div class="sugg-title">&nbsp;</div><div class="sugg-desk">&nbsp;</div></div></div>
++    </div>
+ </div>
+ 
+ <script src="index.js"></script>
++<script src="ux.js"></script>
+ </body>
+-</html>
+\ No newline at end of file
++</html>
+diff --git a/app/src/main/assets/pages/home/ux.js b/app/src/main/assets/pages/home/ux.js
+new file mode 100644
+index 0000000..f6fd0d7
+--- /dev/null
++++ b/app/src/main/assets/pages/home/ux.js
+@@ -0,0 +1,73 @@
++//Additions of the TV UI to the home page; index.js stays the one of the upstream and runs first.
++//1. In TV Bro the search box opens the address bar of the app (the keyboard and the suggestions are the app's),
++//   the box itself takes no text.
++//2. Short lists of links (the history modes) get popular sites in the places that are free.
++(function () {
++    "use strict";
++
++    var popular = [
++        { title: "YouTube", url: "https://www.youtube.com/" },
++        { title: "Google", url: "https://www.google.com/" },
++        { title: "Bing", url: "https://www.bing.com/" },
++        { title: "Reddit", url: "https://www.reddit.com/" },
++        { title: "Wikipedia", url: "https://www.wikipedia.org/" },
++        { title: "Twitch", url: "https://www.twitch.tv/" },
++        { title: "IMDb", url: "https://www.imdb.com/" },
++        { title: "BBC News", url: "https://www.bbc.com/news" },
++        { title: "DuckDuckGo", url: "https://duckduckgo.com/" }
++    ];
++
++    var inApp = window.hasOwnProperty("TVBro");
++    var russian = (navigator.language || "").toLowerCase().indexOf("ru") === 0;
++
++    var input = document.getElementById("search-input");
++    input.placeholder = russian ? "Поиск или адрес" : "Search or address";
++
++    if (inApp && typeof window.TVBro.openSearch === "function") {
++        //no keyboard of its own: the field of the app is the field
++        input.readOnly = true;
++        var openSearch = function () { window.TVBro.openSearch(); };
++        input.addEventListener("click", openSearch);
++        input.addEventListener("focus", openSearch);
++    }
++
++    function hostOf(url) {
++        try {
++            return new URL(url).host.replace(/^www\./, "");
++        } catch (e) {
++            return url;
++        }
++    }
++
++    //the links of the page and then popular sites, up to the 8 places of the page, each site once
++    function topUp(links) {
++        var result = links.slice();
++        var seen = {};
++        result.forEach(function (link) { seen[hostOf(link.url)] = true; });
++        for (var i = 0; i < popular.length && result.length < 8; i++) {
++            var host = hostOf(popular[i].url);
++            if (!seen[host]) {
++                seen[host] = true;
++                result.push({ title: popular[i].title, url: popular[i].url });
++            }
++        }
++        return result;
++    }
++
++    //the bookmarks are the user's: free places stay free
++    var baseRender = window.renderLinks;
++    window.renderLinks = function (mode, links) {
++        if (links && mode !== "BOOKMARKS") {
++            links = topUp(links);
++        }
++        baseRender(mode, links);
++    };
++
++    if (!inApp) {
++        //opened in an ordinary browser (to look at the page): the same sites as in the app
++        baseRender("RECOMMENDATIONS", popular.slice(0, 8));
++    } else if (typeof recommendationsToDisplay !== "undefined" && recommendationsToDisplay.length > 0) {
++        //the app rendered the links before this script ran
++        window.renderLinks(homePageLinksMode, recommendationsToDisplay);
++    }
++})();
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/AppSettings.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/AppSettings.kt
+index 077029d..9cd4919 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/AppSettings.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/AppSettings.kt
+@@ -27,6 +27,7 @@ import com.phlox.tvwebbrowser.singleton.shortcuts.ShortcutMgr
+ import com.phlox.tvwebbrowser.utils.DownloadFolder
+ import com.phlox.tvwebbrowser.utils.launchForResult
+ import com.phlox.tvwebbrowser.utils.activemodel.ActiveModelsRepository
++import com.phlox.tvwebbrowser.ux.UxSettings
+ import com.phlox.tvwebbrowser.webengine.EngineSpecificSetting
+ import com.phlox.tvwebbrowser.webengine.WebEngineFactory
+ import kotlinx.coroutines.Dispatchers
+@@ -208,6 +209,8 @@ class AppSettingsStore(
+             config.matchFrameRate = value
+         }
+     override var pageVideoHint: Boolean by config::pageVideoHint
++    override var uxTapScroll: Boolean by UxSettings::tapScroll
++    override var uxSuggestions: Boolean by UxSettings::suggestions
+ 
+     override var keepScreenOn: Boolean
+         get() = settingsModel.keepScreenOn.value
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/MainActivity.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/MainActivity.kt
+index fd55571..a1d291c 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/MainActivity.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/MainActivity.kt
+@@ -56,6 +56,7 @@ import com.phlox.tvwebbrowser.webengine.DownloadRequest
+ import com.phlox.tvwebbrowser.webengine.MediaCommand
+ import com.phlox.tvwebbrowser.webengine.WebEngineFactory
+ import com.phlox.tvwebbrowser.webengine.EngineUiHost
++import com.phlox.tvwebbrowser.ux.UxHooks
+ import com.phlox.tvwebbrowser.widgets.cursor.CursorDrawerDelegate
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.isActive
+@@ -75,6 +76,11 @@ open class MainActivity : AppCompatActivity(), BrowserShell.Host {
+         const val KEY_SHOW_DOWNLOADS = "show_downloads"
+         /** With [KEY_SHOW_DOWNLOADS]: the download to focus */
+         const val KEY_DOWNLOAD_ID = "download_id"
++        /**
++         * An intent with this extra (true) opens the address bar over the page: any button of the remote can send it
++         * (Key Mapper: Send intent, activity of this class), also when the remote gives the app no key for it
++         */
++        const val KEY_OPEN_ADDRESS = "open_address"
+         /** A tile of the tabs channel of the TV home screen: the tab to show (its url is the data) */
+         private const val EXTRA_TAB_ID = "channel_tab_id"
+         /**
+@@ -369,6 +375,14 @@ open class MainActivity : AppCompatActivity(), BrowserShell.Host {
+         override fun fastForward() {
+             if (!shell.onMediaCommand(MediaCommand.FAST_FORWARD)) controller.fastForward()
+         }
++
++        override fun openAddress() {
++            UxHooks.openQuickBar?.invoke()
++        }
++
++        override fun scrollPage(down: Boolean) {
++            UxHooks.scrollPage?.invoke(down)
++        }
+     }
+ 
+     override fun onDestroy() {
+@@ -384,6 +398,10 @@ open class MainActivity : AppCompatActivity(), BrowserShell.Host {
+     @SuppressLint("MissingSuperCall")
+     override fun onNewIntent(intent: Intent) {
+         super.onNewIntent(intent)
++        //the activity may be coming from the background: the bar opens when it is shown
++        if (intent.getBooleanExtra(KEY_OPEN_ADDRESS, false)) {
++            window.decorView.postDelayed({ UxHooks.openQuickBar?.invoke() }, 500)
++        }
+         if (intent.getBooleanExtra(KEY_SHOW_DOWNLOADS, false)) {
+             shell.showAllDownloads(intent.getLongExtra(KEY_DOWNLOAD_ID, 0L).takeIf { it > 0L })
+         }
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt
+index c127e8a..7c21eb5 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt
+@@ -51,7 +51,7 @@ class SettingsNavigator(
+         INTERFACE, THEME, DARKENING, KEEP_SCREEN_ON, MATCH_FRAME_RATE,
+         CURSOR_SPEED, CURSOR_ACCELERATION, JOYSTICK, SHORTCUT,
+         CLEAR_CACHE, ENGINE_DEBUG, DOWNLOAD_FOLDER, PROXY, PROXY_TYPE, PROXY_HOST, PROXY_PORT, PROXY_USERNAME, PROXY_PASSWORD,
+-        INFO, UPDATE, AUTO_UPDATE, UPDATE_CHANNEL,
++        INFO, UPDATE, AUTO_UPDATE, UPDATE_CHANNEL, UX_TAP_SCROLL, UX_SUGGESTIONS,
+         LINK_SOURCE, LINK_SUPPORT, LINK_ICON, LINK_LICENSE, LINK_PRIVACY, LINK_PUBLIC_SUFFIX_LIST
+     }
+ 
+@@ -124,6 +124,14 @@ class SettingsNavigator(
+         suspend fun updateFilterLists(): Boolean
+         /** A hint about a found video that starts to play in the page (TV only) */
+         var pageVideoHint: Boolean
++        /** Up and Down flip the page by a tap (TV only); the app overrides these two */
++        var uxTapScroll: Boolean
++            get() = true
++            set(_) {}
++        /** The address bar of the TV asks the search engine for suggestions */
++        var uxSuggestions: Boolean
++            get() = true
++            set(_) {}
+ 
+         var interfaceMode: Config.InterfaceMode
+         var theme: Config.Theme
+@@ -469,6 +477,8 @@ class SettingsNavigator(
+             Key.AD_BLOCK -> store.adBlockEnabled = !store.adBlockEnabled
+             Key.TRACKING_PROTECTION -> store.trackingProtection = !store.trackingProtection
+             Key.VIDEO_HINT -> store.pageVideoHint = !store.pageVideoHint
++            Key.UX_TAP_SCROLL -> store.uxTapScroll = !store.uxTapScroll
++            Key.UX_SUGGESTIONS -> store.uxSuggestions = !store.uxSuggestions
+             Key.DARKENING -> store.darkening = !store.darkening
+             Key.KEEP_SCREEN_ON -> store.keepScreenOn = !store.keepScreenOn
+             Key.MATCH_FRAME_RATE -> store.matchFrameRate = !store.matchFrameRate
+@@ -689,6 +699,10 @@ class SettingsNavigator(
+             search += Row.Field(Key.SEARCH_URL, string(R.string.settings_search_url), null,
+                 if (customSearchChosen) "" else store.searchEngineUrl, string(R.string.settings_search_url_hint))
+         }
++        if (tvUi) {
++            search += Row.Toggle(Key.UX_SUGGESTIONS, string(R.string.ux_setting_suggestions),
++                string(R.string.ux_setting_suggestions_summary), store.uxSuggestions)
++        }
+         val mode = store.homePageMode
+         val home = arrayListOf<Row>(Row.Choice(Key.HOME_PAGE, string(R.string.home_page),
+             string(R.string.settings_home_page_summary),
+@@ -862,7 +876,9 @@ class SettingsNavigator(
+                 string(R.string.settings_cursor_acceleration_summary), store.cursorAcceleration, min, max,
+                 context.getString(R.string.settings_percent, store.cursorAcceleration)),
+             Row.Toggle(Key.JOYSTICK, string(R.string.settings_joystick), string(R.string.settings_joystick_summary),
+-                store.joystickNavigation)
++                store.joystickNavigation),
++            Row.Toggle(Key.UX_TAP_SCROLL, string(R.string.ux_setting_tap_scroll), string(R.string.ux_setting_tap_scroll_summary),
++                store.uxTapScroll)
+         )
+         val keys = Shortcut.entries.map { Row.ShortcutKey(it, string(it.titleResId), store.bindingOf(it)) }
+         return listOf(Section(string(R.string.settings_group_cursor), cursor),
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TabUiHost.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TabUiHost.kt
+index 05e74bf..42d92ed 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TabUiHost.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TabUiHost.kt
+@@ -29,6 +29,7 @@ import com.phlox.tvwebbrowser.model.FavoriteItem
+ import com.phlox.tvwebbrowser.utils.SystemBars
+ import com.phlox.tvwebbrowser.utils.Utils
+ import com.phlox.tvwebbrowser.utils.launchForResult
++import com.phlox.tvwebbrowser.ux.UxHooks
+ import com.phlox.tvwebbrowser.webengine.DownloadRequest
+ import com.phlox.tvwebbrowser.webengine.EngineUiHost
+ import com.phlox.tvwebbrowser.widgets.cursor.CursorDrawerDelegate
+@@ -228,6 +229,7 @@ class TabUiHost(
+         container.addView(anchor, lp)
+         PopupMenu(activity, anchor, Gravity.BOTTOM).also {
+             it.inflate(R.menu.menu_link)
++            it.menu.findItem(R.id.miOpenAddress).isVisible = UxHooks.openQuickBar != null
+             it.menu.findItem(R.id.miOpenInNewTab).isVisible = isHTTPUrl
+             it.menu.findItem(R.id.miOpenInExternalApp).isVisible = isHTTPUrl
+             it.menu.findItem(R.id.miDownload).isVisible = isHTTPUrl
+@@ -236,6 +238,7 @@ class TabUiHost(
+             it.setOnMenuItemClickListener { menuItem ->
+                 when (menuItem.itemId) {
+                     R.id.miRefreshPage -> tab.webEngine.reload()
++                    R.id.miOpenAddress -> UxHooks.openQuickBar?.invoke()
+                     R.id.miOpenInNewTab -> screen.openInNewTabAfterCurrent(url!!)
+                     R.id.miOpenInExternalApp -> onOpenInExternalAppRequested(url!!)
+                     R.id.miDownload -> onDownloadRequested(
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+index 2b2ca3d..da2c9ff 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+@@ -69,6 +69,7 @@ import com.phlox.tvwebbrowser.webengine.DownloadRequest
+ import com.phlox.tvwebbrowser.webengine.pageVideosSupport
+ import com.phlox.tvwebbrowser.webengine.PageVideo
+ import com.phlox.tvwebbrowser.utils.ExternalVideoPlayer
++import com.phlox.tvwebbrowser.ux.UxShell
+ import com.phlox.tvwebbrowser.activity.main.view.VideosPanelView
+ import com.phlox.tvwebbrowser.widgets.NotificationView
+ import com.phlox.tvwebbrowser.widgets.cursor.CursorDrawerDelegate
+@@ -566,7 +567,32 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+                 vb.vDownloadsScreen, vb.vHistoryScreen, vb.vSyncScreen, vb.vSettingsScreen, vb.vPlayerScreen,
+                 vb.vCursorMenu, vb.progressBarGeneric).any { it.isVisible }
+ 
+-    private fun updatePageCovered() = pageVideoHint.setBlocked(isPageCovered())
++    private fun updatePageCovered() {
++        val covered = isPageCovered()
++        pageVideoHint.setBlocked(covered || ux.coversPage)
++        ux.setCovered(covered)
++    }
++
++    /** The address bar over the page, the Menu key, the offer of a found video; the code is in [UxShell] */
++    private val ux = UxShell(activity, host, vb.rlRoot, object : UxShell.Callbacks {
++        override fun isPageCovered(): Boolean = this@TvShell.isPageCovered()
++
++        override fun playVideo(video: PageVideo) = videosCallback.play(video)
++
++        override fun showVideoList() {
++            showMenuOverlay { vb.vVideosPanel.show(vb.vActionBar.videosButton, vb.vActionBar.functionsGroup) }
++        }
++
++        override fun restoreFocus() {
++            if (vb.rlActionBar.isVisible) {
++                vb.vActionBar.catchFocus()
++            } else {
++                controller.currentTab.value?.webEngine?.getView()?.requestFocus()
++            }
++        }
++
++        override fun onAddressSent() = hideMenuOverlay()
++    })
+ 
+     /** Overlays come and go with a redraw */
+     private val pageCoveredDrawListener = ViewTreeObserver.OnPreDrawListener {
+@@ -590,6 +616,7 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+             if (event.action == KeyEvent.ACTION_UP) openMediaVideoInPlayer()
+             return true
+         }
++        if (ux.dispatchKeyEvent(event)) return true
+         return videoMode.dispatchKeyEvent(event)
+     }
+ 
+@@ -755,6 +782,9 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+         vb.vHistoryScreen.attach(lifecycleScope, vb.vPopupMenu, historyCallback, ::onHistoryScreenClosed)
+         vb.vSyncScreen.attach(lifecycleScope, syncScreenCallback)
+         vb.vSettingsScreen.attach(lifecycleScope, vb.vPopupMenu, settingsCallback, ::onSettingsClosed)
++        ux.attach()
++        //typing the address in the bar goes through the address bar with suggestions
++        vb.vActionBar.onAddressClick = { ux.openQuickBar(force = true) }
+         activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+             override fun onStart(owner: LifecycleOwner) = syncServer.start()
+             override fun onPause(owner: LifecycleOwner) {
+@@ -765,8 +795,12 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+                 vb.vPlayerScreen.onResume()
+                 updatePageCovered()
+             }
+-            override fun onStop(owner: LifecycleOwner) = syncServer.stop()
++            override fun onStop(owner: LifecycleOwner) {
++                syncServer.stop()
++                ux.onStop()
++            }
+             override fun onDestroy(owner: LifecycleOwner) {
++                ux.detach()
+                 syncServer.destroy()
+                 vb.vPlayerScreen.close()
+             }
+@@ -807,6 +841,8 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+ 
+     override fun onTabViewCreated(tab: BrowserTab) {}
+ 
++    override fun onPageScrolled(scrollY: Int, dy: Int) = ux.onPageScrolled(scrollY)
++
+     override fun onTabsLoaded() {
+         val currentTab = controller.currentTab.value
+         if (currentTab == null || currentTab.url == settingsModel.homePage) {
+@@ -857,8 +893,9 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+         val tabChanged = state.tabIdentity != renderedTabIdentity
+         renderedTabIdentity = state.tabIdentity
+         //once per page: the tab and its address without the fragment
+-        pageVideoHint.setPage(if (state.hasTab && state.url.isNotEmpty())
+-            "${state.tabIdentity}|${state.url.substringBefore('#')}" else null)
++        val pageKey = if (state.hasTab && state.url.isNotEmpty()) "${state.tabIdentity}|${state.url.substringBefore('#')}" else null
++        pageVideoHint.setPage(pageKey)
++        ux.setPage(pageKey)
+         if (tabChanged) {
+             onRenderedTabChanged()
+         }
+@@ -881,6 +918,7 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+      * to the page they were turned on for, so they end when another tab is shown.
+      */
+     private fun onRenderedTabChanged() {
++        ux.onTabChanged()
+         mediaStateJob?.cancel()
+         mediaStateJob = null
+         onMediaStateChanged(null)
+@@ -917,6 +955,7 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+ 
+     /** The videos of the shown page other apps can play: the badge of the bar and the panel */
+     private fun onPageVideosChanged(videos: List<PageVideo>) {
++        ux.onPageVideos(videos)
+         vb.vActionBar.setPageVideoCount(videos.size)
+         vb.vVideosPanel.render(videos)
+     }
+@@ -1018,6 +1057,8 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+         dispatcher.addCallback(activity, videoMode.backCallback)
+         dispatcher.addCallback(activity, vb.vCursorMenu.backCallback)
+         dispatcher.addCallback(activity, cursorModesBackCallback)
++        //the address bar over the page
++        dispatcher.addCallback(activity, ux.backCallback)
+         //the built-in player over everything: Back closes it, whatever the cursor of the page under it does
+         dispatcher.addCallback(activity, vb.vPlayerScreen.backCallback)
+         //the voice input of the bookmarks search: Back cancels it
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt
+index 11c84ef..146462e 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt
+@@ -28,6 +28,8 @@ class ActionBar @JvmOverloads constructor(
+ 
+     private val vb = ViewActionbarBinding.inflate( LayoutInflater.from(context),this)
+     var callback: Callback? = null
++    /** The shell can take the click on the address (to type in its own bar with suggestions); true if it did */
++    var onAddressClick: (() -> Boolean)? = null
+     private var downloadsModel = ActiveModelsRepository.get(DownloadsModel::class, context)
+     /**
+      * The address is edited: the field is selected and its text has the focus. Otherwise the address
+@@ -126,7 +128,7 @@ class ActionBar @JvmOverloads constructor(
+         vb.ibIncognito.isActivated = incognitoMode
+ 
+         vb.ibSite.setOnClickListener { callback?.showSitePanel() }
+-        vb.flUrl.setOnClickListener { startEditing(selectAllLater = true) }
++        vb.flUrl.setOnClickListener { if (onAddressClick?.invoke() != true) startEditing(selectAllLater = true) }
+         vb.flUrl.setOnKeyListener(addressFieldKeyListener)
+         vb.etUrl.onFocusChangeListener = etUrlFocusChangeListener
+         vb.etUrl.setOnKeyListener(etUrlKeyListener)
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserCommands.kt b/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserCommands.kt
+index 1f4db16..f8c94a7 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserCommands.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserCommands.kt
+@@ -15,4 +15,8 @@ interface BrowserCommands {
+     fun stopPlayback()
+     fun rewind()
+     fun fastForward()
++    /** Opens the address bar with search suggestions over the page (the TV shell; nothing happens where it can not) */
++    fun openAddress() {}
++    /** Scrolls the page by a part of the screen, smoothly (TV only) */
++    fun scrollPage(down: Boolean) {}
+ }
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/Shortcut.kt b/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/Shortcut.kt
+index fe1364a..9df4ab8 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/Shortcut.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/Shortcut.kt
+@@ -17,7 +17,11 @@ enum class Shortcut(val titleResId: Int, val prefsKey: String, val defaultBindin
+     PLAY_PAUSE(R.string.play_pause,  "shortcut_play_pause", KeyBinding(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)),
+     MEDIA_STOP(R.string.media_stop, "shortcut_media_stop", KeyBinding(KeyEvent.KEYCODE_MEDIA_STOP)),
+     MEDIA_REWIND(R.string.media_rewind, "shortcut_media_rewind", KeyBinding(KeyEvent.KEYCODE_MEDIA_REWIND)),
+-    MEDIA_FAST_FORWARD(R.string.media_fast_forward, "shortcut_media_fast_forward", KeyBinding(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD));
++    MEDIA_FAST_FORWARD(R.string.media_fast_forward, "shortcut_media_fast_forward", KeyBinding(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)),
++    //Menu opens the address bar by itself where it reaches the app; this is for another key (or a long press)
++    OPEN_ADDRESS(R.string.ux_shortcut_open_address, "shortcut_open_address", KeyBinding.NONE),
++    SCROLL_PAGE_UP(R.string.ux_shortcut_scroll_up, "shortcut_scroll_page_up", KeyBinding(KeyEvent.KEYCODE_CHANNEL_UP)),
++    SCROLL_PAGE_DOWN(R.string.ux_shortcut_scroll_down, "shortcut_scroll_page_down", KeyBinding(KeyEvent.KEYCODE_CHANNEL_DOWN));
+ }
+ 
+ /**
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/ShortcutMgr.kt b/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/ShortcutMgr.kt
+index f731097..b1d1c0f 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/ShortcutMgr.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/singleton/shortcuts/ShortcutMgr.kt
+@@ -53,6 +53,9 @@ class ShortcutMgr @VisibleForTesting internal constructor(private val prefs: Sha
+             Shortcut.MEDIA_STOP -> commands.stopPlayback()
+             Shortcut.MEDIA_REWIND -> commands.rewind()
+             Shortcut.MEDIA_FAST_FORWARD -> commands.fastForward()
++            Shortcut.OPEN_ADDRESS -> commands.openAddress()
++            Shortcut.SCROLL_PAGE_UP -> commands.scrollPage(down = false)
++            Shortcut.SCROLL_PAGE_DOWN -> commands.scrollPage(down = true)
+         }
+     }
+ 
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/HomeTilesSeed.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/HomeTilesSeed.kt
+new file mode 100644
+index 0000000..9a9b06f
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/HomeTilesSeed.kt
+@@ -0,0 +1,59 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.content.SharedPreferences
++import com.phlox.tvwebbrowser.data.FavoritesRepository
++
++/**
++ * Puts popular sites of this region in the tiles of the home page, once, and only where the tiles are still the
++ * eight sites TV Bro puts there on its first start (`HomePageLinks.initialBookmarksSuggestions`) - never over
++ * tiles the user changed. The tiles are the bookmarks of the Home page folder, so they can be edited as always.
++ */
++object HomeTilesSeed {
++    private const val DONE_KEY = "ux_home_tiles_seeded"
++
++    /** The sites of the first start of TV Bro, in its order */
++    private val UPSTREAM = listOf(
++        "https://www.wikipedia.org", "https://www.reddit.com", "https://mytuner-radio.com", "https://www.instagram.com",
++        "https://www.imdb.com", "https://www.ebay.com", "https://itch.io/games/input-gamepad/platform-web", "https://www.bbc.com/news"
++    )
++
++    /** Title and address of the tiles; the icons come from the sites themselves (the app's cache of favicons) */
++    val TILES = listOf(
++        "YouTube" to "https://www.youtube.com/",
++        "Google" to "https://www.google.com/",
++        "Bing" to "https://www.bing.com/",
++        "Reddit" to "https://www.reddit.com/",
++        "Wikipedia" to "https://www.wikipedia.org/",
++        "Twitch" to "https://www.twitch.tv/",
++        "IMDb" to "https://www.imdb.com/",
++        "BBC News" to "https://www.bbc.com/news"
++    )
++
++    /**
++     * @return true if the tiles were replaced (the home page should load its links again). Empty tiles are left
++     * for the next start: the home page fills them with its own suggestions the first time it shows.
++     */
++    suspend fun run(favorites: FavoritesRepository, prefs: SharedPreferences): Boolean {
++        if (prefs.getBoolean(DONE_KEY, false)) return false
++        val tiles = favorites.homePageBookmarks().sortedBy { it.order }
++        if (tiles.isEmpty()) return false
++        val pristine = tiles.size == UPSTREAM.size && tiles.map { normalize(it.url) } == UPSTREAM.map(::normalize)
++        if (pristine) {
++            for ((tile, site) in tiles.zip(TILES)) {
++                tile.title = site.first
++                tile.url = site.second
++                tile.favicon = null
++                tile.description = null
++                tile.destUrl = null
++                tile.validUntil = null
++                tile.useful = false
++                favorites.save(tile)
++            }
++        }
++        //whatever the tiles are, they are not looked at again
++        prefs.edit().putBoolean(DONE_KEY, true).apply()
++        return pristine
++    }
++
++    private fun normalize(url: String?): String = url.orEmpty().trim().trimEnd('/').lowercase()
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt
+new file mode 100644
+index 0000000..1ba29eb
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt
+@@ -0,0 +1,82 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.content.Context
++import android.util.TypedValue
++import android.view.Gravity
++import android.view.View
++import android.widget.LinearLayout
++import android.widget.TextView
++import com.phlox.tvwebbrowser.R
++
++/**
++ * The glass button in the corner of the page that offers a found video: "Open in the player on the full
++ * screen" with the key that does it (OK). It takes no focus and no keys; [UxShell] gives it the OK key while it shows.
++ */
++class PageVideoChipView(context: Context) : LinearLayout(context) {
++    private val label = TextView(context)
++    private val cap = TextView(context)
++
++    init {
++        orientation = HORIZONTAL
++        gravity = Gravity.CENTER_VERTICAL
++        val height = UxGlass.dp(context, HEIGHT_DP)
++        background = UxGlass.rounded(UxGlass.PANEL, height / 2f, UxGlass.FOCUSED_STROKE, UxGlass.dp(context, 1.5f))
++        setPadding(UxGlass.dp(context, 16f), 0, UxGlass.dp(context, 10f), 0)
++        isFocusable = false
++        descendantFocusability = FOCUS_BLOCK_DESCENDANTS
++        accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
++        outlineProvider = null
++        elevation = UxGlass.dp(context, 6.2f).toFloat()
++        visibility = GONE
++
++        addView(UxGlass.icon(context, R.drawable.ic_play, 24f))
++
++        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
++        label.setTextColor(UxGlass.TEXT)
++        label.isSingleLine = true
++        addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
++            marginStart = UxGlass.dp(context, 10f)
++        })
++
++        cap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
++        cap.setTextColor(UxGlass.TEXT)
++        cap.text = context.getString(R.string.ux_key_ok)
++        cap.gravity = Gravity.CENTER
++        val capHeight = UxGlass.dp(context, 28f)
++        cap.minWidth = UxGlass.dp(context, 40f)
++        cap.setPadding(UxGlass.dp(context, 10f), 0, UxGlass.dp(context, 10f), 0)
++        cap.background = UxGlass.rounded(UxGlass.CAPSULE, capHeight / 2f, UxGlass.TEXT_FAINT, UxGlass.dp(context, 1f))
++        addView(cap, LayoutParams(LayoutParams.WRAP_CONTENT, capHeight).apply {
++            marginStart = UxGlass.dp(context, 14f)
++        })
++    }
++
++    /** One video is opened at once, several are listed */
++    fun setVideos(count: Int) {
++        label.text = if (count <= 1) context.getString(R.string.ux_chip_open_player)
++        else context.getString(R.string.ux_chip_choose_video, count)
++    }
++
++    fun appear() {
++        animate().cancel()
++        if (visibility != VISIBLE) alpha = 0f
++        visibility = VISIBLE
++        animate().alpha(1f).setDuration(FADE_IN_MS).start()
++    }
++
++    fun disappear(fade: Boolean) {
++        if (visibility != VISIBLE) return
++        animate().cancel()
++        if (!fade) {
++            visibility = View.GONE
++            return
++        }
++        animate().alpha(0f).setDuration(FADE_OUT_MS).withEndAction { visibility = View.GONE }.start()
++    }
++
++    companion object {
++        private const val HEIGHT_DP = 48f
++        private const val FADE_IN_MS = 250L
++        private const val FADE_OUT_MS = 350L
++    }
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+new file mode 100644
+index 0000000..c7444a8
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+@@ -0,0 +1,367 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.content.Context
++import android.os.Build
++import android.text.Editable
++import android.text.InputType
++import android.text.TextUtils
++import android.text.TextWatcher
++import android.util.TypedValue
++import android.view.Gravity
++import android.view.KeyEvent
++import android.view.View
++import android.view.ViewGroup
++import android.view.animation.DecelerateInterpolator
++import android.view.inputmethod.EditorInfo
++import android.view.inputmethod.InputMethodManager
++import android.widget.EditText
++import android.widget.FrameLayout
++import android.widget.LinearLayout
++import android.widget.TextView
++import androidx.activity.OnBackPressedCallback
++import androidx.core.view.isVisible
++import com.phlox.tvwebbrowser.R
++import com.phlox.tvwebbrowser.TVBro
++import com.phlox.tvwebbrowser.model.FavoriteItem
++import com.phlox.tvwebbrowser.model.HistoryItem
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.launch
++
++/**
++ * The address bar over the page: a glass panel at the top with the field, under it the capsules of the
++ * suggestions (the typed text, bookmarks, history, queries of the search engine). It takes the keys while it
++ * shows and gives the focus back to the page when it goes. Opened by the Menu key, Up at the top of the page,
++ * the search box of the home page and the hotkey "address bar"; Back or Menu close it.
++ *
++ * Down moves from the field to the capsules, Up back; OK on a capsule opens it; Enter in the field searches
++ * the text (an address is opened). With the soft keyboard up the keys belong to it: Back hides it first.
++ */
++class QuickBarView(context: Context, private val host: Host) : FrameLayout(context) {
++    interface Host {
++        val scope: CoroutineScope
++        /** Searches the text or opens it as an address */
++        fun submit(text: String)
++        /** Opens a page of the history or the bookmarks */
++        fun open(url: String)
++        /** The bar went away: the page gets the focus back */
++        fun onClosed()
++        /** Which search engine suggests queries, see [com.phlox.tvwebbrowser.Config.guessSearchEngineName] */
++        val searchEngineName: String
++        /** Nothing typed goes to the network in the incognito mode */
++        val incognito: Boolean
++    }
++
++    private val panel = LinearLayout(context)
++    private val input = EditText(context)
++    private val list = LinearLayout(context)
++    private val hint = TextView(context)
++
++    private var history: List<HistoryItem> = emptyList()
++    private var bookmarks: List<FavoriteItem> = emptyList()
++    /** The queries the search engine suggested for [webQuery] */
++    private var web: List<String> = emptyList()
++    private var webQuery = ""
++    private var webJob: Job? = null
++    private var shown: List<Suggestion> = emptyList()
++    /** The list was not rebuilt (a capsule had the focus): do it when the focus is back in the field */
++    private var rebuildPending = false
++    private var submitted = false
++
++    /** Back closes the bar while it shows */
++    val backCallback = object : OnBackPressedCallback(false) {
++        override fun handleOnBackPressed() = close()
++    }
++
++    init {
++        visibility = GONE
++        setBackgroundColor(UxGlass.SCRIM)
++        isFocusable = false
++        //a shadow of a translucent view is a heavy layer for the GPU of a TV
++        outlineProvider = null
++        elevation = UxGlass.dp(context, 7.9f).toFloat()
++
++        panel.orientation = LinearLayout.VERTICAL
++        panel.background = UxGlass.panel(context)
++        val pad = UxGlass.dp(context, 12f)
++        panel.setPadding(pad, pad, pad, UxGlass.dp(context, 8f))
++        val width = minOf(UxGlass.dp(context, PANEL_WIDTH_DP), context.resources.displayMetrics.widthPixels - 2 * UxGlass.dp(context, 24f))
++        addView(panel, LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
++            topMargin = UxGlass.dp(context, 24f)
++        })
++
++        panel.addView(buildField())
++        list.orientation = LinearLayout.VERTICAL
++        panel.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++            topMargin = UxGlass.dp(context, 8f)
++        })
++
++        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
++        hint.setTextColor(UxGlass.TEXT_HINT)
++        hint.text = context.getString(R.string.ux_quick_hint)
++        hint.gravity = Gravity.CENTER
++        panel.addView(hint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++            topMargin = UxGlass.dp(context, 8f)
++        })
++    }
++
++    /** The field: a capsule with the search glass and the text */
++    private fun buildField(): View {
++        val row = LinearLayout(context)
++        row.orientation = LinearLayout.HORIZONTAL
++        row.gravity = Gravity.CENTER_VERTICAL
++        val height = UxGlass.dp(context, FIELD_HEIGHT_DP)
++        row.background = UxGlass.rounded(UxGlass.CAPSULE_FIELD, height / 2f, UxGlass.FOCUSED_STROKE, UxGlass.dp(context, 1.5f))
++        row.setPadding(UxGlass.dp(context, 18f), 0, UxGlass.dp(context, 18f), 0)
++        row.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
++
++        val glass = UxGlass.icon(context, R.drawable.ic_search, 22f)
++        row.addView(glass)
++
++        input.background = null
++        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 21f)
++        input.setTextColor(UxGlass.TEXT)
++        input.setHintTextColor(UxGlass.TEXT_HINT)
++        input.highlightColor = 0x665FACFF
++        input.hint = context.getString(R.string.ux_quick_field_hint)
++        input.isSingleLine = true
++        input.maxLines = 1
++        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
++        input.imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_EXTRACT_UI
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) input.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
++        input.setPadding(UxGlass.dp(context, 12f), 0, 0, 0)
++        row.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
++
++        input.addTextChangedListener(object : TextWatcher {
++            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
++            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
++            override fun afterTextChanged(s: Editable?) = onQueryChanged()
++        })
++        input.setOnEditorActionListener { _, actionId, event ->
++            val enter = event != null && event.keyCode == KeyEvent.KEYCODE_ENTER
++            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH ||
++                actionId == EditorInfo.IME_ACTION_DONE || enter) {
++                submitTyped()
++                true
++            } else {
++                false
++            }
++        }
++        input.setOnKeyListener { _, keyCode, event ->
++            when (keyCode) {
++                KeyEvent.KEYCODE_DPAD_DOWN -> {
++                    //a single-line field would move its caret; Down belongs to the capsules
++                    if (list.childCount == 0) return@setOnKeyListener false
++                    if (event.action == KeyEvent.ACTION_DOWN) list.getChildAt(0).requestFocus()
++                    true
++                }
++                KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
++                    if (event.action == KeyEvent.ACTION_UP) submitTyped()
++                    true
++                }
++                else -> false
++            }
++        }
++        input.setOnFocusChangeListener { _, focused ->
++            if (focused && rebuildPending) rebuild()
++        }
++        return row
++    }
++
++    /**
++     * Shows the bar with the keyboard; no-op if it shows. The field is empty or has the [prefill] (an address to
++     * edit), selected.
++     */
++    fun open(prefill: String = "") {
++        if (isVisible) return
++        submitted = false
++        web = emptyList()
++        webQuery = ""
++        rebuildPending = false
++        input.setText(prefill)
++        rebuild()
++        visibility = VISIBLE
++        backCallback.isEnabled = true
++        alpha = 0f
++        panel.translationY = -UxGlass.dp(context, 18f).toFloat()
++        animate().alpha(1f).setDuration(OPEN_MS).setInterpolator(DecelerateInterpolator()).start()
++        panel.animate().translationY(0f).setDuration(OPEN_MS).setInterpolator(DecelerateInterpolator()).start()
++        input.requestFocus()
++        postDelayed({ if (isVisible && input.hasFocus()) showKeyboard() }, KEYBOARD_DELAY_MS)
++        //some keyboards of TVs drop a selection made before they show
++        if (prefill.isNotEmpty()) postDelayed({ if (isVisible) input.selectAll() }, SELECT_DELAY_MS)
++        host.scope.launch {
++            val data = TVBro.container.data
++            history = try { data.history.all() } catch (e: Exception) { emptyList() }
++            bookmarks = try { data.favorites.all().filter { it.url != null } } catch (e: Exception) { emptyList() }
++            if (isVisible && !list.hasFocus()) rebuild()
++        }
++    }
++
++    /** Hides the bar; the page gets the focus back unless [restoreFocus] is false */
++    fun close(restoreFocus: Boolean = true) {
++        if (!isVisible) return
++        webJob?.cancel()
++        backCallback.isEnabled = false
++        hideKeyboard()
++        animate().cancel()
++        panel.animate().cancel()
++        visibility = GONE
++        if (restoreFocus) host.onClosed()
++    }
++
++    private fun showKeyboard() {
++        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
++        imm.showSoftInput(input, 0)
++    }
++
++    private fun hideKeyboard() {
++        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
++        imm.hideSoftInputFromWindow(input.windowToken, 0)
++    }
++
++    private fun submitTyped() {
++        val text = input.text.toString().trim()
++        if (text.isEmpty() || submitted) return
++        submitted = true
++        close(restoreFocus = true)
++        host.submit(text)
++    }
++
++    private fun activate(item: Suggestion) {
++        if (submitted) return
++        submitted = true
++        close(restoreFocus = true)
++        when (item.kind) {
++            Suggestion.Kind.BOOKMARK, Suggestion.Kind.HISTORY -> item.url?.let { host.open(it) }
++            Suggestion.Kind.TYPED, Suggestion.Kind.WEB -> host.submit(item.text)
++        }
++    }
++
++    private fun onQueryChanged() {
++        rebuild()
++        webJob?.cancel()
++        val query = input.text.toString().trim()
++        if (query.isEmpty() || host.incognito || !UxSettings.suggestions || !SuggestionsProvider.mayAskNetwork(query)) {
++            web = emptyList()
++            webQuery = ""
++            return
++        }
++        webJob = host.scope.launch {
++            //the request waits for the typing to pause; typing on cancels it, also while it runs
++            delay(DEBOUNCE_MS)
++            val answer = SuggestionsProvider.web(query, host.searchEngineName)
++            web = answer
++            webQuery = query
++            if (input.text.toString().trim() == query) {
++                if (list.hasFocus()) rebuildPending = true else rebuild()
++            }
++        }
++    }
++
++    /** Fills the list: the typed text, then the pages found in memory, then the queries of the search engine */
++    private fun rebuild() {
++        if (list.hasFocus()) {
++            rebuildPending = true
++            return
++        }
++        rebuildPending = false
++        val query = input.text.toString().trim()
++        val items = ArrayList<Suggestion>(MAX_ROWS)
++        if (query.isNotEmpty()) items += Suggestion(Suggestion.Kind.TYPED, query)
++        items += SuggestionsProvider.local(query, history, bookmarks, if (query.isEmpty()) MAX_ROWS else MAX_LOCAL_ROWS)
++        //queries asked for a shorter text still fit the longer one while the new answer is on its way
++        val queries = if (webQuery.isNotEmpty() && query.startsWith(webQuery, ignoreCase = true)) web else emptyList()
++        for (q in queries) {
++            if (items.size >= MAX_ROWS) break
++            if (!q.startsWith(query, ignoreCase = true) || q.equals(query, ignoreCase = true)) continue
++            if (items.none { it.text.equals(q, ignoreCase = true) }) items += Suggestion(Suggestion.Kind.WEB, q)
++        }
++        if (items == shown) return
++        shown = items
++        list.removeAllViews()
++        for ((index, item) in items.withIndex()) list.addView(buildRow(item, index, items.size))
++    }
++
++    private fun buildRow(item: Suggestion, index: Int, count: Int): View {
++        val height = UxGlass.dp(context, ROW_HEIGHT_DP)
++        val row = LinearLayout(context)
++        row.orientation = LinearLayout.HORIZONTAL
++        row.gravity = Gravity.CENTER_VERTICAL
++        row.isFocusable = true
++        row.isClickable = true
++        row.background = UxGlass.capsule(context, height)
++        row.setPadding(UxGlass.dp(context, 18f), 0, UxGlass.dp(context, 18f), 0)
++        row.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height).apply {
++            if (index > 0) topMargin = UxGlass.dp(context, 4f)
++        }
++
++        val iconRes = when (item.kind) {
++            Suggestion.Kind.TYPED -> if (SuggestionsProvider.looksLikeAddress(item.text)) R.drawable.ic_globe else R.drawable.ic_search
++            Suggestion.Kind.BOOKMARK -> R.drawable.ic_star
++            Suggestion.Kind.HISTORY -> R.drawable.ic_history
++            Suggestion.Kind.WEB -> R.drawable.ic_search
++        }
++        row.addView(UxGlass.icon(context, iconRes, 20f, if (item.kind == Suggestion.Kind.TYPED) UxGlass.TEXT else UxGlass.TEXT_FAINT))
++
++        val title = TextView(context)
++        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
++        title.setTextColor(UxGlass.TEXT)
++        title.isSingleLine = true
++        title.ellipsize = TextUtils.TruncateAt.END
++        title.text = when (item.kind) {
++            Suggestion.Kind.TYPED -> context.getString(
++                if (SuggestionsProvider.looksLikeAddress(item.text)) R.string.ux_open_address else R.string.ux_search_for, item.text)
++            else -> item.text
++        }
++        row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
++            marginStart = UxGlass.dp(context, 12f)
++        })
++
++        if (item.url != null) {
++            val site = TextView(context)
++            site.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
++            site.setTextColor(UxGlass.TEXT_FAINT)
++            site.isSingleLine = true
++            site.ellipsize = TextUtils.TruncateAt.END
++            site.maxWidth = UxGlass.dp(context, 220f)
++            site.text = SuggestionsProvider.siteOf(item.url)
++            row.addView(site, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++                marginStart = UxGlass.dp(context, 12f)
++            })
++        }
++
++        row.setOnClickListener { activate(item) }
++        row.setOnKeyListener { _, keyCode, event ->
++            when (keyCode) {
++                KeyEvent.KEYCODE_DPAD_UP -> {
++                    if (event.action == KeyEvent.ACTION_DOWN) {
++                        if (index == 0) input.requestFocus() else list.getChildAt(index - 1).requestFocus()
++                    }
++                    true
++                }
++                KeyEvent.KEYCODE_DPAD_DOWN -> {
++                    if (event.action == KeyEvent.ACTION_DOWN && index < count - 1) list.getChildAt(index + 1).requestFocus()
++                    true
++                }
++                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> true
++                else -> false
++            }
++        }
++        return row
++    }
++
++    companion object {
++        private const val PANEL_WIDTH_DP = 680f
++        private const val FIELD_HEIGHT_DP = 48f
++        private const val ROW_HEIGHT_DP = 36f
++        /** The keyboard of a TV covers the lower part of the window: the list has to end above it (about 330 dp of 540) */
++        private const val MAX_ROWS = 5
++        private const val MAX_LOCAL_ROWS = 2
++        private const val DEBOUNCE_MS = 200L
++        private const val OPEN_MS = 160L
++        private const val KEYBOARD_DELAY_MS = 150L
++        private const val SELECT_DELAY_MS = 500L
++    }
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt
+new file mode 100644
+index 0000000..453f1d8
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt
+@@ -0,0 +1,230 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.util.Patterns
++import com.phlox.tvwebbrowser.Config
++import com.phlox.tvwebbrowser.model.FavoriteItem
++import com.phlox.tvwebbrowser.model.HistoryItem
++import com.phlox.tvwebbrowser.net.AppProxy
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.awaitCancellation
++import kotlinx.coroutines.coroutineScope
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++import org.json.JSONArray
++import org.json.JSONException
++import java.io.ByteArrayOutputStream
++import java.io.IOException
++import java.net.HttpURLConnection
++import java.net.URL
++import java.net.URLEncoder
++import java.nio.charset.Charset
++import java.util.Locale
++
++/** A line of the list under the address field of the quick bar */
++data class Suggestion(
++    val kind: Kind,
++    /** What the line says; for a page of the history or the bookmarks its title */
++    val text: String,
++    /** The address a page of the history or the bookmarks opens */
++    val url: String? = null,
++) {
++    enum class Kind {
++        /** What is typed in the field: search it or open it */
++        TYPED,
++        BOOKMARK,
++        HISTORY,
++        /** A query the search engine suggests */
++        WEB
++    }
++}
++
++/**
++ * Suggestions for the quick bar: pages of the bookmarks and the history (found in memory) and queries the
++ * search engine suggests. The typed text goes to the network only when it looks like words, never when it looks
++ * like an address (it may carry a secret), not in incognito mode and not when the setting is off.
++ */
++object SuggestionsProvider {
++    /** Where queries are suggested; all answer with a JSON array */
++    enum class Source(private val template: String) {
++        GOOGLE("https://suggestqueries.google.com/complete/search?client=firefox&hl=%2\$s&q=%1\$s"),
++        DUCKDUCKGO("https://duckduckgo.com/ac/?q=%1\$s"),
++        YANDEX("https://suggest.yandex.ru/suggest-ff.cgi?part=%1\$s"),
++        BING("https://api.bing.com/osjson.aspx?query=%1\$s");
++
++        fun urlFor(query: String, language: String): String =
++            template.format(URLEncoder.encode(query, "UTF-8"), language)
++    }
++
++    private const val CONNECT_TIMEOUT_MS = 2500
++    private const val READ_TIMEOUT_MS = 2500
++    private const val MAX_RESPONSE_BYTES = 64 * 1024
++    private const val MAX_QUERY_LENGTH = 100
++    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
++
++    private val DOMAIN_LIKE = Regex("^[\\w.-]+\\.[a-zA-Z]{2,}(:\\d+)?$")
++
++    /** The sources to try, in order, for the search engine named as [Config.guessSearchEngineName] does */
++    fun sourcesFor(engineName: String): List<Source> = when (engineName) {
++        "ddg" -> listOf(Source.DUCKDUCKGO, Source.GOOGLE)
++        "yandex" -> listOf(Source.YANDEX, Source.GOOGLE)
++        "bing" -> listOf(Source.BING, Source.GOOGLE)
++        else -> listOf(Source.GOOGLE, Source.DUCKDUCKGO)
++    }
++
++    /** Whether the typed [query] may leave the TV: words, not an address or something long */
++    fun mayAskNetwork(query: String): Boolean {
++        val text = query.trim()
++        if (text.isEmpty() || text.length > MAX_QUERY_LENGTH) return false
++        if (text.contains("://") || text.contains('/') || text.contains('@')) return false
++        return !DOMAIN_LIKE.matches(text)
++    }
++
++    /** The text is an address to open, not words to search (as [com.phlox.tvwebbrowser.browser.UrlInputResolver] decides) */
++    fun looksLikeAddress(text: String): Boolean {
++        val lower = text.trim().lowercase(Locale.ROOT)
++        return Patterns.WEB_URL.matcher(text).matches() || lower.startsWith("http://") || lower.startsWith("https://")
++    }
++
++    /** The queries of an answer: `["query", ["a", "b"]]` (Google, Yandex, Bing, DuckDuckGo with a type) or `[{"phrase": "a"}]` (DuckDuckGo) */
++    fun parse(body: String): List<String> {
++        val start = body.indexOf('[')
++        if (start < 0) return emptyList()
++        val root = try {
++            JSONArray(body.substring(start).trim())
++        } catch (e: JSONException) {
++            return emptyList()
++        }
++        val result = ArrayList<String>()
++        val second = root.opt(1)
++        if (root.opt(0) is String && second is JSONArray) {
++            for (i in 0 until second.length()) (second.opt(i) as? String)?.let { result += it }
++        } else {
++            for (i in 0 until root.length()) root.optJSONObject(i)?.optString("phrase")?.let { result += it }
++        }
++        return result.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
++    }
++
++    /**
++     * The queries suggested for [query]: from the first source that answers, the next one is tried when a
++     * source fails (an empty answer is an answer). Cancelling the caller closes the connection.
++     */
++    suspend fun web(query: String, engineName: String): List<String> {
++        if (!mayAskNetwork(query)) return emptyList()
++        val language = Locale.getDefault().language.ifBlank { "ru" }
++        for (source in sourcesFor(engineName)) {
++            val answer = try {
++                fetch(source.urlFor(query.trim(), language))
++            } catch (e: CancellationException) {
++                throw e
++            } catch (e: Exception) {
++                null
++            }
++            if (answer != null) return answer
++        }
++        return emptyList()
++    }
++
++    private suspend fun fetch(address: String): List<String>? = coroutineScope {
++        val connection = AppProxy.open(URL(address)) as? HttpURLConnection ?: return@coroutineScope null
++        //reading blocks the thread: cancelling the caller closes the connection, and the read fails
++        val closer = launch(Dispatchers.Default) {
++            try {
++                awaitCancellation()
++            } finally {
++                connection.disconnect()
++            }
++        }
++        try {
++            withContext(Dispatchers.IO) { read(connection) }
++        } finally {
++            closer.cancel()
++        }
++    }
++
++    private fun read(connection: HttpURLConnection): List<String>? {
++        return try {
++            connection.connectTimeout = CONNECT_TIMEOUT_MS
++            connection.readTimeout = READ_TIMEOUT_MS
++            connection.instanceFollowRedirects = true
++            connection.setRequestProperty("User-Agent", USER_AGENT)
++            connection.setRequestProperty("Accept", "application/json, text/javascript, */*")
++            if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
++            val charset = charsetOf(connection.contentType)
++            val out = ByteArrayOutputStream()
++            connection.inputStream.use { input ->
++                val buffer = ByteArray(4096)
++                while (out.size() < MAX_RESPONSE_BYTES) {
++                    val n = input.read(buffer)
++                    if (n < 0) break
++                    out.write(buffer, 0, n)
++                }
++            }
++            parse(String(out.toByteArray(), charset))
++        } catch (e: IOException) {
++            null
++        } finally {
++            connection.disconnect()
++        }
++    }
++
++    private fun charsetOf(contentType: String?): Charset {
++        val name = contentType?.substringAfter("charset=", "")?.substringBefore(';')?.trim()?.trim('"')
++        return try {
++            if (name.isNullOrEmpty()) Charsets.UTF_8 else Charset.forName(name)
++        } catch (e: Exception) {
++            Charsets.UTF_8
++        }
++    }
++
++    /**
++     * Pages of the [bookmarks] and the [history] (latest first) that have every word of the [query] in the title or
++     * the address: up to two bookmarks (those whose title starts with the query first), then the history, [limit] in
++     * all, each page once. Without a query: the latest pages, one per site.
++     */
++    fun local(query: String, history: List<HistoryItem>, bookmarks: List<FavoriteItem>, limit: Int): List<Suggestion> {
++        val words = query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
++        val result = ArrayList<Suggestion>()
++        val seenPages = HashSet<String>()
++        val seenSites = HashSet<String>()
++
++        fun add(kind: Suggestion.Kind, title: String?, url: String?): Boolean {
++            if (url.isNullOrBlank() || isInternal(url)) return false
++            if (!seenPages.add(pageKey(url))) return false
++            if (words.isEmpty() && !seenSites.add(siteOf(url))) return false
++            result += Suggestion(kind, title?.takeIf { it.isNotBlank() } ?: url, url)
++            return true
++        }
++
++        fun matches(title: String?, url: String?): Boolean = words.all {
++            title?.contains(it, ignoreCase = true) == true || url?.contains(it, ignoreCase = true) == true
++        }
++
++        if (words.isNotEmpty()) {
++            val found = bookmarks.filter { it.url != null && matches(it.title, it.url) }
++                .sortedBy { if (it.title?.startsWith(query.trim(), ignoreCase = true) == true) 0 else 1 }
++            var added = 0
++            for (b in found) {
++                if (added >= MAX_BOOKMARKS || result.size >= limit) break
++                if (add(Suggestion.Kind.BOOKMARK, b.title, b.url)) added++
++            }
++        }
++        for (h in history) {
++            if (result.size >= limit) break
++            if (words.isEmpty() || matches(h.title, h.url)) add(Suggestion.Kind.HISTORY, h.title, h.url)
++        }
++        return result
++    }
++
++    private const val MAX_BOOKMARKS = 2
++
++    private fun isInternal(url: String) = url == Config.HOME_URL_ALIAS || url.startsWith(Config.HOME_PAGE_URL) ||
++            url.startsWith("about:") || url.startsWith("file:") || url.startsWith("data:")
++
++    /** The address without the scheme, "www.", the fragment and the closing slash, lower case */
++    fun pageKey(url: String): String = url.lowercase(Locale.ROOT).substringBefore('#')
++        .removePrefix("https://").removePrefix("http://").removePrefix("www.").trimEnd('/')
++
++    /** "example.com" of "https://www.example.com/a" */
++    fun siteOf(url: String): String = pageKey(url).substringBefore('/').substringBefore('?')
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt
+new file mode 100644
+index 0000000..4254903
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt
+@@ -0,0 +1,61 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.content.Context
++import android.content.res.ColorStateList
++import android.graphics.drawable.GradientDrawable
++import android.graphics.drawable.StateListDrawable
++import android.widget.ImageView
++
++/**
++ * The look of the new panels of the TV UI: dark "glass" that is only a translucent fill (no blur and no
++ * shadow: the GPU of a TV box redraws a blurred layer on every frame), rounded corners of 12 to 16 dp and capsules.
++ * Same in the light and the dark theme: the page behind is dimmed, so light text always reads.
++ */
++object UxGlass {
++    const val SCRIM = 0x52000000
++    const val PANEL = 0xEB10151C.toInt()
++    const val PANEL_STROKE = 0x33FFFFFF
++    /** The field and the capsules at rest */
++    const val CAPSULE = 0x1FFFFFFF
++    const val CAPSULE_FIELD = 0x40000000
++    const val CAPSULE_STROKE = 0x24FFFFFF
++    const val FOCUSED = 0xFF2F6FE0.toInt()
++    const val FOCUSED_STROKE = 0xFFA5D0FF.toInt()
++    const val TEXT = 0xFFF5F7FA.toInt()
++    const val TEXT_FAINT = 0x99FFFFFF.toInt()
++    const val TEXT_HINT = 0x80FFFFFF.toInt()
++
++    const val PANEL_RADIUS_DP = 16f
++
++    fun dp(context: Context, value: Float): Int = (value * context.resources.displayMetrics.density + 0.5f).toInt()
++
++    fun rounded(fill: Int, radius: Float, stroke: Int = 0, strokeWidth: Int = 0): GradientDrawable = GradientDrawable().apply {
++        shape = GradientDrawable.RECTANGLE
++        cornerRadius = radius
++        setColor(fill)
++        if (strokeWidth > 0) setStroke(strokeWidth, stroke)
++    }
++
++    /** The glass panel */
++    fun panel(context: Context): GradientDrawable =
++        rounded(PANEL, dp(context, PANEL_RADIUS_DP).toFloat(), PANEL_STROKE, dp(context, 1f))
++
++    /** A capsule (a line of a list): at rest, and focused with the light ring of the bar buttons */
++    fun capsule(context: Context, height: Int): StateListDrawable {
++        val radius = height / 2f
++        val ring = dp(context, 1.5f)
++        val states = StateListDrawable()
++        states.addState(intArrayOf(android.R.attr.state_focused), rounded(FOCUSED, radius, FOCUSED_STROKE, ring))
++        states.addState(intArrayOf(android.R.attr.state_pressed), rounded(FOCUSED, radius, FOCUSED_STROKE, ring))
++        states.addState(intArrayOf(), rounded(CAPSULE, radius, CAPSULE_STROKE, dp(context, 1f)))
++        return states
++    }
++
++    /** An icon of the app (white paths) in the colour of the glass text */
++    fun icon(context: Context, resId: Int, sizeDp: Float, color: Int = TEXT): ImageView = ImageView(context).apply {
++        setImageResource(resId)
++        imageTintList = ColorStateList.valueOf(color)
++        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
++        layoutParams = android.widget.LinearLayout.LayoutParams(dp(context, sizeDp), dp(context, sizeDp))
++    }
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
+new file mode 100644
+index 0000000..5505827
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
+@@ -0,0 +1,272 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.os.Handler
++import android.os.Looper
++import android.os.SystemClock
++import android.view.KeyEvent
++import android.view.ViewGroup
++import android.widget.RelativeLayout
++import androidx.appcompat.app.AppCompatActivity
++import androidx.core.view.isVisible
++import androidx.lifecycle.lifecycleScope
++import com.phlox.tvwebbrowser.AppContext
++import com.phlox.tvwebbrowser.Config
++import com.phlox.tvwebbrowser.TVBro
++import com.phlox.tvwebbrowser.activity.main.BrowserShell
++import com.phlox.tvwebbrowser.webengine.PageVideo
++import com.phlox.tvwebbrowser.webengine.virtualCursor
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.launch
++
++/**
++ * The additions of the TV shell that keep to their own files: the address bar over the page
++ * ([QuickBarView]: Menu, Up at the top of the page, the search box of the home page, a hotkey) and the glass
++ * button that offers a found video ([PageVideoChipView]). [com.phlox.tvwebbrowser.activity.main.TvShell] only
++ * creates it, passes the keys, the scroll position, the found videos and the "page is covered" state to it.
++ */
++class UxShell(
++    private val activity: AppCompatActivity,
++    private val host: BrowserShell.Host,
++    private val root: RelativeLayout,
++    private val callbacks: Callbacks,
++) {
++    interface Callbacks {
++        /** The bar, a panel, a menu, a screen, the player or a fullscreen view covers the page */
++        fun isPageCovered(): Boolean
++        /** Plays the video in the built-in player from its start */
++        fun playVideo(video: PageVideo)
++        /** Opens the bar with the list of the videos of the page */
++        fun showVideoList()
++        /** The address bar closed: the focus goes back to the bar of the shell if it is open, else to the page */
++        fun restoreFocus()
++        /** The text of the address bar was sent (searched or opened): the bar of the shell, if open, goes away */
++        fun onAddressSent()
++    }
++
++    private val handler = Handler(Looper.getMainLooper())
++
++    private val quickBar = QuickBarView(activity, object : QuickBarView.Host {
++        override val scope: CoroutineScope get() = activity.lifecycleScope
++        override fun submit(text: String) {
++            host.search(text)
++            callbacks.onAddressSent()
++        }
++        override fun open(url: String) {
++            host.navigate(url)
++            callbacks.onAddressSent()
++        }
++        override fun onClosed() {
++            callbacks.restoreFocus()
++            maybeShowChip()
++        }
++        override val searchEngineName: String get() = AppContext.provideConfig().guessSearchEngineName()
++        override val incognito: Boolean get() = AppContext.provideConfig().incognitoMode
++    })
++
++    private val chip = PageVideoChipView(activity)
++
++    /** Back closes the address bar */
++    val backCallback get() = quickBar.backCallback
++
++    private var pageScrollY = 0
++    private var covered = false
++    private var pageKey: String? = null
++    private var videos: List<PageVideo> = emptyList()
++    private var videosFoundAt = 0L
++    /** The pages the chip was shown for: once for each */
++    private val chipPages = HashSet<String>()
++    private var chipShown = false
++    /** The OK key went down while the chip showed: its key up belongs to the chip too */
++    private var chipOkDown = false
++    private val hideChipRunnable = Runnable { hideChip(fade = true) }
++
++    /**
++     * Something of this shell covers the page, so the hint of the shell about a playing video waits: the address
++     * bar, the chip, and the pages the chip was shown for (one offer of the player per page is enough)
++     */
++    val coversPage: Boolean get() = quickBar.isVisible || chipShown || (pageKey != null && pageKey in chipPages)
++
++    fun attach() {
++        root.addView(quickBar, RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
++        root.addView(chip, RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UxGlass.dp(activity, 48f)).apply {
++            addRule(RelativeLayout.ALIGN_PARENT_TOP)
++            addRule(RelativeLayout.ALIGN_PARENT_END)
++            topMargin = UxGlass.dp(activity, 14f)
++            marginEnd = UxGlass.dp(activity, 16f)
++        })
++        UxHooks.isPageAtTop = { pageScrollY <= 0 }
++        UxHooks.onUpAtTop = { openQuickBar() }
++        UxHooks.openQuickBar = { openQuickBar() }
++        UxHooks.scrollPage = { down -> scrollPage(down) }
++        UxHooks.onScrollKey = { watchScroll() }
++        //the tiles of the home page, once, only if the user has not changed them
++        activity.lifecycleScope.launch {
++            val changed = try {
++                HomeTilesSeed.run(TVBro.container.data.favorites, AppContext.provideConfig().prefs)
++            } catch (e: Exception) {
++                false
++            }
++            if (changed) host.controller.homePageLinks.load()
++        }
++    }
++
++    fun detach() {
++        UxHooks.isPageAtTop = null
++        UxHooks.onUpAtTop = null
++        UxHooks.openQuickBar = null
++        UxHooks.scrollPage = null
++        UxHooks.onScrollKey = null
++        handler.removeCallbacksAndMessages(null)
++        quickBar.close(restoreFocus = false)
++    }
++
++    /** The activity stops: the bar goes with the keyboard, the page keeps the focus it had */
++    fun onStop() = quickBar.close(restoreFocus = false)
++
++    /**
++     * Opens the address bar over the page; false if something covers the page. The bar of the shell asks with
++     * [force]: it is open under the new bar, and the address of the page is in the field, selected.
++     */
++    fun openQuickBar(force: Boolean = false): Boolean {
++        if (quickBar.isVisible || (!force && callbacks.isPageCovered())) return false
++        hideChip(fade = false)
++        //the cursor would float over the dimmed page
++        cursorDelegate?.hideCursor()
++        val address = host.controller.currentTabState.value.url
++        quickBar.open(prefill = if (force && address != Config.HOME_PAGE_URL) address else "")
++        return true
++    }
++
++    /** The page of the current tab scrolled to [scrollY] pixels */
++    fun onPageScrolled(scrollY: Int) {
++        pageScrollY = scrollY
++    }
++
++    private val cursorDelegate get() = host.controller.currentTab.value?.webEngine?.virtualCursor?.getCursorDrawerDelegate()
++
++    /** The hotkeys of page up and down; nothing happens while something covers the page */
++    private fun scrollPage(down: Boolean) {
++        if (callbacks.isPageCovered() || quickBar.isVisible) return
++        cursorDelegate?.scrollPage(if (down) 1 else -1)
++    }
++
++    //Up and Down scroll the page while the cursor is hidden. A page that does not move (the home page, the end
++    //of a page) would look as if the keys were dead, so the cursor appears and the keys move it as they always did.
++    private var scrollKeyY = 0
++    private val showCursorRunnable = Runnable {
++        if (pageScrollY == scrollKeyY) cursorDelegate?.animateAppearing()
++    }
++
++    private fun watchScroll() {
++        scrollKeyY = pageScrollY
++        handler.removeCallbacks(showCursorRunnable)
++        handler.postDelayed(showCursorRunnable, SCROLL_CHECK_MS)
++    }
++
++    /** Another tab is shown: its page keeps the scroll it had */
++    fun onTabChanged() {
++        pageScrollY = host.controller.currentTab.value?.webEngine?.getView()?.scrollY ?: 0
++    }
++
++    /** The page of the tab: the tab and its address without the fragment; null: none */
++    fun setPage(key: String?) {
++        if (pageKey == key) return
++        pageKey = key
++        hideChip(fade = false)
++    }
++
++    /** The shell covers the page or no longer does (the bar, a panel, the player, fullscreen) */
++    fun setCovered(covered: Boolean) {
++        if (this.covered == covered) return
++        this.covered = covered
++        if (covered) hideChip(fade = false) else maybeShowChip()
++    }
++
++    /** The videos of the shown page other apps can play, as the Videos button of the bar counts them */
++    fun onPageVideos(videos: List<PageVideo>) {
++        this.videos = videos
++        if (videos.isEmpty()) {
++            hideChip(fade = false)
++            return
++        }
++        videosFoundAt = SystemClock.elapsedRealtime()
++        if (chipShown) chip.setVideos(videos.size) else maybeShowChip()
++    }
++
++    /** A key event before the page gets it; @return true if taken */
++    fun dispatchKeyEvent(event: KeyEvent): Boolean {
++        if ((chipShown || chipOkDown) && onChipKey(event)) return true
++        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
++            //the key belongs to the bar while it shows (it closes it) and to the page when nothing is free to open
++            if (quickBar.isVisible) {
++                if (event.action == KeyEvent.ACTION_UP) quickBar.close()
++                return true
++            }
++            if (!callbacks.isPageCovered()) {
++                if (event.action == KeyEvent.ACTION_UP) openQuickBar()
++                return true
++            }
++        }
++        return false
++    }
++
++    private fun onChipKey(event: KeyEvent): Boolean {
++        when (event.keyCode) {
++            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BUTTON_A -> {
++                if (event.action == KeyEvent.ACTION_DOWN) {
++                    if (chipShown) {
++                        chipOkDown = true
++                        return true
++                    }
++                    return chipOkDown
++                }
++                if (event.action == KeyEvent.ACTION_UP && chipOkDown) {
++                    chipOkDown = false
++                    if (chipShown) activateChip()
++                    return true
++                }
++            }
++            //the user moves on in the page: the offer goes, the key is the page's
++            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
++            KeyEvent.KEYCODE_DPAD_UP_LEFT, KeyEvent.KEYCODE_DPAD_UP_RIGHT, KeyEvent.KEYCODE_DPAD_DOWN_LEFT,
++            KeyEvent.KEYCODE_DPAD_DOWN_RIGHT -> if (event.action == KeyEvent.ACTION_DOWN) hideChip(fade = true)
++        }
++        return false
++    }
++
++    private fun activateChip() {
++        val videos = videos
++        hideChip(fade = false)
++        when {
++            videos.size == 1 -> callbacks.playVideo(videos[0])
++            videos.size > 1 -> callbacks.showVideoList()
++        }
++    }
++
++    private fun maybeShowChip() {
++        val key = pageKey ?: return
++        if (chipShown || covered || quickBar.isVisible || videos.isEmpty() || key in chipPages) return
++        if (!AppContext.provideConfig().pageVideoHint) return
++        //a video found while something covered the page is no news when the page is free again
++        if (SystemClock.elapsedRealtime() - videosFoundAt > FRESH_MS) return
++        chipPages += key
++        chipShown = true
++        chip.setVideos(videos.size)
++        chip.appear()
++        handler.postDelayed(hideChipRunnable, SHOWN_MS)
++    }
++
++    private fun hideChip(fade: Boolean) {
++        handler.removeCallbacks(hideChipRunnable)
++        if (!chipShown) return
++        chipShown = false
++        chip.disappear(fade)
++    }
++
++    companion object {
++        private const val SHOWN_MS = 8000L
++        private const val FRESH_MS = 15000L
++        /** A tap scrolls for 320 ms: if the page has not moved by then, it will not */
++        private const val SCROLL_CHECK_MS = 500L
++    }
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/AndroidJSInterface.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/AndroidJSInterface.kt
+index 7a1db35..94538d2 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/AndroidJSInterface.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/AndroidJSInterface.kt
+@@ -5,6 +5,7 @@ import com.phlox.tvwebbrowser.AppContext
+ import com.phlox.tvwebbrowser.Config
+ import com.phlox.tvwebbrowser.TVBro
+ import com.phlox.tvwebbrowser.utils.DownloadUtils
++import com.phlox.tvwebbrowser.ux.UxHooks
+ import com.phlox.tvwebbrowser.webengine.DownloadRequest
+ import org.json.JSONArray
+ 
+@@ -28,6 +29,14 @@ class AndroidJSInterface(private val webEngine: WebViewWebEngine) {
+         callback.getActivity().runOnUiThread { callback.initiateVoiceSearch() }
+     }
+ 
++    /** The search box of the home page asks for the address bar over the page (the keyboard and suggestions are the app's) */
++    @JavascriptInterface
++    fun openSearch() {
++        if (!isHomePage()) return
++        val callback = webEngine.callback ?: return
++        callback.getActivity().runOnUiThread { UxHooks.openQuickBar?.invoke() }
++    }
++
+     @JavascriptInterface
+     fun setSearchEngine(engine: String, customSearchEngineURL: String) {
+         if (!isHomePage()) return
+diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
+index 3d184a1..719411c 100644
+--- a/app/src/main/res/layout/activity_main.xml
++++ b/app/src/main/res/layout/activity_main.xml
+@@ -33,6 +33,7 @@
+         android:id="@+id/rlActionBar"
+         android:background="?attr/tbColorDsBgChrome"
+         android:elevation="5dp"
++        android:outlineProvider="none"
+         android:clipChildren="false"
+         android:clipToPadding="false">
+ 
+diff --git a/app/src/main/res/menu/menu_link.xml b/app/src/main/res/menu/menu_link.xml
+index bbae838..87e9959 100644
+--- a/app/src/main/res/menu/menu_link.xml
++++ b/app/src/main/res/menu/menu_link.xml
+@@ -1,6 +1,9 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <menu xmlns:app="http://schemas.android.com/apk/res-auto"
+     xmlns:android="http://schemas.android.com/apk/res/android">
++    <item
++        android:id="@+id/miOpenAddress"
++        android:title="@string/ux_menu_address" />
+     <item
+         android:id="@+id/miRefreshPage"
+         android:title="@string/refresh_page" />
+diff --git a/app/src/main/res/values-night/colors.xml b/app/src/main/res/values-night/colors.xml
+index 07ff7ad..405986b 100644
+--- a/app/src/main/res/values-night/colors.xml
++++ b/app/src/main/res/values-night/colors.xml
+@@ -27,22 +27,23 @@
+     <color name="badge">#2D2D2D</color>
+     <color name="badge_stroke">#4E4E4E</color>
+ 
+-    <!-- Design system tokens, dark theme (the ones that differ) -->
++    <!-- Design system tokens, dark theme (the ones that differ). Surfaces, lines and controls are translucent: dark glass without blur -->
+     <color name="ds_bg_page">#343A3C</color>
+-    <color name="ds_bg_chrome">#272727</color>
+-    <color name="ds_surface">#1B1B1B</color>
+-    <color name="ds_surface_focused">#343A3C</color>
+-    <color name="ds_tab">#272727</color>
+-    <color name="ds_menu">#2F2F2F</color>
+-    <color name="ds_control">#323940</color>
+-    <color name="ds_control_focused">#003E4F</color>
+-    <color name="ds_control_selected">#5A5A5A</color>
+-    <color name="ds_line">#4E4E4E</color>
+-    <color name="ds_line_strong">#5A5A5A</color>
+-    <color name="ds_divider">#343A3C</color>
++    <color name="ds_bg_chrome">#E6121820</color>
++    <color name="ds_surface">#F20D1217</color>
++    <color name="ds_surface_focused">#F2222C38</color>
++    <color name="ds_tab">#26FFFFFF</color>
++    <color name="ds_menu">#F0151B23</color>
++    <color name="ds_control">#26FFFFFF</color>
++    <color name="ds_control_focused">#4D5FACFF</color>
++    <color name="ds_control_selected">#7A5FACFF</color>
++    <color name="ds_line">#38FFFFFF</color>
++    <color name="ds_line_strong">#47FFFFFF</color>
++    <color name="ds_divider">#24FFFFFF</color>
+     <color name="ds_ink">#F8F9FA</color>
+     <color name="ds_ink_faint">#BBBBBB</color>
+     <color name="ds_icon">#FDFDFD</color>
+     <color name="ds_on_badge">#1B1B1B</color>
++    <color name="ds_toast">#EB1F2630</color>
+     <color name="ds_danger">#FF8A80</color>
+ </resources>
+diff --git a/app/src/main/res/values-ru/ux_strings.xml b/app/src/main/res/values-ru/ux_strings.xml
+new file mode 100644
+index 0000000..4c55213
+--- /dev/null
++++ b/app/src/main/res/values-ru/ux_strings.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Remote-control additions of the TV UI: the address bar over the page, page scrolling, the offer of the player -->
++<resources>
++    <string name="ux_quick_hint">Вниз: подсказки   OK: открыть   Назад: закрыть</string>
++    <string name="ux_quick_field_hint">Поиск или адрес</string>
++    <string name="ux_search_for">Искать: %1$s</string>
++    <string name="ux_open_address">Открыть: %1$s</string>
++    <string name="ux_menu_address">Адрес и поиск</string>
++
++    <string name="ux_chip_open_player">Открыть в плеере на весь экран</string>
++    <string name="ux_chip_choose_video">Найдено видео: %1$d</string>
++    <string name="ux_key_ok">OK</string>
++
++    <string name="ux_shortcut_open_address">Адресная строка и поиск</string>
++    <string name="ux_shortcut_scroll_up">Страница вверх</string>
++    <string name="ux_shortcut_scroll_down">Страница вниз</string>
++
++    <string name="ux_setting_tap_scroll">Стрелки листают страницу</string>
++    <string name="ux_setting_tap_scroll_summary">Короткое нажатие вверх или вниз листает страницу на 40% экрана, вверх на самом верху открывает адресную строку. Удержание листает дальше, пока курсор скрыт, и двигает курсор, пока он на экране</string>
++    <string name="ux_setting_suggestions">Подсказки при вводе</string>
++    <string name="ux_setting_suggestions_summary">Слова из адресной строки уходят в поисковик, чтобы получить подсказки. В режиме инкогнито не отправляются никогда</string>
++</resources>
+diff --git a/app/src/main/res/values/dimens.xml b/app/src/main/res/values/dimens.xml
+index 8c34d33..e9d0818 100644
+--- a/app/src/main/res/values/dimens.xml
++++ b/app/src/main/res/values/dimens.xml
+@@ -41,36 +41,36 @@
+     <dimen name="ds_space_icon_text">12dp</dimen>
+     <dimen name="ds_space_menu_inset">18dp</dimen>
+     <dimen name="ds_space_tab_inset">12dp</dimen>
+-    <dimen name="ds_size_chrome_control">49dp</dimen>
+-    <dimen name="ds_size_toolbar_segment">56dp</dimen>
+-    <dimen name="ds_size_tab_width">200dp</dimen>
+-    <dimen name="ds_size_tab_height">42dp</dimen>
+-    <dimen name="ds_size_tab_menu_width">210dp</dimen>
+-    <dimen name="ds_size_menu_row">37dp</dimen>
++    <dimen name="ds_size_chrome_control">56dp</dimen>
++    <dimen name="ds_size_toolbar_segment">62dp</dimen>
++    <dimen name="ds_size_tab_width">220dp</dimen>
++    <dimen name="ds_size_tab_height">48dp</dimen>
++    <dimen name="ds_size_tab_menu_width">240dp</dimen>
++    <dimen name="ds_size_menu_row">44dp</dimen>
+     <dimen name="ds_size_icon_toolbar">24dp</dimen>
+     <dimen name="ds_size_icon_menu">18dp</dimen>
+     <dimen name="ds_size_favicon_tab">24dp</dimen>
+     <dimen name="ds_size_badge_height">14dp</dimen>
+     <dimen name="ds_size_badge_min_width">16dp</dimen>
+-    <dimen name="ds_size_toast_height">48dp</dimen>
++    <dimen name="ds_size_toast_height">52dp</dimen>
+     <dimen name="ds_size_toast_min_width">370dp</dimen>
+-    <dimen name="ds_radius_control">6dp</dimen>
+-    <dimen name="ds_radius_lg">8dp</dimen>
++    <dimen name="ds_radius_control">12dp</dimen>
++    <dimen name="ds_radius_lg">16dp</dimen>
+     <dimen name="ds_border_hairline">1dp</dimen>
+     <dimen name="ds_border_selected">1.5dp</dimen>
+     <!-- The outline of a focused control (the focused fills of the light theme are almost invisible) -->
+     <dimen name="ds_focus_outline">1.5dp</dimen>
+-    <dimen name="ds_text_address">18sp</dimen>
+-    <dimen name="ds_text_toast">18sp</dimen>
+-    <dimen name="ds_text_menu_item">14sp</dimen>
+-    <dimen name="ds_text_tab_title">12sp</dimen>
+-    <dimen name="ds_text_badge">9sp</dimen>
++    <dimen name="ds_text_address">20sp</dimen>
++    <dimen name="ds_text_toast">20sp</dimen>
++    <dimen name="ds_text_menu_item">17sp</dimen>
++    <dimen name="ds_text_tab_title">15sp</dimen>
++    <dimen name="ds_text_badge">10sp</dimen>
+     <!-- Paddings that give icons of any intrinsic size the board size in fixed size buttons -->
+-    <dimen name="ds_toolbar_icon_padding_horizontal">16dp</dimen>
+-    <dimen name="ds_toolbar_icon_padding_vertical">12dp</dimen>
+-    <dimen name="ds_close_icon_padding">10dp</dimen>
+-    <dimen name="ds_field_icon_padding_horizontal">17dp</dimen>
+-    <dimen name="ds_field_icon_padding_vertical">13dp</dimen>
++    <dimen name="ds_toolbar_icon_padding_horizontal">18dp</dimen>
++    <dimen name="ds_toolbar_icon_padding_vertical">15dp</dimen>
++    <dimen name="ds_close_icon_padding">14dp</dimen>
++    <dimen name="ds_field_icon_padding_horizontal">19dp</dimen>
++    <dimen name="ds_field_icon_padding_vertical">16dp</dimen>
+     <dimen name="ds_field_divider_height">28dp</dimen>
+     <dimen name="ds_space_field_inset">12dp</dimen>
+     <dimen name="ds_badge_margin_top">6dp</dimen>
+@@ -154,7 +154,7 @@
+     <dimen name="ds_new_tab_button_gap">8dp</dimen>
+     <dimen name="ds_new_tab_icon_padding">10dp</dimen>
+     <dimen name="ds_site_panel_gap">7dp</dimen>
+-    <dimen name="ds_panel_row_height">54dp</dimen>
++    <dimen name="ds_panel_row_height">58dp</dimen>
+     <dimen name="ds_panel_padding_vertical">12dp</dimen>
+     <dimen name="ds_panel_icon_text">16dp</dimen>
+     <dimen name="ds_panel_title_icon_text">10dp</dimen>
+@@ -164,7 +164,7 @@
+     <dimen name="ds_size_icon_connection">13dp</dimen>
+     <dimen name="ds_panel_connection_icon_text">6dp</dimen>
+     <dimen name="ds_panel_value_max_width">140dp</dimen>
+-    <dimen name="ds_text_menu_caption">11sp</dimen>
++    <dimen name="ds_text_menu_caption">13sp</dimen>
+     <!-- the bookmarks panel of the TV bar -->
+     <dimen name="ds_bookmarks_panel_width">380dp</dimen>
+     <dimen name="ds_bookmarks_panel_margin_bottom">16dp</dimen>
+@@ -175,7 +175,7 @@
+     <dimen name="ds_bookmarks_search_margin">6dp</dimen>
+     <dimen name="ds_bookmarks_search_button_margin">2dp</dimen>
+     <dimen name="ds_bookmarks_status_padding">7dp</dimen>
+-    <dimen name="ds_bookmark_row_height">48dp</dimen>
++    <dimen name="ds_bookmark_row_height">52dp</dimen>
+     <!-- around the texts of a row whose caption takes more lines -->
+     <dimen name="ds_bookmark_row_text_padding">6dp</dimen>
+     <dimen name="ds_bookmark_icon">24dp</dimen>
+@@ -185,7 +185,7 @@
+     <!-- downloads: the panel of the TV bar, the TV screen of all downloads, the phone page -->
+     <dimen name="ds_downloads_panel_width">380dp</dimen>
+     <dimen name="ds_videos_panel_width">440dp</dimen>
+-    <dimen name="ds_download_row_height">48dp</dimen>
++    <dimen name="ds_download_row_height">52dp</dimen>
+     <dimen name="ds_download_icon">24dp</dimen>
+     <dimen name="ds_download_icon_padding">5dp</dimen>
+     <dimen name="ds_download_progress_height">4dp</dimen>
+diff --git a/app/src/main/res/values/ux_strings.xml b/app/src/main/res/values/ux_strings.xml
+new file mode 100644
+index 0000000..ff9d086
+--- /dev/null
++++ b/app/src/main/res/values/ux_strings.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Remote-control additions of the TV UI: the address bar over the page, page scrolling, the offer of the player -->
++<resources>
++    <string name="ux_quick_hint">Down: suggestions   OK: open   Back: close</string>
++    <string name="ux_quick_field_hint">Search or address</string>
++    <string name="ux_search_for">Search: %1$s</string>
++    <string name="ux_open_address">Open: %1$s</string>
++    <string name="ux_menu_address">Address and search</string>
++
++    <string name="ux_chip_open_player">Open in the player on the full screen</string>
++    <string name="ux_chip_choose_video">Videos found: %1$d</string>
++    <string name="ux_key_ok">OK</string>
++
++    <string name="ux_shortcut_open_address">Address bar and search</string>
++    <string name="ux_shortcut_scroll_up">Scroll the page up</string>
++    <string name="ux_shortcut_scroll_down">Scroll the page down</string>
++
++    <string name="ux_setting_tap_scroll">Arrows scroll the page</string>
++    <string name="ux_setting_tap_scroll_summary">A short press of Up or Down scrolls the page by 40% of the screen, Up at the top opens the address bar; holding scrolls on while the cursor is hidden and moves the cursor while it shows</string>
++    <string name="ux_setting_suggestions">Search suggestions</string>
++    <string name="ux_setting_suggestions_summary">The words typed in the address bar are sent to the search engine to get suggestions. Never sent in the incognito mode</string>
++</resources>
+diff --git a/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt b/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt
+new file mode 100644
+index 0000000..a45f1e1
+--- /dev/null
++++ b/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt
+@@ -0,0 +1,143 @@
++package com.phlox.tvwebbrowser.ux
++
++import com.phlox.tvwebbrowser.model.FavoriteItem
++import com.phlox.tvwebbrowser.model.HistoryItem
++import com.phlox.tvwebbrowser.ux.SuggestionsProvider.Source
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++
++@RunWith(RobolectricTestRunner::class)
++class SuggestionsProviderTest {
++    private fun history(title: String, url: String) = HistoryItem().apply { this.title = title; this.url = url }
++
++    private fun bookmark(title: String, url: String?) = FavoriteItem().apply { this.title = title; this.url = url }
++
++    @Test
++    fun readsTheAnswerOfGoogleYandexBingAndDuckDuckGoWithAType() {
++        val answer = """["пого",["погода","погода париж"],[],{"google:suggestsubtypes":[[512],[433]]}]"""
++        assertEquals(listOf("погода", "погода париж"), SuggestionsProvider.parse(answer))
++        assertEquals(listOf("pogo", "pogo sign in"), SuggestionsProvider.parse("""["pogo",["pogo","pogo sign in"]]"""))
++    }
++
++    @Test
++    fun readsThePhrasesOfDuckDuckGo() {
++        val answer = """[{"phrase":"pogo"},{"phrase":"pogo sign in"},{"phrase":" "},{"other":1}]"""
++        assertEquals(listOf("pogo", "pogo sign in"), SuggestionsProvider.parse(answer))
++    }
++
++    @Test
++    fun brokenAnswersGiveNothing() {
++        assertEquals(emptyList<String>(), SuggestionsProvider.parse(""))
++        assertEquals(emptyList<String>(), SuggestionsProvider.parse("<html>blocked</html>"))
++        assertEquals(emptyList<String>(), SuggestionsProvider.parse("[1,2"))
++        assertEquals(emptyList<String>(), SuggestionsProvider.parse("[]"))
++    }
++
++    @Test
++    fun repeatedQueriesCountOnce() {
++        assertEquals(listOf("a", "b"), SuggestionsProvider.parse("""["q",["a","b","a"]]"""))
++    }
++
++    @Test
++    fun addressesAndLongTextsNeverGoToTheNetwork() {
++        assertTrue(SuggestionsProvider.mayAskNetwork("погода"))
++        assertTrue(SuggestionsProvider.mayAskNetwork("how to cook"))
++        assertFalse(SuggestionsProvider.mayAskNetwork(""))
++        assertFalse(SuggestionsProvider.mayAskNetwork("   "))
++        assertFalse(SuggestionsProvider.mayAskNetwork("https://example.com/path?token=1"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("example.com/login"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("example.com"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("example.com:8080"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("me@example.com"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("x".repeat(101)))
++    }
++
++    @Test
++    fun theSourceFollowsTheSearchEngineAndFallsBackToGoogleOrDuckDuckGo() {
++        assertEquals(listOf(Source.GOOGLE, Source.DUCKDUCKGO), SuggestionsProvider.sourcesFor("google"))
++        assertEquals(listOf(Source.GOOGLE, Source.DUCKDUCKGO), SuggestionsProvider.sourcesFor("custom"))
++        assertEquals(listOf(Source.DUCKDUCKGO, Source.GOOGLE), SuggestionsProvider.sourcesFor("ddg"))
++        assertEquals(listOf(Source.YANDEX, Source.GOOGLE), SuggestionsProvider.sourcesFor("yandex"))
++        assertEquals(listOf(Source.BING, Source.GOOGLE), SuggestionsProvider.sourcesFor("bing"))
++    }
++
++    @Test
++    fun addressesOfTheSourcesCarryTheEncodedQuery() {
++        assertEquals("https://suggestqueries.google.com/complete/search?client=firefox&hl=ru&q=%D0%BF%D0%BE%D0%B3%D0%BE+%D0%B4%D0%B0",
++            Source.GOOGLE.urlFor("пого да", "ru"))
++        assertEquals("https://duckduckgo.com/ac/?q=a+b", Source.DUCKDUCKGO.urlFor("a b", "ru"))
++        assertEquals("https://suggest.yandex.ru/suggest-ff.cgi?part=x", Source.YANDEX.urlFor("x", "ru"))
++        assertEquals("https://api.bing.com/osjson.aspx?query=x", Source.BING.urlFor("x", "ru"))
++    }
++
++    @Test
++    fun addressAndWordsAreTold() {
++        assertTrue(SuggestionsProvider.looksLikeAddress("example.com"))
++        assertTrue(SuggestionsProvider.looksLikeAddress("https://example.com/a"))
++        assertFalse(SuggestionsProvider.looksLikeAddress("погода париж"))
++    }
++
++    @Test
++    fun localPagesNeedEveryWordInTheTitleOrTheAddress() {
++        val items = listOf(
++            history("Погода в Париже", "https://pogoda.example/paris"),
++            history("Новости", "https://news.example/"),
++            history("Погода в Москве", "https://pogoda.example/moscow"),
++        )
++        val found = SuggestionsProvider.local("погода пар", items, emptyList(), 5)
++        assertEquals(listOf("https://pogoda.example/paris"), found.map { it.url })
++        assertTrue(found.all { it.kind == Suggestion.Kind.HISTORY })
++    }
++
++    @Test
++    fun bookmarksComeFirstTitleStartsFirstAndAtMostTwo() {
++        val bookmarks = listOf(
++            bookmark("Мой youtube", "https://a.example/"),
++            bookmark("YouTube", "https://www.youtube.com/"),
++            bookmark("Другой youtube", "https://b.example/"),
++        )
++        val items = listOf(history("YouTube Music", "https://music.youtube.com/"))
++        val found = SuggestionsProvider.local("youtube", items, bookmarks, 5)
++        assertEquals(listOf("https://www.youtube.com/", "https://a.example/", "https://music.youtube.com/"), found.map { it.url })
++        assertEquals(listOf(Suggestion.Kind.BOOKMARK, Suggestion.Kind.BOOKMARK, Suggestion.Kind.HISTORY), found.map { it.kind })
++    }
++
++    @Test
++    fun aPageIsListedOnceWhateverTheSchemeWwwOrSlash() {
++        val items = listOf(
++            history("Example", "https://www.example.com/"),
++            history("Example again", "http://example.com"),
++        )
++        assertEquals(1, SuggestionsProvider.local("example", items, emptyList(), 5).size)
++        assertEquals(1, SuggestionsProvider.local("example", items, listOf(bookmark("Example", "https://example.com")), 5).size)
++    }
++
++    @Test
++    fun withoutAQueryTheLatestPagesOfDifferentSitesAreListedAndTheHomePageIsNot() {
++        val items = listOf(
++            history("Home", "about:home"),
++            history("A1", "https://a.example/1"),
++            history("A2", "https://a.example/2"),
++            history("B", "https://b.example/"),
++        )
++        val found = SuggestionsProvider.local("", items, emptyList(), 5)
++        assertEquals(listOf("https://a.example/1", "https://b.example/"), found.map { it.url })
++    }
++
++    @Test
++    fun theLimitHolds() {
++        val items = (1..20).map { history("Page $it", "https://site$it.example/") }
++        assertEquals(3, SuggestionsProvider.local("page", items, emptyList(), 3).size)
++        assertEquals(6, SuggestionsProvider.local("", items, emptyList(), 6).size)
++    }
++
++    @Test
++    fun theSiteOfAnAddress() {
++        assertEquals("example.com", SuggestionsProvider.siteOf("https://www.example.com/a/b?x=1"))
++        assertEquals("example.com:8080", SuggestionsProvider.siteOf("http://example.com:8080/"))
++    }
++}
+diff --git a/app/src/test/java/com/phlox/tvwebbrowser/widgets/cursor/PageScrollKeysTest.kt b/app/src/test/java/com/phlox/tvwebbrowser/widgets/cursor/PageScrollKeysTest.kt
+new file mode 100644
+index 0000000..81e0f71
+--- /dev/null
++++ b/app/src/test/java/com/phlox/tvwebbrowser/widgets/cursor/PageScrollKeysTest.kt
+@@ -0,0 +1,149 @@
++package com.phlox.tvwebbrowser.widgets.cursor
++
++import android.os.Looper
++import android.view.KeyEvent
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.Shadows.shadowOf
++import java.time.Duration
++
++/** Taps and holds of Up and Down: page flips, continuous scrolling and the hand-over to the cursor */
++@RunWith(RobolectricTestRunner::class)
++class PageScrollKeysTest {
++    private val log = ArrayList<String>()
++    private var active = true
++    private var cursorShown = false
++    private var atTop = false
++    private var shellTakesUp = true
++
++    private val keys = PageScrollKeys(object : PageScrollKeys.Host {
++        override fun isActive() = active
++        override fun isCursorShown() = cursorShown
++        override fun flip(direction: Int) { log += "flip $direction" }
++        override fun startHold(direction: Int) { log += "hold $direction" }
++        override fun stopHold() { log += "stop" }
++        override fun passToCursor(event: KeyEvent, direction: Int) { log += "cursor $direction" }
++        override fun upAtTop(): Boolean {
++            log += "top?"
++            return atTop && shellTakesUp
++        }
++    })
++
++    private fun event(action: Int, keyCode: Int, repeat: Int = 0) = KeyEvent(0L, 0L, action, keyCode, repeat)
++
++    private fun down(keyCode: Int = KeyEvent.KEYCODE_DPAD_DOWN, repeat: Int = 0) =
++        keys.onKey(event(KeyEvent.ACTION_DOWN, keyCode, repeat), if (keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
++
++    private fun up(keyCode: Int = KeyEvent.KEYCODE_DPAD_DOWN) =
++        keys.onKey(event(KeyEvent.ACTION_UP, keyCode), if (keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
++
++    private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
++
++    @Test
++    fun aTapFlipsThePage() {
++        assertTrue(down())
++        idle(PageScrollKeys.HOLD_MS - 50)
++        assertTrue(up())
++        assertEquals(listOf("flip 1"), log)
++        idle(1000)
++        assertEquals(listOf("flip 1"), log)
++    }
++
++    @Test
++    fun aTapOfUpFlipsUpWhenThePageIsNotAtItsTop() {
++        down(KeyEvent.KEYCODE_DPAD_UP)
++        up(KeyEvent.KEYCODE_DPAD_UP)
++        assertEquals(listOf("top?", "flip -1"), log)
++    }
++
++    @Test
++    fun aTapOfUpAtTheTopGoesToTheShellAndDoesNotFlip() {
++        atTop = true
++        down(KeyEvent.KEYCODE_DPAD_UP)
++        assertTrue(up(KeyEvent.KEYCODE_DPAD_UP))
++        assertEquals(listOf("top?"), log)
++    }
++
++    @Test
++    fun aTapOfUpAtTheTopFlipsIfTheShellDoesNotTakeIt() {
++        atTop = true
++        shellTakesUp = false
++        down(KeyEvent.KEYCODE_DPAD_UP)
++        up(KeyEvent.KEYCODE_DPAD_UP)
++        assertEquals(listOf("top?", "flip -1"), log)
++    }
++
++    @Test
++    fun aTapOfDownNeverAsksForTheTop() {
++        atTop = true
++        down()
++        up()
++        assertEquals(listOf("flip 1"), log)
++    }
++
++    @Test
++    fun aHoldWithTheCursorHiddenScrollsUntilTheKeyGoesUp() {
++        down()
++        idle(PageScrollKeys.HOLD_MS)
++        assertEquals(listOf("hold 1"), log)
++        //the repeats of the key are taken, so the cursor does not see them
++        assertTrue(down(repeat = 1))
++        assertTrue(down(repeat = 2))
++        assertTrue(up())
++        assertEquals(listOf("hold 1", "stop"), log)
++    }
++
++    @Test
++    fun aHoldWithTheCursorOnScreenMovesTheCursorAsBefore() {
++        cursorShown = true
++        down(KeyEvent.KEYCODE_DPAD_UP)
++        idle(PageScrollKeys.HOLD_MS)
++        assertEquals(listOf("cursor -1"), log)
++        //the cursor tracks the key: repeats and the key up are its own
++        assertFalse(down(KeyEvent.KEYCODE_DPAD_UP, repeat = 1))
++        assertFalse(up(KeyEvent.KEYCODE_DPAD_UP))
++        assertEquals(listOf("cursor -1"), log)
++    }
++
++    @Test
++    fun keysAreLeftToTheCursorWhileAClickOrGrabIsOn() {
++        active = false
++        assertFalse(down())
++        assertFalse(up())
++        assertEquals(emptyList<String>(), log)
++    }
++
++    @Test
++    fun aKeyUpWithoutItsKeyDownIsNotTaken() {
++        assertFalse(up())
++        assertEquals(emptyList<String>(), log)
++    }
++
++    @Test
++    fun theOtherKeyAfterAHoldStartsItsOwnPress() {
++        down()
++        idle(PageScrollKeys.HOLD_MS)
++        assertTrue(down(KeyEvent.KEYCODE_DPAD_UP))
++        up(KeyEvent.KEYCODE_DPAD_UP)
++        assertEquals(listOf("hold 1", "stop", "top?", "flip -1"), log)
++    }
++
++    @Test
++    fun cancelStopsAHoldAndForgetsAPendingKey() {
++        down()
++        idle(PageScrollKeys.HOLD_MS)
++        keys.cancel()
++        assertEquals(listOf("hold 1", "stop"), log)
++        assertFalse(up())
++
++        log.clear()
++        down()
++        keys.cancel()
++        idle(1000)
++        assertEquals(emptyList<String>(), log)
++    }
++}

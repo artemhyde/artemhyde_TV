@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<!-- Макет полос «Звук» и «Картинка» в HTML (27.10): размеры в dp (1 dp = 2 px, экран 960x540 dp), те же, что в MainActivity.java и Bar.java
+     обоих приложений. Это НЕ снимок с ТВ: Android рисует Inter чуть иначе, чем Edge, поэтому края текста могут отличаться на пиксель-два.
+     Нужен, чтобы увидеть пропорции до установки. Какой вариант показать, задаёт ?s=: sound-header, sound-slider, picture-header, picture-slider, picture-tab -->
+<style>
+@font-face{font-family:'Inter';font-weight:400;src:url('../../../shared/fonts/Inter_18pt-Regular.ttf')}
+@font-face{font-family:'Inter';font-weight:500;src:url('../../../shared/fonts/Inter_18pt-Medium.ttf')}
+:root{--dp:2px}
+*{box-sizing:border-box}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:'Inter',sans-serif;font-feature-settings:"tnum"}
+/* Кадр фильма: тёмная ночная сцена, яркое окно и субтитр над полосой */
+.film{position:absolute;inset:0;background:
+  radial-gradient(ellipse 22% 30% at 78% 24%,rgba(255,214,150,.55) 0%,rgba(255,190,110,.18) 45%,rgba(0,0,0,0) 100%),
+  radial-gradient(ellipse 60% 50% at 30% 30%,rgba(60,96,120,.55) 0%,rgba(0,0,0,0) 100%),
+  linear-gradient(180deg,#0b1119 0%,#0d151d 55%,#06090d 100%)}
+.film .win{position:absolute;left:76%;top:19%;width:5.5%;height:12%;background:#ffe3ac;border-radius:2px;box-shadow:0 0 60px 20px rgba(255,200,120,.35)}
+.film .hill{position:absolute;left:0;right:0;bottom:0;height:46%;background:linear-gradient(180deg,rgba(8,12,17,0) 0%,#05080b 70%)}
+.film .figure{position:absolute;left:32%;top:30%;width:9%;height:46%;background:linear-gradient(180deg,#070a0e,#030507);border-radius:46% 46% 8% 8%/22% 22% 4% 4%}
+.sub{position:absolute;left:0;right:0;top:calc(0.545*1080px);text-align:center;font-size:44px;font-weight:500;color:#fff;text-shadow:0 2px 6px #000,0 0 3px #000}
+/* Полоса */
+.panel{position:absolute;left:calc(50% - 440*var(--dp));bottom:calc(24*var(--dp));width:calc(880*var(--dp));padding:calc(12*var(--dp)) calc(20*var(--dp)) calc(10*var(--dp));
+ background:linear-gradient(180deg,rgba(58,56,68,.8),rgba(36,34,44,.8));border-radius:calc(22*var(--dp));border:2px solid rgba(255,255,255,.18);color:#fff}
+.head{display:flex;align-items:center;height:calc(30*var(--dp))}
+.cap{height:calc(30*var(--dp));padding:0 calc(12*var(--dp));display:flex;align-items:center;border-radius:999px;font-size:calc(14*var(--dp));font-weight:500;white-space:nowrap;margin-left:calc(4*var(--dp));background:rgba(255,255,255,.078);color:rgba(255,255,255,.72)}
+.cap.first{margin-left:0}
+.cap.tab{background:transparent;color:rgba(255,255,255,.6)}
+.cap.tab.sel{background:rgba(255,255,255,.15);color:rgba(255,255,255,.92)}
+.cap.mode.sel{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc)}
+.cap.foc{background:#fff;color:#16161c}
+.div{width:2px;height:calc(16*var(--dp));background:rgba(255,255,255,.16);margin:0 calc(12*var(--dp))}
+.gap{flex:1}
+.status{margin-left:calc(12*var(--dp));font-size:calc(13*var(--dp));color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.status.warn{color:#ff9b8a}
+.row{display:flex;align-items:center;height:calc(32*var(--dp));margin-top:calc(2*var(--dp));padding:0 calc(12*var(--dp));border-radius:calc(12*var(--dp))}
+.row.first{margin-top:calc(8*var(--dp))}
+.row.foc{background:rgba(255,255,255,.086)}
+.lab{font-size:calc(14*var(--dp));color:rgba(255,255,255,.72);white-space:nowrap}
+.row.foc .lab{color:rgba(255,255,255,.92)}
+.bar{flex:1;position:relative;height:100%;margin:0 calc(8*var(--dp))}
+.track{position:absolute;left:calc(11*var(--dp));right:calc(11*var(--dp));top:calc(50% - 2*var(--dp));height:calc(4*var(--dp));border-radius:calc(2*var(--dp));background:rgba(255,255,255,.18)}
+.fill{position:absolute;top:0;bottom:0;border-radius:calc(2*var(--dp));background:color-mix(in srgb,var(--acc) 60%,transparent)}
+.row.foc .fill{background:var(--acc)}
+.thumb{position:absolute;top:50%;width:calc(14*var(--dp));height:calc(14*var(--dp));margin:calc(-7*var(--dp)) 0 0 calc(-7*var(--dp));border-radius:50%;background:#fff}
+.row.foc .thumb{width:calc(18*var(--dp));height:calc(18*var(--dp));margin:calc(-9*var(--dp)) 0 0 calc(-9*var(--dp))}
+.tick{position:absolute;top:50%;width:calc(2.4*var(--dp));height:calc(2.4*var(--dp));margin:calc(-1.2*var(--dp)) 0 0 calc(-1.2*var(--dp));border-radius:50%;background:rgba(255,255,255,.35)}
+.tick.on{background:rgba(20,20,24,.4)}
+.zero{position:absolute;top:calc(50% - 8*var(--dp));width:calc(1.5*var(--dp));height:calc(4*var(--dp));margin-left:calc(-.75*var(--dp));background:rgba(255,255,255,.3);border-radius:2px}
+.val{text-align:right;font-size:calc(14*var(--dp));font-weight:500;color:rgba(255,255,255,.92);white-space:nowrap}
+.row.foc .val{color:#fff}
+.val.idle{color:rgba(255,255,255,.6)}
+</style></head><body>
+<div class="film"><div class="win"></div><div class="figure"></div><div class="hill"></div></div>
+<div class="sub">Я вернусь до рассвета.</div>
+<div id="root"></div>
+<script>
+// Что показать: приложение, где фокус (row 0 = шапка, col 0..5: вкладка «Звук», вкладка «Картинка», четыре режима), выбранный режим, значения, строка состояния
+var CFG = {
+  'sound-header':   {app:'sound',   row:0, col:4, sel:0,  v:[7,6,0,0], status:''},
+  'sound-slider':   {app:'sound',   row:2, col:2, sel:-1, v:[7,8,0,0], status:'Свой'},
+  'picture-header': {app:'picture', row:0, col:3, sel:0,  v:[18,2,1,5], status:'выбор до 07:00'},
+  'picture-slider': {app:'picture', row:3, col:2, sel:-1, v:[62,2,2,3], status:'выбор до 07:00'},
+  'picture-tab':    {app:'picture', row:0, col:0, sel:2,  v:[100,2,3,4], status:'выбор до 07:00'}
+};
+var key = new URLSearchParams(location.search).get('s') || 'sound-header';
+var c = CFG[key];
+var SOUND = {acc:'#78a9ff', tab:1, modes:['Кино','Музыка','Ночной','Чистый'], names:['Чёткость речи','Выравнивание','Глубина баса','Прозрачность'], lw:156, vw:72,
+  min:[0,0,-5,-5], max:[12,10,5,5], ticks:[0,0,0,0], show:function(i,x){return i<2?''+x:(x>0?'+'+x:x<0?'−'+(-x):'0')}};
+var PIC = {acc:'#5ed3b4', tab:1, modes:['Кино Вечер','Дневной Чёткий','Максимум HDR','Мягкий для глаз'], names:['Подсветка панели','Глубина чёрного','Контраст / Пик HDR','Тёплый оттенок'], lw:156, vw:72,
+  min:[5,0,0,-5], max:[100,2,3,5], ticks:[0,1,1,0], show:function(i,x){return i==0?''+x:i==1?['Выкл','Мягкая','Глубокая'][x]:i==2?['Выкл','Стандарт','Высокая','Максимум'][x]:(x>0?'+'+x:x<0?'−'+(-x):'0')}};
+var A = c.app=='sound' ? SOUND : PIC;
+var cur = c.app=='sound' ? 0 : 1;   // какая вкладка текущая
+var h = '<div class="panel" style="--acc:'+A.acc+'"><div class="head">';
+var names = ['Звук','Картинка'].concat(A.modes);
+for (var i=0;i<6;i++){
+  var tab = i<2, foc = c.row==0 && c.col==i;
+  var cls = 'cap ' + (tab?'tab':'mode') + (i==0||i==2?' first':'') + (tab ? (i==cur?' sel':'') : (i-2==c.sel?' sel':'')) + (foc?' foc':'');
+  if (i==2) h += '<div class="div"></div>';
+  h += '<div class="'+cls+'">'+names[i]+'</div>';
+}
+h += '<div class="gap"></div><div class="status">'+c.status+'</div></div>';
+for (var k=0;k<4;k++){
+  var foc = c.row==k+1, mn=A.min[k], mx=A.max[k], v=c.v[k];
+  var f = function(x){return (x-mn)/(mx-mn)};
+  var pos = function(x){return 'calc(11*var(--dp) + (100% - 22*var(--dp))*'+f(x)+')'};
+  var zero = mn<0 ? f(0) : 0;
+  var left = Math.min(zero,f(v)), width = Math.abs(f(v)-zero);
+  var inner = '<div class="track"></div>';
+  inner = '<div class="track"><div class="fill" style="left:'+(left*100)+'%;width:'+(width*100)+'%"></div></div>';
+  if (A.ticks[k]) for (var t=mn;t<=mx;t++) inner += '<div class="tick'+(t<=v?' on':'')+'" style="left:'+pos(t)+'"></div>';
+  else if (mn<0) inner += '<div class="zero" style="left:'+pos(0)+'"></div>';
+  inner += '<div class="thumb" style="left:'+pos(v)+'"></div>';
+  var idle = c.app=='picture' && k==2 && c.v[1]==0 && v>0;
+  h += '<div class="row'+(k==0?' first':'')+(foc?' foc':'')+'"><span class="lab" style="width:calc('+A.lw+'*var(--dp))">'+A.names[k]+'</span><div class="bar">'+inner+'</div><span class="val'+(idle?' idle':'')+'" style="width:calc('+A.vw+'*var(--dp))">'+A.show(k,v)+'</span></div>';
+}
+h += '</div>';
+document.getElementById('root').innerHTML = h;
+</script>
+</body></html>

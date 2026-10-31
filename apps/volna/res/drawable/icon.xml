@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Круглый значок: тёмный фон и волна -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="96dp" android:height="96dp">
+        <shape android:shape="oval">
+            <gradient android:angle="270" android:startColor="#FF1C1C21" android:endColor="#FF18181C" />
+        </shape>
+    </item>
+    <item android:width="56dp" android:height="56dp" android:gravity="center" android:drawable="@drawable/wave" />
+</layer-list>

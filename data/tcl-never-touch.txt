@@ -1,0 +1,30 @@
+# Список «не трогать». Эти пакеты мастер не отключает и не удаляет, что бы ни просил человек
+# и что бы ни было написано в чужих списках чистки.
+# Формат: одна строка, один пакет. Точное имя пакета целиком или начало имени со звёздочкой в конце.
+# Всё после знака решётки в строке это пояснение. Функция off из tools/tv.sh отказывается отключать подходящие пакеты.
+# Имена сверены со списком пакетов проверенного TCL 65C6K. На другой модели сверяйте с pm list packages на самом ТВ.
+# Если после чистки пропали входы или эфирное ТВ: pm enable --user 0 com.tcl.ttvs и перезагрузка.
+com.tcl.tv                              # основа ТВ TCL: входы, эфир, настройки картинки
+com.tcl.tvinput                         # службы входов HDMI и тюнера
+com.tcl.suspension                      # управление ожиданием, панель быстрых функций
+com.tcl.providers.config                # база настроек TCL
+com.tcl.initsetup                       # первичная настройка ТВ
+com.tcl.factory.view                    # сервисное меню, нужно прошивке
+com.tcl.autopair                        # сопряжение пульта и служба пульта по Bluetooth (tcl_bt_rcu_service)
+com.tcl.eva                             # служба пульта TCL
+com.tcl.inputmethod.international       # экранная клавиатура TCL
+com.tcl.globalkeyoverlay                # окно спецкнопок пульта поверх экрана (по имени; есть на проверенной модели)
+com.tcl.systemserver                    # системная служба TCL (по имени; есть на проверенной модели)
+com.tcl.android.webview                 # системный WebView TCL: на нём держатся окна приложений
+com.tcl.systemui.plugin                 # плагин системной панели TCL (по имени; есть на проверенной модели)
+com.google.android.tv.remote.service    # служба пульта Google TV (пульт и приложение на телефоне)
+com.android.location.fused              # служба местоположения: если отключить, ТВ уходит в бесконечную перезагрузку
+com.google.android.gms*                 # службы Google Play
+com.google.android.gsf                  # основа служб Google
+com.android.vending                     # Google Play Маркет
+com.google.android.katniss              # голосовой поиск
+com.google.android.youtube.tv           # YouTube для ТВ: нужен для трансляции с телефона
+com.mediatek.*                          # платформа MediaTek: видео, звук, питание
+com.android.tv.settings*                # настройки ТВ, сеть и Wi-Fi
+io.github.sds100.keymapper              # Key Mapper: кнопки пульта
+app.glasstv.*                           # приложения GlassTV

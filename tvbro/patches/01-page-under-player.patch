@@ -1,0 +1,33 @@
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+index b1e3282..2b2ca3d 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+@@ -293,15 +293,28 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+         val engine = controller.currentTab.value?.webEngine
+         engine?.mediaPlayback?.pausePlayback()
+         if (fullscreen) engine?.hideFullscreenView()
++        //WebView draws a video file of the page in an overlay SurfaceControl above the window, which stays over
++        //the player with the last frame of the page (seen on a TCL TV, WebView 155), even when the page is hidden.
++        //Only a WebView taken out of the window drops it, so the page view waits outside while the player plays
++        if (vb.flWebViewContainer.childCount > 0) {
++            pageViewUnderPlayer = vb.flWebViewContainer.getChildAt(0)
++            vb.flWebViewContainer.removeViewAt(0)
++        }
+         vb.vPlayerScreen.show(video, startPosition)
+     }
+ 
++    private var pageViewUnderPlayer: View? = null
++
+     private val playerCallback = object : PlayerScreenView.Callback {
+         override fun cookies(url: String): String? = controller.currentTab.value?.webEngine?.getCookies(url)
+ 
+         override fun openInOtherApp(video: PageVideo): Boolean = this@TvShell.openInOtherApp(video)
+ 
+         override fun onClosed() {
++            pageViewUnderPlayer?.let { page ->
++                pageViewUnderPlayer = null
++                if (page.parent == null && vb.flWebViewContainer.childCount == 0) vb.flWebViewContainer.addView(page)
++            }
+             controller.currentTab.value?.webEngine?.getView()?.requestFocus()
+         }
+     }

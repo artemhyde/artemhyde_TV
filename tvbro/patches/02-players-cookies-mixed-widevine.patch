@@ -1,0 +1,304 @@
+diff --git a/app/src/main/assets/player_diag.js b/app/src/main/assets/player_diag.js
+new file mode 100644
+index 0000000..ea9aece
+--- /dev/null
++++ b/app/src/main/assets/player_diag.js
+@@ -0,0 +1,152 @@
++// Diagnostics of players in pages (WebViewPlayerDiag.kt). WebView runs it at the start of every document of every
++// frame, also of other sites, while "Engine debugging" of the settings is on. It only watches: the lines start
++// with TVBRO-DIAG and reach logcat (tag "TV Bro WebView") through onConsoleMessage of WebViewEx.
++(function () {
++  if (window.__tvBroDiag) return;
++  window.__tvBroDiag = true;
++
++  var isTop = window === window.top;
++  var counters = {};
++
++  function safe(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
++  function short(s) { s = String(s == null ? '' : s); return s.length > 140 ? s.slice(0, 140) + '...' : s; }
++  var where = (isTop ? 'top ' : 'frame ') + safe(function () { return location.origin; }, '?');
++  function log(message) { try { console.log('TVBRO-DIAG [' + where + '] ' + message); } catch (e) {} }
++  // at most `max` lines of one kind, so a chatty page does not flood the log
++  function limited(kind, max) { counters[kind] = (counters[kind] || 0) + 1; return counters[kind] <= max; }
++  function active() { return safe(function () { return navigator.userActivation.isActive ? 'yes' : 'no'; }, '?'); }
++  function describe(el) {
++    if (!el || !el.tagName) return String(el);
++    var cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
++    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
++  }
++  function siteOf(host) { var p = String(host).split('.'); return p.length > 2 ? p.slice(-2).join('.') : String(host); }
++
++  // where this frame is: a frame of another site than the page is "third-party" for cookies
++  var topOrigin = safe(function () { var a = location.ancestorOrigins; return a && a.length ? a[a.length - 1] : ''; }, '');
++  var crossSite = !isTop && !!topOrigin &&
++      safe(function () { return siteOf(new URL(topOrigin).hostname) !== siteOf(location.hostname); }, false);
++  log('start url=' + short(location.href) + ' top=' + (isTop ? 'self' : (topOrigin || '?')) + ' crossSite=' + crossSite);
++  var policy = document.permissionsPolicy || document.featurePolicy;
++  if (policy && !isTop) {
++    log('policy autoplay=' + safe(function () { return policy.allowsFeature('autoplay'); }, '?') +
++        ' fullscreen=' + safe(function () { return policy.allowsFeature('fullscreen'); }, '?') +
++        ' encrypted-media=' + safe(function () { return policy.allowsFeature('encrypted-media'); }, '?'));
++  }
++
++  // cookies and storage of a frame of another site (the cookie is written in https frames only: Secure)
++  if (crossSite) {
++    var storage = 'ok';
++    try { localStorage.setItem('tvbro_diag', '1'); localStorage.removeItem('tvbro_diag'); } catch (e) { storage = 'BLOCKED ' + e.name; }
++    log('localStorage in this frame: ' + storage);
++    if (location.protocol === 'https:') {
++      safe(function () { document.cookie = 'tvbro_diag=1; Path=/; Max-Age=60; Secure; SameSite=None'; });
++      log('third-party cookie write: ' + (safe(function () { return document.cookie.indexOf('tvbro_diag=1') >= 0; }, false) ? 'ok' : 'BLOCKED'));
++    }
++  }
++
++  // what the engine can play (once, in the page itself)
++  if (isTop) {
++    safe(function () {
++      var v = document.createElement('video');
++      var mse = window.MediaSource && MediaSource.isTypeSupported ? MediaSource : null;
++      var t = function (type) { return mse ? (mse.isTypeSupported(type) ? 'y' : 'n') : '-'; };
++      log('caps MSE=' + (mse ? 'y' : 'n') + ' avc=' + t('video/mp4; codecs="avc1.640028"') + ' hevc=' + t('video/mp4; codecs="hvc1.1.6.L120.90"') +
++          ' vp9=' + t('video/webm; codecs="vp9"') + ' av1=' + t('video/mp4; codecs="av01.0.08M.08"') + ' aac=' + t('audio/mp4; codecs="mp4a.40.2"') +
++          ' nativeHLS="' + v.canPlayType('application/vnd.apple.mpegurl') + '" cookies=' + navigator.cookieEnabled);
++    });
++  }
++
++  // does the click (a mouse or a finger of the cursor, or a key) reach this frame, and does the frame get a user gesture
++  ['pointerdown', 'mousedown', 'touchstart', 'click', 'keydown'].forEach(function (type) {
++    window.addEventListener(type, function (e) {
++      if (!limited('input', 60)) return;
++      log(type + ' target=' + describe(e.target) + ' trusted=' + e.isTrusted + (e.pointerType ? ' pointer=' + e.pointerType : '') +
++          (type === 'keydown' ? ' key=' + e.key : '') + ' userActive=' + active());
++    }, true);
++  });
++
++  // play(): who called it, with a gesture or not, and why it fails (a player often swallows the rejection)
++  safe(function () {
++    var play = HTMLMediaElement.prototype.play;
++    HTMLMediaElement.prototype.play = function () {
++      var result = play.apply(this, arguments);
++      if (limited('play', 40)) {
++        log('play() on ' + describe(this) + ' userActive=' + active() + ' muted=' + this.muted + ' src=' + short(this.currentSrc || this.src));
++        if (result && typeof result.then === 'function') {
++          result.then(function () { log('play() resolved'); },
++                      function (e) { log('play() REJECTED ' + (e && e.name) + ': ' + short(e && e.message)); });
++        }
++      }
++      return result;
++    };
++  });
++
++  // the windows a page opens (an ad on the first click is the usual one): did the browser give a window
++  safe(function () {
++    var open = window.open;
++    window.open = function () {
++      var result = open.apply(this, arguments);
++      log('window.open(' + short(arguments[0]) + ') -> ' + (result ? 'window' : 'null') + ' userActive=' + active());
++      return result;
++    };
++  });
++
++  // the life of the media element
++  ['loadstart', 'loadedmetadata', 'canplay', 'playing', 'pause', 'waiting', 'stalled', 'error', 'encrypted', 'waitingforkey'].forEach(function (type) {
++    window.addEventListener(type, function (e) {
++      var m = e.target;
++      if (!(m instanceof HTMLMediaElement) || !limited('media-' + type, 12)) return;
++      var extra = type === 'error' && m.error ? ' code=' + m.error.code + ' ' + short(m.error.message) : '';
++      log('media ' + type + ' ' + describe(m) + ' t=' + (m.currentTime || 0).toFixed(1) + ' ready=' + m.readyState +
++          ' net=' + m.networkState + ' src=' + short(m.currentSrc) + extra);
++    }, true);
++  });
++
++  // protected video
++  safe(function () {
++    var request = Navigator.prototype.requestMediaKeySystemAccess;
++    if (!request) { log('EME: requestMediaKeySystemAccess is missing'); return; }
++    Navigator.prototype.requestMediaKeySystemAccess = function (keySystem) {
++      var result = request.apply(this, arguments);
++      result.then(function () { log('EME ' + keySystem + ' granted'); },
++                  function (e) { log('EME ' + keySystem + ' REFUSED ' + short(e && e.message)); });
++      return result;
++    };
++  });
++
++  // fullscreen asked by the player inside the frame
++  safe(function () {
++    var request = Element.prototype.requestFullscreen;
++    if (!request) return;
++    Element.prototype.requestFullscreen = function () {
++      var result = request.apply(this, arguments);
++      log('requestFullscreen on ' + describe(this) + ' userActive=' + active());
++      if (result && typeof result.then === 'function') result.then(null, function (e) { log('requestFullscreen REJECTED ' + short(e && e.message)); });
++      return result;
++    };
++  });
++  ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (type) {
++    document.addEventListener(type, function () {
++      log(type + ' element=' + describe(document.fullscreenElement || document.webkitFullscreenElement));
++    });
++  });
++  document.addEventListener('fullscreenerror', function (e) { log('fullscreenerror ' + describe(e.target)); });
++  document.addEventListener('visibilitychange', function () { log('visibility ' + document.visibilityState); });
++
++  // what breaks: scripts and files that fail to load (a blocked ad script answers 403), errors, refused promises
++  window.addEventListener('error', function (e) {
++    if (!limited('error', 40)) return;
++    var t = e.target;
++    if (t && t !== window && t.tagName) log('load error ' + t.tagName.toLowerCase() + ' ' + short(t.currentSrc || t.src || t.href));
++    else log('script error: ' + short(e.message) + ' at ' + short(e.filename) + ':' + e.lineno);
++  }, true);
++  window.addEventListener('unhandledrejection', function (e) {
++    if (!limited('rejection', 20)) return;
++    var r = e.reason;
++    log('unhandled rejection: ' + short(r && r.name ? r.name + ': ' + r.message : r));
++  });
++  document.addEventListener('securitypolicyviolation', function (e) {
++    if (limited('csp', 10)) log('CSP ' + e.violatedDirective + ' blocked ' + short(e.blockedURI));
++  });
++})();
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
+index 4583aae..47686de 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
+@@ -199,6 +199,10 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+             }
+         }
+ 
++        //players of other sites inside the page (iframes) get what Chrome gives them and an app's WebView does not
++        WebViewPlayerCompat.apply(this)
++        if (config.webEngineDebug) WebViewPlayerDiag.install(this)
++
+         setOnLongClickListener { v ->
+             //the virtual cursor reports its long presses itself
+             if (virtualCursorMode) return@setOnLongClickListener true
+@@ -260,9 +264,7 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+                     PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID == request.resources[0]) {
+                     //fast path for grant/deny RESOURCE_PROTECTED_MEDIA_ID
+                     if (MediaDrm.isCryptoSchemeSupported(WIDEVINE_UUID)) {
+-                        val widevineKeyDrm = MediaDrm(WIDEVINE_UUID)
+-                        val version = widevineKeyDrm.getPropertyString(MediaDrm.PROPERTY_VERSION)
+-                        Log.i(TAG, "DRM widevine version = " + version)
++                        logWidevineVersion()
+                         request.grant(request.resources)
+                     } else {
+                         request.deny()
+@@ -270,7 +272,11 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+                     return
+                 }
+ 
+-                val activity = callback.getActivity() ?: return
++                //a request nobody answers leaves the player waiting for it
++                val activity = callback.getActivity() ?: run {
++                    request.deny()
++                    return
++                }
+                 webPermissionsRequest = request
+                 permRequestDialog = AlertDialog.Builder(activity)
+                         .setMessage(activity.getString(R.string.web_perm_request_confirmation, TextUtils.join("\n", request.resources)))
+@@ -390,7 +396,12 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+             }
+ 
+             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+-                val webView = callback.onCreateWindow(isDialog, isUserGesture) ?: return false
++                val webView = callback.onCreateWindow(isDialog, isUserGesture)
++                if (config.webEngineDebug) {
++                    Log.i(TAG, "onCreateWindow dialog=$isDialog userGesture=$isUserGesture -> " +
++                        if (webView == null) "blocked" else "new tab")
++                }
++                if (webView == null) return false
+                 (resultMsg.obj as WebView.WebViewTransport).webView = webView
+                 resultMsg.sendToTarget()
+                 return true
+@@ -449,6 +460,9 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+                 val page = if (isMainFrame) request.url else requestPageUrl ?: currentPageUrl
+                 val ad = blocker.shouldBlock(request.url, null, request.requestHeaders["Accept"], isMainFrame, page, page)
+                 return if (ad) {
++                    if (config.webEngineDebug) {
++                        Log.i(TAG, "ad block: ${request.url} mainFrame=$isMainFrame referer=${request.requestHeaders["Referer"]} page=$page")
++                    }
+                     uiHandler.post { callback.onBlockedAd(request.url) }
+                     val response = WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
+                     response.setStatusCodeAndReasonPhrase(403, "Blocked")
+@@ -761,6 +775,21 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+         webChromeClient_.onHideCustomView()
+     }
+ 
++    /** For the log only. The instance is closed: a MediaDrm nobody closes keeps a session of the DRM service */
++    @Suppress("DEPRECATION")
++    private fun logWidevineVersion() {
++        try {
++            val drm = MediaDrm(WIDEVINE_UUID)
++            try {
++                Log.i(TAG, "DRM widevine version = " + drm.getPropertyString(MediaDrm.PROPERTY_VERSION))
++            } finally {
++                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) drm.close() else drm.release()
++            }
++        } catch (e: Exception) {
++            Log.w(TAG, "DRM widevine is supported, its version is not available", e)
++        }
++    }
++
+     fun onFilePicked(resultCode: Int, data: Intent?) {
+         //WebView needs the result even if the user cancelled, otherwise the page can not pick files again
+         pickFileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt
+new file mode 100644
+index 0000000..04643d9
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt
+@@ -0,0 +1,24 @@
++package com.phlox.tvwebbrowser.webengine.webview
++
++import android.webkit.CookieManager
++import android.webkit.WebSettings
++import android.webkit.WebView
++
++/**
++ * What players embedded in a page from another site (an iframe) get in Chrome and an app's WebView has switched
++ * off: for an app that targets Lollipop or later both defaults below are the strict ones.
++ *
++ * - Cookies of a frame from another site than the page. The player asks its own server for the stream with the
++ *   session and the tokens it keeps in them, so without them it starts nothing and often says nothing.
++ *   [CookieManager.setAcceptThirdPartyCookies] is a setting of each WebView, so every view (tabs, windows the
++ *   pages open, restored tabs) has to pass through here.
++ * - Passive mixed content (a poster or a media file over http on a page over https). Chrome upgrades it to https
++ *   or loads it; WebView with MIXED_CONTENT_NEVER_ALLOW refuses all of it. The compatibility mode is the
++ *   WebView's own way to follow the browser: the rest (scripts, frames, requests of the page) stays blocked.
++ */
++internal object WebViewPlayerCompat {
++    fun apply(webView: WebView) {
++        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
++        webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
++    }
++}
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerDiag.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerDiag.kt
+new file mode 100644
+index 0000000..cf26436
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerDiag.kt
+@@ -0,0 +1,25 @@
++package com.phlox.tvwebbrowser.webengine.webview
++
++import android.content.Context
++import android.webkit.WebView
++import androidx.webkit.WebViewCompat
++import androidx.webkit.WebViewFeature
++
++/**
++ * A script for every frame (also of other sites) that tells what a player does and what stops it: the clicks that
++ * reach the frame, `play()` and why it fails, `window.open`, errors of media and scripts, cookies and storage in a
++ * frame of another site. It only watches (it changes no behavior of the page) and writes `console.log` lines
++ * that start with `TVBRO-DIAG`, which `WebChromeClient.onConsoleMessage` of [WebViewEx] puts in logcat under the
++ * tag `TV Bro WebView`. Installed only while "Engine debugging" of the settings is on.
++ */
++internal object WebViewPlayerDiag {
++    private var script: String? = null
++
++    fun install(webView: WebView) {
++        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
++        WebViewCompat.addDocumentStartJavaScript(webView, script(webView.context), setOf("*"))
++    }
++
++    private fun script(context: Context): String = script
++        ?: context.assets.open("player_diag.js").bufferedReader().use { it.readText() }.also { script = it }
++}

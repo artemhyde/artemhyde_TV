@@ -1,0 +1,36 @@
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
+index 47686de..251fdb2 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
+@@ -458,7 +458,12 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+                 val isMainFrame = request.isForMainFrame
+                 if (isMainFrame) requestPageUrl = request.url
+                 val page = if (isMainFrame) request.url else requestPageUrl ?: currentPageUrl
+-                val ad = blocker.shouldBlock(request.url, null, request.requestHeaders["Accept"], isMainFrame, page, page)
++                //WebView does not say which frame asks. The Referer is the document that made the request: the
++                //frame of a player of another site is its own site (its files are first-party to it, as the
++                //filters expect); no Referer, or the host of the page: the page
++                val frame = documentOf(request)
++                val document = if (isMainFrame || frame == null || frame.host == page?.host) page else frame
++                val ad = blocker.shouldBlock(request.url, null, request.requestHeaders["Accept"], isMainFrame, document, page)
+                 return if (ad) {
+                     if (config.webEngineDebug) {
+                         Log.i(TAG, "ad block: ${request.url} mainFrame=$isMainFrame referer=${request.requestHeaders["Referer"]} page=$page")
+@@ -775,6 +780,17 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+         webChromeClient_.onHideCustomView()
+     }
+ 
++    /** The document a request comes from by its Referer; null if it has none, or none that is a web address */
++    private fun documentOf(request: WebResourceRequest): Uri? {
++        val referer = request.requestHeaders["Referer"] ?: return null
++        val uri = try {
++            referer.toUri()
++        } catch (e: Exception) {
++            return null
++        }
++        return uri.takeIf { (it.scheme == "http" || it.scheme == "https") && !it.host.isNullOrEmpty() }
++    }
++
+     /** For the log only. The instance is closed: a MediaDrm nobody closes keeps a session of the DRM service */
+     @Suppress("DEPRECATION")
+     private fun logWidevineVersion() {

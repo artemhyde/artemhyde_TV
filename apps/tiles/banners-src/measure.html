@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:'Inter';font-weight:600}</style></head><body><pre id="o"></pre>
+<script>
+document.fonts.load("600 60px Inter").then(function(){
+var c=document.createElement('canvas').getContext('2d');c.font="600 60px Inter";c.letterSpacing="-0.6px";
+var out=[];
+["Браузер","VK Видео","YouTube","Lampa","Файлы","Twitch","Ночной режим"].forEach(function(t){
+ var m=c.measureText(t);out.push(t+" w="+m.width.toFixed(1)+" asc="+m.actualBoundingBoxAscent.toFixed(1)+" desc="+m.actualBoundingBoxDescent.toFixed(1));});
+var m=c.measureText("Н");out.push("fontAsc="+m.fontBoundingBoxAscent.toFixed(2)+" fontDesc="+m.fontBoundingBoxDescent.toFixed(2)+" capH="+m.actualBoundingBoxAscent.toFixed(2));
+out.push("checkInter="+document.fonts.check("600 60px Inter"));
+document.getElementById('o').textContent=out.join("\n");});
+</script></body></html>

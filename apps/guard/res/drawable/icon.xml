@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок «Сторожа» для сетки приложений: мятный щит с галочкой на тёмном круге -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp" android:height="96dp"
+    android:viewportWidth="96" android:viewportHeight="96">
+    <path android:fillColor="#26262C" android:pathData="M48,4a44,44 0,1 1,0 88a44,44 0,1 1,0 -88z" />
+    <path android:fillColor="#5ED3B4"
+        android:pathData="M48,22 L68,30 L68,48 C68,61 59,70 48,75 C37,70 28,61 28,48 L28,30 Z" />
+    <path android:strokeColor="#18181C" android:strokeWidth="6" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M39,49 L46,56 L58,42" />
+</vector>

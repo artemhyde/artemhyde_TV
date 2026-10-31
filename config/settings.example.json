@@ -1,0 +1,35 @@
+{
+  "_about": "Образец настроек GlassTV. Рабочий файл config/settings.local.json создаёт мастер по вашим ответам, в git он не попадает. Допустимые значения: profile tcl-gtv или generic-gtv; theme graphite или volume (тёмный «Графит» или светлый «Объём»); rates none или nbrb; verses bible, custom или off; browser none, stock или patched; repo_url (по желанию): ссылка на ваш репозиторий для заголовка запросов приложений; remote: код кнопки в значение app:<пакет>, intent:quickpanel или none. Сборка (build/gen-config.sh) читает только profile, theme, city, rates, verses, profile1_name, profile2_name, repo_url. Остальное (tv, remote, apps, night) использует мастер при установке: night.enabled равно false выключается кнопкой на экране «Сторожа», время ночи (22:00 и 07:00) зашито в «Сторожа». Записки с телефона и беспроводную отладку настройками не включить и не выключить: мастер проверяет их по факту (CLAUDE.md, шаги 5 и 12).",
+  "profile": "",
+  "theme": "",
+  "tv": {
+    "address": "",
+    "label": ""
+  },
+  "city": {
+    "name": "",
+    "lat": 0.0,
+    "lon": 0.0
+  },
+  "rates": "none",
+  "verses": "",
+  "profile1_name": "",
+  "profile2_name": "",
+  "repo_url": "",
+  "remote": {},
+  "apps": {
+    "home": true,
+    "guard": true,
+    "nightmode": true,
+    "sound": true,
+    "picture": true,
+    "volna": false,
+    "tiles": true,
+    "clip": false,
+    "browser": "none",
+    "lampa": false
+  },
+  "night": {
+    "enabled": true
+  }
+}

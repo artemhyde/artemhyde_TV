@@ -1,0 +1,29 @@
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
+index 47686de..287566a 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewEx.kt
+@@ -200,7 +200,7 @@ open class WebViewEx(context: Context, val callback: Callback, val jsInterface:
+         }
+ 
+         //players of other sites inside the page (iframes) get what Chrome gives them and an app's WebView does not
+-        WebViewPlayerCompat.apply(this)
++        WebViewPlayerCompat.apply(this, thirdPartyCookies = !config.incognitoMode)
+         if (config.webEngineDebug) WebViewPlayerDiag.install(this)
+ 
+         setOnLongClickListener { v ->
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt
+index 04643d9..e1e6205 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/webengine/webview/WebViewPlayerCompat.kt
+@@ -17,8 +17,9 @@ import android.webkit.WebView
+  *   WebView's own way to follow the browser: the rest (scripts, frames, requests of the page) stays blocked.
+  */
+ internal object WebViewPlayerCompat {
+-    fun apply(webView: WebView) {
+-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
++    /** [thirdPartyCookies]: Chrome keeps them off in its incognito mode, so the incognito process passes false */
++    fun apply(webView: WebView, thirdPartyCookies: Boolean = true) {
++        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, thirdPartyCookies)
+         webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+     }
+ }

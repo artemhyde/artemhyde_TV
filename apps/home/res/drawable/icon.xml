@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок «Дом»: тёмный круг и домик -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="96dp" android:height="96dp">
+        <shape android:shape="oval"><solid android:color="#FF1C1C21" /></shape>
+    </item>
+    <item android:width="56dp" android:height="56dp" android:gravity="center">
+        <vector android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+            <path android:fillColor="#FFE9C27A" android:pathData="M12,3L2,11.5h3V21h5v-6h4v6h5v-9.5h3z" />
+        </vector>
+    </item>
+</layer-list>

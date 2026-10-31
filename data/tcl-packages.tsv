@@ -1,0 +1,46 @@
+# Пакеты TCL и Google TV, которые мастер может отключить на TCL (только с согласием человека; в файле пакеты проверенного TCL 65C6K).
+# Колонки через табуляцию: пакет, уровень, причина простыми словами. Строки с решёткой в начале пропускаются.
+# safe: убирается только реклама, витрина, сбор данных или то, чем почти никто не пользуется. Предлагать партиями до 10 пакетов.
+# ask: пропадёт то, чем человек может пользоваться (Netflix, Prime, службы Google, справка). Предлагать по одному и объяснить, что пропадёт.
+# home: только вместе с заменой главного экрана (шаг 9 мастера), не в обычной чистке.
+# Функция off из tools/tv.sh отключает только пакеты из этого файла и никогда пакеты из data/tcl-never-touch.txt.
+# Вне списка отключать можно только по прямому решению человека, по одному пакету (OFF_ALLOW_UNLISTED=1). Имена точные: сверяйте с pm list packages.
+# Все отключения идут через pm disable-user (не удаление) и возвращаются командой pm enable. Журнал и откат: CLAUDE.md, шаг 4.
+com.tcl.channelplus	safe	TCL Live: свои каналы TCL с рекламой
+com.tcl.tv.tclhome_passive	safe	реклама TCL на главном экране при включении
+com.tcl.waterfall.overseas	safe	лента рекомендаций TCL
+com.tcl.messagebox	safe	рекламные сообщения TCL
+com.tcl.partnercustomizer	safe	партнёрские ряды на главном экране
+com.tcl.exhibit	safe	демо-режим для витрины магазина
+com.tcl.esticker	safe	магазинные наклейки поверх экрана
+com.tcl.logkit	safe	сбор логов для TCL
+com.tcl.interactive	safe	интерактивные вставки TCL поверх эфира
+com.tcl.hotelmenu	safe	гостиничное меню
+android.autoinstalls.config.google.gtvpai	safe	автоустановка партнёрских приложений без спроса
+com.android.printspooler	safe	печать, на ТВ не нужна
+com.android.adservices.api	safe	рекламные службы Android (Privacy Sandbox)
+com.android.ondevicepersonalization.services	safe	рекламная персонализация на устройстве
+com.android.federatedcompute.services	safe	обучение рекламных моделей на устройстве
+com.google.android.syncadapters.calendar	safe	синхронизация Google Календаря, на ТВ обычно не нужна
+com.google.android.onetimeinitializer	safe	разовая первичная настройка Google
+com.tcl.usercenter	ask	аккаунт TCL: пропадёт вход в аккаунт TCL
+com.tcl.guard	ask	Safety Guard: «ускоритель», который закрывает приложения в фоне и мешает фоновым службам; пропадёт его чистка памяти
+com.tcl.repairguide	ask	справка по ремонту: пропадёт эта справка
+com.tcl.ocean.instructions	ask	электронное руководство (User Guide): пропадёт руководство на ТВ
+com.tcl.t_solo	ask	сервис T-Solo от TCL: назначение не выяснено, смотрите, что пропало
+com.tcl.miracast	ask	Miracast: трансляция с Android и Windows (с iPhone работает AirPlay): пропадёт эта трансляция
+com.tcl.ui_mediaCenter	ask	медиаплеер TCL для флешек: нужен другой плеер, иначе файлы с флешки открыть будет нечем
+com.tcl.ttvs	ask	аналитика TCL и «Сетевое обновление» TCL: обновления идут через Google. Если после этого пропали входы или эфир, включить обратно и перезагрузить ТВ
+com.google.android.partnersetup	ask	партнёрская настройка Google для TCL
+com.google.android.feedback	ask	отправка отчётов в Google
+com.android.tv.feedbackconsent	ask	экран согласия на отчёты Google
+com.google.android.play.games	ask	Play Игры: пропадут игры из Play Игр
+com.google.android.apps.tv.dreamx	ask	заставка Google (Ambient), около 175 МБ памяти фоном: нужна другая заставка («Дом» ставит свою)
+com.google.android.tts	ask	озвучка текста Google, около 66 МБ памяти фоном: пропадёт голос для озвучки на ТВ
+com.google.android.marvin.talkback	ask	TalkBack, озвучка экрана для незрячих: пропадёт эта озвучка
+com.google.android.youtube.tvmusic	ask	YouTube Music: пропадёт это приложение
+com.netflix.ninja	ask	Netflix: пропадёт приложение (вернуть: включить обратно)
+com.netflix.tokenmanager	ask	служба Netflix: нужна только Netflix
+com.amazon.amazonvideo.livingroom	ask	Prime Video, предустановлен: пропадёт приложение
+com.google.android.apps.tv.launcherx	home	главный экран Google TV с рекламой: только вместе с заменой главного экрана (шаг 9 мастера), иначе «Домой» ведёт в тёмный экран
+com.google.android.tungsten.setupwraith	home	страховка Google TV: без неё «Домой» уходит в экран восстановления; только вместе с предыдущим пакетом и сразу перед сменой главного экрана

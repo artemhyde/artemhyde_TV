@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Без значка на главном экране: его зовёт только скрипт вставить-в-тв.ps1 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.glasstv.clip"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application
+        android:label="Вставка с ПК"
+        android:allowBackup="false">
+
+        <activity
+            android:name=".Paste"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+    </application>
+</manifest>

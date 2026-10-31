@@ -1,0 +1,74 @@
+diff --git a/app/src/main/assets/pages/home/ux.js b/app/src/main/assets/pages/home/ux.js
+index f6fd0d7..6b19793 100644
+--- a/app/src/main/assets/pages/home/ux.js
++++ b/app/src/main/assets/pages/home/ux.js
+@@ -26,9 +26,14 @@
+     if (inApp && typeof window.TVBro.openSearch === "function") {
+         //no keyboard of its own: the field of the app is the field
+         input.readOnly = true;
+-        var openSearch = function () { window.TVBro.openSearch(); };
+-        input.addEventListener("click", openSearch);
+-        input.addEventListener("focus", openSearch);
++        //Only a click opens the bar. The field must not stay the focused element of the page: the bar takes the
++        //focus of the view, and when the page gets it back (the bar is closed) the browser fires "focus" at the
++        //focused element again, which would open the bar once more (Back would never close it).
++        input.addEventListener("click", function () {
++            input.blur();
++            window.TVBro.openSearch();
++        });
++        input.addEventListener("focus", function () { input.blur(); });
+     }
+ 
+     function hostOf(url) {
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt
+index 453f1d8..3d76595 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/SuggestionsProvider.kt
+@@ -62,8 +62,6 @@ object SuggestionsProvider {
+     private const val MAX_QUERY_LENGTH = 100
+     private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+ 
+-    private val DOMAIN_LIKE = Regex("^[\\w.-]+\\.[a-zA-Z]{2,}(:\\d+)?$")
+-
+     /** The sources to try, in order, for the search engine named as [Config.guessSearchEngineName] does */
+     fun sourcesFor(engineName: String): List<Source> = when (engineName) {
+         "ddg" -> listOf(Source.DUCKDUCKGO, Source.GOOGLE)
+@@ -72,12 +70,18 @@ object SuggestionsProvider {
+         else -> listOf(Source.GOOGLE, Source.DUCKDUCKGO)
+     }
+ 
+-    /** Whether the typed [query] may leave the TV: words, not an address or something long */
++    /**
++     * Whether the typed [query] may leave the TV: words, not an address or something long. One word with a dot or a
++     * colon is a host name, an IP address of the home network, host:port or login:password, not a phrase: it stays
++     * on the TV (also the names in any script: "пример.рф").
++     */
+     fun mayAskNetwork(query: String): Boolean {
+         val text = query.trim()
+         if (text.isEmpty() || text.length > MAX_QUERY_LENGTH) return false
+         if (text.contains("://") || text.contains('/') || text.contains('@')) return false
+-        return !DOMAIN_LIKE.matches(text)
++        if (text.equals("localhost", ignoreCase = true)) return false
++        if (text.none { it.isWhitespace() } && (text.contains('.') || text.contains(':'))) return false
++        return true
+     }
+ 
+     /** The text is an address to open, not words to search (as [com.phlox.tvwebbrowser.browser.UrlInputResolver] decides) */
+diff --git a/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt b/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt
+index a45f1e1..55bd147 100644
+--- a/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt
++++ b/app/src/test/java/com/phlox/tvwebbrowser/ux/SuggestionsProviderTest.kt
+@@ -54,6 +54,13 @@ class SuggestionsProviderTest {
+         assertFalse(SuggestionsProvider.mayAskNetwork("example.com:8080"))
+         assertFalse(SuggestionsProvider.mayAskNetwork("me@example.com"))
+         assertFalse(SuggestionsProvider.mayAskNetwork("x".repeat(101)))
++        //the addresses of the home network, names in any script, login:password stay on the TV too
++        assertFalse(SuggestionsProvider.mayAskNetwork("192.168.0.10"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("192.168.0.10:8080"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("localhost"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("пример.рф"))
++        assertFalse(SuggestionsProvider.mayAskNetwork("user:pass"))
++        assertTrue(SuggestionsProvider.mayAskNetwork("версия 3.14 python"))
+     }
+ 
+     @Test

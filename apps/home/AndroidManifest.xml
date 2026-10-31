@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.glasstv.home"
+    android:versionCode="2"
+    android:versionName="1.1">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Для капсулы «Продолжить» и чистого запуска плиток: когда гас экран и когда приложения были на виду.
+         Выдаётся с ПК: appops set app.glasstv.home GET_USAGE_STATS allow -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+
+    <!-- Чтобы видеть все приложения ТВ для плиток -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Таблетки быстрой полосы: без этого Android 11+ прячет чужие пакеты и запуск не находит цель -->
+        <package android:name="app.glasstv.nightmode" />
+        <package android:name="app.glasstv.sound" />
+        <package android:name="app.glasstv.picture" />
+        <package android:name="app.glasstv.volna" />
+        <package android:name="com.android.tv.settings" />
+    </queries>
+
+    <application
+        android:label="Дом"
+        android:icon="@drawable/icon"
+        android:allowBackup="false"
+        android:theme="@style/Home">
+
+        <!-- Главный экран: роль «Домой» -->
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:clearTaskOnLaunch="true"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Быстрая полоса таблеток поверх любого приложения: её открывает «шестерёнка» через Key Mapper
+             (am start -n app.glasstv.home/.PillsActivity). Своя задача: «Дом» не выезжает вперёд и не пересоздаётся -->
+        <activity
+            android:name=".PillsActivity"
+            android:theme="@style/Pills"
+            android:exported="true"
+            android:taskAffinity="app.glasstv.home.pills"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:stateNotNeeded="true"
+            android:screenOrientation="landscape" />
+
+        <!-- Вход для Key Mapper: его «Send intent» на ТВ не открывается (27.10), а «Launch app» работает. Невидимый
+             экран сразу передаёт явный запуск полосе и закрывается: повторная шестерёнка так же придёт ей в onNewIntent
+             и закроет её. Своя задача, чтобы не поднимать «Дом». В «Всех приложениях» «Дома» пакет скрыт -->
+        <activity
+            android:name=".PillsLaunch"
+            android:label="Быстрая полоса"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="true"
+            android:taskAffinity="app.glasstv.home.pills.launch"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <!-- Key Mapper в «Launch app» показывает только приложения с обычным входом -->
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- «Волна» сообщает, что играет -->
+        <receiver android:name=".Now" android:exported="true" />
+
+        <!-- Что смотрели: слушает медиасессии SmartTube, Just Player и VK Видео и помнит, где остановились. Уведомления ей
+             не нужны, доступ к уведомлениям нужен только затем, чтобы система показывала чужие медиасессии.
+             Включается один раз с ПК: cmd notification allow_listener app.glasstv.home/app.glasstv.home.Watch -->
+        <service
+            android:name=".Watch"
+            android:exported="true"
+            android:label="Дом: что смотрели"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Заставка «Дом»: фото, часы, погода, курсы, стих -->
+        <service
+            android:name=".Dream"
+            android:exported="true"
+            android:label="Дом: фото, погода и стих"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

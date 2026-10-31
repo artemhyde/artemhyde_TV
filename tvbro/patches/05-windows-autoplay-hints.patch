@@ -1,0 +1,113 @@
+diff --git a/app/common/src/main/java/com/phlox/tvwebbrowser/Config.kt b/app/common/src/main/java/com/phlox/tvwebbrowser/Config.kt
+index 2c7894a..4c3d72e 100644
+--- a/app/common/src/main/java/com/phlox/tvwebbrowser/Config.kt
++++ b/app/common/src/main/java/com/phlox/tvwebbrowser/Config.kt	
+@@ -223,7 +223,7 @@ class Config(val prefs: SharedPreferences, private val credentialsPrefs: SharedP
+     var searchEngineURL = ObservableStringPreference(SearchEnginesURLs[0], SEARCH_ENGINE_URL_PREF_KEY)
+ 
+     var allowAutoplayMedia: Boolean
+-        get() = prefs.getBoolean(ALLOW_AUTOPLAY_MEDIA, false)
++        get() = prefs.getBoolean(ALLOW_AUTOPLAY_MEDIA, true)   // на ТВ плеер должен стартовать с OK курсора: WebView не всегда считает его жестом
+         set(value) {
+             prefs.edit().putBoolean(ALLOW_AUTOPLAY_MEDIA, value).apply()
+         }
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserController.kt b/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserController.kt
+index 5548a05..ec02186 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserController.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserController.kt	
+@@ -336,16 +336,18 @@ class BrowserController : ActiveModel() {
+ 
+     /**
+      * Opens an empty tab right after the current one for a window the page has opened.
++     * [background]: the tab stays behind the current one. On a TV a click on a video player often opens an ad
++     * window first: switching to it hid the page and paused the player, as if the click did nothing
+      * @return the engine view of the new tab
+      */
+-    fun openWindowTab(): View? {
++    fun openWindowTab(background: Boolean = false): View? {
+         val host = viewHost ?: return null
+         val tab = BrowserTab(incognito = config.incognitoMode)
+         val webView = host.createTabView(tab) ?: return null
+         val currentTab = currentTab.value ?: return null
+         val index = tabsStates.indexOf(currentTab) + 1
+         tabsStates.add(index, tab)
+-        changeTab(tab)
++        if (background) sendUiEvent(BrowserUiEvent.TabOpenedInBackground) else changeTab(tab)
+         return webView
+     }
+ 
+@@ -869,7 +871,8 @@ class BrowserController : ActiveModel() {
+                 onBlockedDialog(!dialog)
+                 return null
+             }
+-            return openWindowTab()
++            //windows of pages (not js dialogs) open behind: the page with the player stays in front
++            return openWindowTab(background = !dialog)
+         }
+ 
+         override fun closeWindow(internalRepresentation: Any) {
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserState.kt b/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserState.kt
+index 6dbb5e0..a2dbfa6 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserState.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/browser/BrowserState.kt	
+@@ -60,6 +60,8 @@ sealed interface BrowserUiEvent {
+     data class PopupBlocked(val newTab: Boolean) : BrowserUiEvent
+     /** A page opened a new tab */
+     data object TabOpenedByPage : BrowserUiEvent
++    /** A page opened a window from a click (often an ad of a video player): it went to a tab behind the current one */
++    data object TabOpenedInBackground : BrowserUiEvent
+     /** A page closed its tab */
+     data object TabClosedByPage : BrowserUiEvent
+     /** The url points to the local network and the app has no permission to access it */
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+index da2c9ff..90d0742 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt	
+@@ -981,6 +981,9 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+                 val msg = activity.getString(if (event.newTab) R.string.new_tab_blocked else R.string.popup_dialog_blocked)
+                 NotificationView.show(vb.rlRoot, R.drawable.ic_block_popups, msg)
+             }
++            BrowserUiEvent.TabOpenedInBackground -> {
++                NotificationView.show(vb.rlRoot, R.drawable.ic_block_popups, activity.getString(R.string.tab_opened_in_background))
++            }
+             BrowserUiEvent.TabOpenedByPage -> {
+                 if (vb.rlActionBar.visibility == View.VISIBLE) {
+                     hideMenuOverlay()
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 5677cac..543aa45 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml	
+@@ -350,6 +350,7 @@
+     <string name="block_popups_s">Popup blocking (%s)</string>
+     <string name="popup_dialog_blocked">Popup dialog blocked</string>
+     <string name="new_tab_blocked">New tab blocked</string>
++    <string name="tab_opened_in_background">The page opened a tab: it stays behind this one</string>
+     <array name="popup_blocking_level">
+         <item>Don\'t block</item>
+         <item>Block dialogs</item>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index ec4c388..18347d9 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml	
+@@ -85,6 +85,7 @@
+   <string name="block_popups_s">Блокировка всплывающих окон (%s)</string>
+   <string name="popup_dialog_blocked">Всплывающее диалоговое окно заблокировано</string>
+   <string name="new_tab_blocked">Новая вкладка заблокирована</string>
++  <string name="tab_opened_in_background">Сайт открыл вкладку, она осталась в фоне</string>
+   <string name="copy_to_clipboard">Скопировать в буфер обмена</string>
+   <string name="copied_to_clipboard">Скопировано в буфер обмена</string>
+   <string name="share_url">Поделиться URL</string>
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+index c7444a8..519eca6 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt	
+@@ -275,7 +275,8 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+         val queries = if (webQuery.isNotEmpty() && query.startsWith(webQuery, ignoreCase = true)) web else emptyList()
+         for (q in queries) {
+             if (items.size >= MAX_ROWS) break
+-            if (!q.startsWith(query, ignoreCase = true) || q.equals(query, ignoreCase = true)) continue
++            //Google исправляет опечатки (на клавиатуре ТВ их много): его подсказки не обязаны начинаться с набранного
++            if (q.equals(query, ignoreCase = true)) continue
+             if (items.none { it.text.equals(q, ignoreCase = true) }) items += Suggestion(Suggestion.Kind.WEB, q)
+         }
+         if (items == shown) return

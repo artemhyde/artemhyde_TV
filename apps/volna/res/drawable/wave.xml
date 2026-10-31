@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Звуковая волна: пять скруглённых полосок, мятный цвет -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#FF5ED3B4" android:pathData="M3,10.5a1,1 0 0,1 2,0v3a1,1 0 0,1 -2,0z" />
+    <path android:fillColor="#FF5ED3B4" android:pathData="M7,7a1,1 0 0,1 2,0v10a1,1 0 0,1 -2,0z" />
+    <path android:fillColor="#FF5ED3B4" android:pathData="M11,4a1,1 0 0,1 2,0v16a1,1 0 0,1 -2,0z" />
+    <path android:fillColor="#FF5ED3B4" android:pathData="M15,8a1,1 0 0,1 2,0v8a1,1 0 0,1 -2,0z" />
+    <path android:fillColor="#FF5ED3B4" android:pathData="M19,10a1,1 0 0,1 2,0v4a1,1 0 0,1 -2,0z" />
+</vector>

@@ -1,0 +1,32 @@
+package app.glasstv.volna;
+
+/**
+ * Настройки сборки «Волны»: имена двух вкусов и подпись запросов (остальные поля общие с «Домом»).
+ * Это шаблон: build/gen-config.sh подставляет ответы человека из config/settings.local.json в метки вида @ИМЯ@
+ * (имена меток совпадают с именами полей) и кладёт готовый Config.java в сборку.
+ * Расширение .in нужно, чтобы javac не принял шаблон за исходник.
+ */
+public final class Config {
+    private Config() {}
+
+    /** Какой это ТВ: tcl-gtv или generic-gtv. */
+    public static final String PROFILE = "@PROFILE@";
+    /** Тема оформления: graphite (тёмная) или volume (светлая). */
+    public static final String THEME = "@THEME@";
+    /** Название города для подписи погоды. Пусто: погода показывается без названия. */
+    public static final String CITY = "@CITY@";
+    /** Координаты города для запроса погоды. */
+    public static final double LAT = @LAT@;
+    public static final double LON = @LON@;
+    /** Есть ли город: false значит погоду не запрашивать и строку погоды не показывать. */
+    public static final boolean HAS_LOCATION = @HAS_LOCATION@;
+    /** Курсы валют: none (строки курсов нет) или nbrb (Нацбанк Беларуси). */
+    public static final String RATES = "@RATES@";
+    /** Стих на главном экране: bible (подборка из приложения), custom (свой файл, его кладёт сборка) или off (стиха нет). */
+    public static final String VERSES = "@VERSES@";
+    /** Имена двух вкусов в «Волне». */
+    public static final String PROFILE1 = "@PROFILE1@";
+    public static final String PROFILE2 = "@PROFILE2@";
+    /** Подпись приложения в запросах к Википедии и другим сервисам. */
+    public static final String USER_AGENT = "@USER_AGENT@";
+}

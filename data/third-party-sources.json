@@ -1,0 +1,106 @@
+{
+  "about": "Чужие приложения, которые мастер может скачать по просьбе человека. Мы их не копируем и не раздаём: только ссылки на страницы авторов. Перед установкой скачанный APK проверяется командой apksigner verify --print-certs, SHA-256 сертификата должен совпасть с cert_sha256. Не совпал: не ставить. Отпечатки сняты с копий, установленных на проверенном ТВ (доверие по первой установке). Что подписи новых версий совпадут с записанным отпечатком, не проверено: ставить нужно ту версию, что указана в pinned_version (если она есть), а новее только по явному решению человека. Не совпал отпечаток: не ставить, сказать человеку и остановиться по этому приложению. license_checked равно false значит, что лицензия записана по памяти и её нужно перепроверить на странице автора.",
+  "apps": [
+    {
+      "name": "Key Mapper",
+      "package": "io.github.sds100.keymapper",
+      "version_seen": "4.6.2-foss",
+      "pinned_version": "4.6.2-foss",
+      "releases": "https://github.com/keymapperorg/KeyMapper/releases/tag/v4.6.2",
+      "download": "https://github.com/keymapperorg/KeyMapper/releases/download/v4.6.2/keymapper-4.6.2-foss.apk",
+      "license": "GPL-3.0",
+      "license_checked": true,
+      "cert_sha256": "2f41a816b8d60aa1d7cd4976b4452b0335e583d4f4ab14071f303177850ce460",
+      "cert_subject": "CN=Seth Schroeder",
+      "note": "Ставить именно 4.6.2 foss: вся ручная раскладка кнопок (CLAUDE.md, шаг 10) проверена только на этой версии, у новее экраны могут быть другими. Нужна сборка foss с GitHub: версия из Google Play подписана ключом магазина, её отпечаток другой. Проект раньше жил по адресу github.com/sds100/KeyMapper, старая ссылка перенаправляет сюда. Отпечаток не совпал: не ставить, кнопки пульта остаются без назначений, остальное работает. Служба спецвозможностей и права администратора устройства: перед обновлением права снимать."
+    },
+    {
+      "name": "SmartTube",
+      "package": "org.smarttube.stable",
+      "version_seen": "32.68",
+      "releases": "https://github.com/yuliskov/SmartTube/releases",
+      "license": "MIT",
+      "license_checked": true,
+      "cert_sha256": "109735aa24fe85e2e1623ebb3b1ecc4bf4263f4c6374e4411d646bfa2eda482a",
+      "cert_subject": "CN=Yurii L",
+      "note": "YouTube без рекламы. Серая зона условий сервиса: ставить только по желанию человека, сказав об этом."
+    },
+    {
+      "name": "Lampa",
+      "package": "top.rootu.lampa",
+      "version_seen": "1.13.5",
+      "releases": "https://github.com/lampa-app/LAMPA/releases",
+      "license": "не указана на странице проекта (права на раздачу нет, только ссылка); веб-часть: GPL-2.0, github.com/yumata/lampa-source",
+      "license_checked": true,
+      "cert_sha256": "8adaaa27bf99293ec260fe372e77d142ac9166fe339f348f1148a3bf987d9872",
+      "cert_subject": "CN=top.rootu",
+      "note": "Ставится только само приложение и меняются только его собственные настройки (docs/lampa.md). Расширения человек добавляет сам."
+    },
+    {
+      "name": "Just Player",
+      "package": "com.brouken.player",
+      "version_seen": "0.218",
+      "releases": "https://github.com/moneytoo/Player/releases",
+      "license": "GPL-3.0",
+      "license_checked": false,
+      "cert_sha256": "3cb97dba57d3d0bc190bae5f1f3a841643bcd9399bc31028ce25775d93d0109d",
+      "cert_subject": "C=CZ",
+      "note": "Видеоплеер. На проверенном ТВ был поставлен из Google Play."
+    },
+    {
+      "name": "Aurora Store",
+      "package": "com.aurora.store",
+      "version_seen": "4.8.4",
+      "releases": "https://f-droid.org/packages/com.aurora.store/",
+      "license": "GPL-3.0",
+      "license_checked": false,
+      "cert_sha256": "5c83c7672b929955dc0a1db89a5e6ae4389e2eae7ec939956041694e5815f532",
+      "cert_subject": "CN=FDroid",
+      "note": "Каталог Google Play без входа в аккаунт Google. Серая зона условий сервиса: по желанию. Подпись магазина F-Droid. Самообновление внутри Aurora поверх сборки F-Droid не встанет: обновлять с компьютера."
+    },
+    {
+      "name": "Material Files",
+      "package": "me.zhanghai.android.files",
+      "version_seen": "1.7.5",
+      "releases": "https://github.com/zhanghai/MaterialFiles/releases",
+      "license": "GPL-3.0",
+      "license_checked": false,
+      "cert_sha256": "873b9b60c77cf7f3cd5fae66d0fe112c4a86973e118ee8a29c346c4c673c97f0",
+      "cert_subject": "CN=Hai Zhang",
+      "note": "Файловый менеджер."
+    },
+    {
+      "name": "Aura Music",
+      "package": "com.auramusic.app",
+      "version_seen": "3.2.0",
+      "releases": "",
+      "license": "GPL-3.0 (форк Metrolist)",
+      "license_checked": false,
+      "cert_sha256": "d16c995f0cbc51ffba28310f3b0b4b7fd23b0b9ac7e05a48c0cab2279ee45442",
+      "cert_subject": "CN=AuraMusic",
+      "note": "Нужна для «Волны»: именно она играет звук. Адреса скачивания в проекте нет, и мастер её не ставит и не ищет: «Волна» предлагается, только если Aura Music уже стоит на ТВ (pm list packages | grep auramusic). Нет её: «Волну» не ставить и сказать человеку честно, что поставить Aura Music мастер не может."
+    },
+    {
+      "name": "SmartTwitchTV",
+      "package": "com.fgl27.twitch",
+      "version_seen": "3.0.379",
+      "releases": "https://github.com/fgl27/SmartTwitchTV/releases",
+      "license": "не проверена",
+      "license_checked": false,
+      "cert_sha256": "838d9d90b5bcaa89c7376948b0d8da141c2d0cbba3b983b02a0c443dd63744d9",
+      "cert_subject": "CN=Felipe Leon",
+      "note": "Клиент Twitch для ТВ."
+    },
+    {
+      "name": "NewPipe",
+      "package": "org.schabi.newpipe",
+      "version_seen": "0.29.1",
+      "releases": "https://github.com/TeamNewPipe/NewPipe/releases",
+      "license": "GPL-3.0",
+      "license_checked": false,
+      "cert_sha256": "cb84069bd68116bafae5ee4ee5b08a567aa6d898404e7cb12f9e756df5cf5cab",
+      "cert_subject": "CN=Christian Schabesberger",
+      "note": "YouTube в маленьком окне поверх всего. Серая зона условий сервиса: по желанию."
+    }
+  ]
+}

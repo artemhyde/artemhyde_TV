@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.glasstv.volna"
+    android:versionCode="2"
+    android:versionName="2.0">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Звук играет Aura Music: «Волна» подключается к её музыкальной службе и ведёт очередь -->
+    <queries>
+        <package android:name="com.auramusic.app" />
+        <package android:name="com.android.tv.settings" />
+        <package android:name="app.glasstv.home" />
+        <intent><action android:name="android.media.browse.MediaBrowserService" /></intent>
+    </queries>
+
+    <application
+        android:label="Волна"
+        android:icon="@drawable/icon"
+        android:banner="@drawable/banner"
+        android:allowBackup="false"
+        android:theme="@style/Card">
+
+        <!-- Мини-плеер поверх приложений: его открывает долгое нажатие Wink (Key Mapper шлёт явный интент на эту активность) -->
+        <activity
+            android:name=".MenuActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.glasstv.volna.card"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape" />
+
+        <!-- Полноэкранный плеер: единственный вход приложения, его открывает плитка на главном экране -->
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:theme="@style/Player">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".BlackoutActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Blackout" />
+
+        <!-- Команды без экрана (Key Mapper, проверка с ПК) -->
+        <receiver android:name=".Cmd" android:exported="true" />
+
+        <!-- Система держит слушателя уведомлений запущенным: «Волна» живёт в фоне и ведёт очередь -->
+        <service
+            android:name=".Listener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

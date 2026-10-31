@@ -1,0 +1,1798 @@
+diff --git a/app/src/main/assets/pages/home/home.css b/app/src/main/assets/pages/home/home.css
+index de7ed7c..bd8580a 100644
+--- a/app/src/main/assets/pages/home/home.css
++++ b/app/src/main/assets/pages/home/home.css
+@@ -1,21 +1,20 @@
+ /*
+-The home page of the TV: "Graphite visionOS". Smoky dark graphite glass (a translucent gradient with no white fill,
+-white only as the light on the edge), a thin rim that is brighter at the top left, a light inner edge, a thin bottom
+-edge and soft shadows below; the focused (hovered by the cursor) tile gets lighter with a brighter rim.
+-Sizes are parts of the screen width (vw), so the page looks the same on any TV resolution.
+-The GPU of a TV box is weak: no blur and no backdrop-filter, every shadow is static, a hovered tile only moves
+-(transform) and fades its light layers in (opacity); the light layers are the pseudo-elements of the cell.
+-The numbers are those of the concept (graphite-home.html), scaled from 1920 px to vw (1 px = 0.052 vw).
++The home page of the TV: flat graphite, the look of the browser bar. A plain dark background; the search capsule is a
++light veil (white at 8%), and the sites are icons with their names on it, with no plate of their own. The focused
++(hovered by the cursor) piece gets the plate of a focused button of the bar: white at 24%, the capsule a step lighter
++(16%) with a thin ring. No gradient, mask, rim, shadow or blur: the only thing that changes is a fill and a border color.
++Sizes are parts of the screen width (vw), so the page looks the same on any TV resolution (1 dp = 0.104 vw on 1920 px).
++The numbers are those of the night tokens of the bar (values-night/colors.xml): ds_control, ds_bar_on, ds_bar_focus, ds_focus.
+ */
+ :root {
+-    --ink: rgba(255, 255, 255, 0.9);
+-    --ink-soft: rgba(255, 255, 255, 0.66);
+-    --line: rgba(255, 255, 255, 0.16);
+-    --glass-hi: rgba(255, 255, 255, 0.12);
+-    --menu: rgba(28, 26, 35, 0.98);
+-    /* the rim: 150deg, brighter at the top left; the same gradient for a focused piece with more white */
+-    --rim: linear-gradient(150deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.22) 18%, rgba(255, 255, 255, 0.05) 44%, rgba(255, 255, 255, 0.07) 68%, rgba(255, 255, 255, 0.3) 100%);
+-    --rim-hi: linear-gradient(150deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.52) 22%, rgba(255, 255, 255, 0.16) 48%, rgba(255, 255, 255, 0.24) 70%, rgba(255, 255, 255, 0.66) 100%);
++    --bg: #0f0f12;
++    --menu: #1b1b1f;
++    --ink: rgba(255, 255, 255, 0.92);
++    --ink-soft: rgba(255, 255, 255, 0.6);
++    --veil: rgba(255, 255, 255, 0.08);
++    --veil-on: rgba(255, 255, 255, 0.16);
++    --veil-focus: rgba(255, 255, 255, 0.24);
++    --ring: rgba(255, 255, 255, 0.85);
+ }
+ 
+ * {
+@@ -29,14 +28,9 @@ html, body {
+     height: 100%;
+ }
+ 
+-/* near black with a warm undertone, a soft warm glow in the middle and a vignette: three static gradients */
+ body {
+     color: var(--ink);
+-    background-color: #0c0809;
+-    background-image:
+-        radial-gradient(ellipse 68% 78% at 50% 44%, rgba(6, 4, 10, 0) 50%, rgba(6, 4, 10, 0.26) 76%, rgba(4, 2, 8, 0.6) 100%),
+-        radial-gradient(ellipse 74% 62% at 46% 40%, rgba(112, 66, 42, 0.46) 0%, rgba(66, 40, 31, 0.28) 46%, rgba(12, 8, 9, 0) 84%),
+-        linear-gradient(180deg, rgba(8, 6, 14, 0.18) 0%, rgba(8, 6, 14, 0) 26%, rgba(8, 6, 14, 0) 58%, rgba(8, 6, 14, 0.24) 100%);
++    background: var(--bg);
+     font-family: Roboto, "Noto Sans", sans-serif;
+     overflow: hidden;
+     -webkit-user-select: none;
+@@ -56,97 +50,28 @@ body {
+     overflow: hidden;
+ }
+ 
+-/* the search capsule: its hovered look is the light layers of the wrapper (::before the wash, ::after the rim) */
+ .wrapper {
+     position: relative;
+     width: 62vw;
+-    border-radius: 3.4vw;
++    border-radius: 3.1vw;
+ }
+ 
++/* the search capsule: a veil; hovered a step lighter with a thin ring (a border that is clear at rest) */
+ .search_box {
+     position: relative;
+     display: flex;
+     align-items: center;
+-    height: 6.8vw;
+-    padding: 0 1.1vw;
+-    border-radius: 3.4vw;
+-    background: linear-gradient(180deg, rgba(68, 66, 80, 0.62) 0%, rgba(36, 34, 45, 0.68) 100%);
+-    box-shadow:
+-        inset 0 0 1.15vw -0.1vw rgba(255, 255, 255, 0.08),
+-        inset 0 -0.45vw 0.7vw -0.45vw rgba(255, 255, 255, 0.09),
+-        0 0.08vw 0 rgba(255, 255, 255, 0.14),
+-        0 0.2vw 0 rgba(6, 4, 10, 0.5),
+-        0 0.62vw 0.95vw -0.4vw rgba(0, 0, 0, 0.46),
+-        0 1.55vw 2.1vw -0.95vw rgba(0, 0, 0, 0.46);
+-}
+-
+-/* the rim of a piece of glass: a gradient seen through a mask that leaves only the border */
+-.search_box::before,
+-.sugg::before,
+-.wrapper::after,
+-.cell::after {
+-    content: "";
+-    position: absolute;
+-    left: 0;
+-    top: 0;
+-    right: 0;
+-    bottom: 0;
+-    border-radius: inherit;
+-    pointer-events: none;
+-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+-    -webkit-mask-composite: xor;
+-    mask-composite: exclude;
++    height: 6.2vw;
++    padding: 0 1vw;
++    border: 0.156vw solid transparent;
++    border-radius: 3.1vw;
++    background: var(--veil);
++    transition: background-color 0.12s, border-color 0.12s;
+ }
+ 
+-.search_box::before {
+-    padding: 0.075vw;
+-    background: var(--rim);
+-    z-index: 1;
+-}
+-
+-/* the light of the top edge */
+-.search_box::after,
+-.sugg::after {
+-    content: "";
+-    position: absolute;
+-    left: 0;
+-    top: 0;
+-    right: 0;
+-    bottom: 0;
+-    border-radius: inherit;
+-    pointer-events: none;
+-    z-index: 1;
+-    background:
+-        radial-gradient(110% 58% at 20% 0%, rgba(255, 255, 255, 0.115), rgba(255, 255, 255, 0) 62%),
+-        linear-gradient(106deg, rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0.04) 46%, rgba(255, 255, 255, 0) 56%);
+-}
+-
+-.wrapper::before {
+-    content: "";
+-    position: absolute;
+-    left: 0;
+-    top: 0;
+-    right: 0;
+-    bottom: 0;
+-    border-radius: inherit;
+-    pointer-events: none;
+-    z-index: 1;
+-    opacity: 0;
+-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.05));
+-    transition: opacity 0.14s;
+-}
+-
+-.wrapper::after {
+-    padding: 0.11vw;
+-    background: var(--rim-hi);
+-    z-index: 3;
+-    opacity: 0;
+-    transition: opacity 0.14s;
+-}
+-
+-.wrapper:hover::before,
+-.wrapper:hover::after {
+-    opacity: 1;
++.wrapper:hover .search_box {
++    background: var(--veil-on);
++    border-color: var(--ring);
+ }
+ 
+ .dropdown {
+@@ -160,10 +85,10 @@ body {
+ }
+ 
+ .dropdown .default_option {
+-    width: 3.8vw;
+-    height: 3.8vw;
+-    margin-left: 0.7vw;
+-    border-radius: 1.1vw;
++    width: 3.6vw;
++    height: 3.6vw;
++    margin-left: 0.8vw;
++    border-radius: 1vw;
+     background: url(favicons/google.png) no-repeat center;
+     background-size: contain;
+ }
+@@ -171,7 +96,7 @@ body {
+ .dropdown:before {
+     content: "";
+     position: absolute;
+-    top: 3.2vw;
++    top: 2.9vw;
+     right: 0.7vw;
+     border: 0.5vw solid transparent;
+     border-top-color: var(--ink-soft);
+@@ -190,9 +115,7 @@ body {
+     font-size: 1.9vw;
+     color: var(--ink);
+     background: var(--menu);
+-    border: 0.1vw solid var(--line);
+-    border-radius: 1.8vw;
+-    box-shadow: 0 0.7vw 1.4vw rgba(0, 0, 0, 0.5);
++    border-radius: 1.6vw;
+ }
+ 
+ .dropdown ul.active {
+@@ -207,7 +130,7 @@ body {
+ }
+ 
+ .dropdown ul li:hover {
+-    background: var(--glass-hi);
++    background: var(--veil-focus);
+ }
+ 
+ .dropdown ul li img {
+@@ -225,15 +148,14 @@ body {
+     height: 100%;
+     display: flex;
+     align-items: center;
+-    border-left: 0.1vw solid rgba(255, 255, 255, 0.14);
+ }
+ 
+ .search_field::before {
+     content: "";
+     flex: none;
+-    width: 2.7vw;
+-    height: 2.7vw;
+-    margin-left: 1.5vw;
++    width: 2.6vw;
++    height: 2.6vw;
++    margin-left: 1.2vw;
+     opacity: 0.9;
+     background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='white' d='M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'/></svg>") no-repeat center;
+     background-size: contain;
+@@ -250,17 +172,17 @@ body {
+     background: transparent;
+     color: var(--ink);
+     font-family: inherit;
+-    font-size: 2.3vw;
++    font-size: 2.2vw;
+     font-weight: 500;
+ }
+ 
+ .search_field .input::placeholder {
+-    color: rgba(255, 255, 255, 0.72);
++    color: var(--ink-soft);
+ }
+ 
+ .search_action_container {
+-    width: 4.8vw;
+-    height: 4.8vw;
++    width: 4.6vw;
++    height: 4.6vw;
+     border-radius: 50%;
+     display: flex;
+     align-items: center;
+@@ -269,7 +191,7 @@ body {
+ }
+ 
+ .search_action_container:hover {
+-    background: var(--glass-hi);
++    background: var(--veil-focus);
+ }
+ 
+ .search_action_container .mic,
+@@ -290,99 +212,47 @@ body {
+     display: none;
+ }
+ 
+-/* the tiles */
++/* the sites: icons with names, 4 by 2 */
+ #suggestions {
+     width: 62vw;
+     margin-top: 5.5vh;
+     display: grid;
+     grid-template-columns: repeat(4, 1fr);
+-    gap: 2vw 1.5vw;
++    gap: 1.2vw 1.5vw;
+ }
+ 
+-/*
+-A cell is the tile and its light layers. Focused (hovered): the tile rises and grows a little, the glass
+-gets about 10 points lighter (::before) and the rim brighter (::after), both fade in.
+-*/
+ .cell {
+     position: relative;
+     min-width: 0;
+-    border-radius: 2.2vw;
++    border-radius: 1.8vw;
+     cursor: pointer;
+-    transition: transform 0.14s ease-out;
+-    will-change: transform;
+-}
+-
+-.cell::before {
+-    content: "";
+-    position: absolute;
+-    left: 0;
+-    top: 0;
+-    right: 0;
+-    bottom: 0;
+-    border-radius: inherit;
+-    pointer-events: none;
+-    z-index: 1;
+-    opacity: 0;
+-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.05));
+-    transition: opacity 0.14s;
+-}
+-
+-.cell::after {
+-    padding: 0.115vw;
+-    background: var(--rim-hi);
+-    z-index: 3;
+-    opacity: 0;
+-    transition: opacity 0.14s;
+-}
+-
+-.cell:hover {
+-    transform: translateY(-0.3vw) scale(1.04);
+-}
+-
+-.cell:hover::before,
+-.cell:hover::after {
+-    opacity: 1;
+ }
+ 
+-/* the tile: graphite glass from the top down, the light inner edge, the thin bottom edge (a light thread and a dark face), soft shadows below */
++/* no plate at rest; focused (hovered) the plate of a focused button of the bar */
+ .sugg {
+     position: relative;
+-    height: 11.2vw;
++    height: 11vw;
+     padding: 1vw 0.8vw;
+     display: flex;
+     flex-direction: column;
+     align-items: center;
+     justify-content: center;
+-    border-radius: 2.2vw;
+-    background: linear-gradient(180deg, rgba(68, 66, 80, 0.62) 0%, rgba(42, 40, 51, 0.66) 50%, rgba(24, 22, 31, 0.74) 100%);
+-    box-shadow:
+-        inset 0 0 1.55vw -0.1vw rgba(255, 255, 255, 0.075),
+-        inset 0 -0.6vw 0.9vw -0.6vw rgba(255, 255, 255, 0.09),
+-        0 0.08vw 0 rgba(255, 255, 255, 0.15),
+-        0 0.18vw 0 rgba(6, 4, 10, 0.55),
+-        0 0.7vw 0.95vw -0.3vw rgba(0, 0, 0, 0.46),
+-        0 1.75vw 2.4vw -0.8vw rgba(0, 0, 0, 0.52);
+-}
+-
+-.sugg::before {
+-    padding: 0.085vw;
+-    background: var(--rim);
+-    z-index: 1;
++    border-radius: 1.8vw;
++    transition: background-color 0.12s;
+ }
+ 
+-.sugg > * {
+-    z-index: 2;
++.cell:hover .sugg {
++    background: var(--veil-focus);
+ }
+ 
+-/* the icon of the site on a light plate (favicons are of any color), lit from above like the glass */
++/* the icon of the site on a light plate (favicons are of any color) */
+ .sugg-ico {
+     width: 5vw;
+     height: 5vw;
+     padding: 0.5vw;
+     margin: 0 0 1vw;
+-    border-radius: 1.4vw;
+-    background: #e8e8ee;
+-    box-shadow: 0 -0.05vw 0 rgba(255, 255, 255, 0.22), 0 0.45vw 0.55vw rgba(0, 0, 0, 0.5);
++    border-radius: 1.3vw;
++    background: #eeeef2;
+     object-fit: contain;
+ }
+ 
+@@ -397,7 +267,6 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+     overflow: hidden;
+     text-overflow: ellipsis;
+     color: var(--ink);
+-    text-shadow: 0 0.05vw 0.1vw rgba(0, 0, 0, 0.45);
+ }
+ 
+ .cell:hover .sugg-title {
+@@ -413,9 +282,13 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+     display: none;
+ }
+ 
+-/* a free place of the grid of bookmarks */
++/* a free place of the grid of bookmarks: only a veil */
+ .sugg:has(.sugg-title.empty) {
+-    opacity: 0.3;
++    background: var(--veil);
++}
++
++.sugg:has(.sugg-title.empty) .sugg-ico {
++    visibility: hidden;
+ }
+ 
+ .more {
+@@ -432,24 +305,10 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+ }
+ 
+ .more:hover {
+-    background: var(--glass-hi);
++    background: var(--veil-focus);
+ }
+ 
+-/* a browser without masks that cut a border out of a gradient: a plain hairline instead of the rim */
+-@supports not ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+-    .search_box::before,
+-    .sugg::before,
+-    .wrapper::after,
+-    .cell::after {
+-        display: none;
+-    }
+-    .search_box,
+-    .sugg {
+-        border: 0.1vw solid rgba(255, 255, 255, 0.22);
+-    }
+-}
+-
+-/* phones (narrow, or short in landscape): sizes in CSS pixels, two columns, smaller shadows */
++/* phones (narrow, or short in landscape): sizes in CSS pixels, two columns */
+ @media (max-width: 600px), (max-height: 420px) {
+     .page {
+         padding-top: 24px;
+@@ -464,19 +323,8 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+     .search_box {
+         height: 48px;
+         padding: 0 8px;
++        border-width: 2px;
+         border-radius: 24px;
+-        box-shadow:
+-            inset 0 0 8px -1px rgba(255, 255, 255, 0.08),
+-            0 1px 0 rgba(255, 255, 255, 0.14),
+-            0 2px 0 rgba(6, 4, 10, 0.5),
+-            0 6px 10px -4px rgba(0, 0, 0, 0.46);
+-    }
+-    .search_box::before {
+-        padding: 1px;
+-    }
+-    .wrapper::after,
+-    .cell::after {
+-        padding: 1.4px;
+     }
+     .dropdown {
+         width: 52px;
+@@ -496,25 +344,21 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+         width: 200px;
+         padding: 8px;
+         font-size: 16px;
+-        border-radius: 16px;
+-        border-width: 1px;
++        border-radius: 12px;
+     }
+     .dropdown ul li {
+         padding: 8px;
+-        border-radius: 10px;
++        border-radius: 8px;
+     }
+     .dropdown ul li img {
+         width: 20px;
+         height: 20px;
+         margin-right: 8px;
+     }
+-    .search_field {
+-        border-left-width: 1px;
+-    }
+     .search_field::before {
+         width: 22px;
+         height: 22px;
+-        margin-left: 10px;
++        margin-left: 8px;
+     }
+     .search_field .input {
+         padding: 0 10px;
+@@ -532,24 +376,15 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+     #suggestions {
+         margin-top: 24px;
+         grid-template-columns: repeat(2, 1fr);
+-        gap: 16px 12px;
++        gap: 8px 12px;
+     }
+     .cell,
+-    .cell::before {
+-        border-radius: 18px;
++    .sugg {
++        border-radius: 14px;
+     }
+     .sugg {
+         height: 88px;
+         padding: 8px;
+-        border-radius: 18px;
+-        box-shadow:
+-            inset 0 0 10px -1px rgba(255, 255, 255, 0.075),
+-            0 1px 0 rgba(255, 255, 255, 0.15),
+-            0 2px 0 rgba(6, 4, 10, 0.55),
+-            0 6px 9px -3px rgba(0, 0, 0, 0.46);
+-    }
+-    .sugg::before {
+-        padding: 1px;
+     }
+     .sugg-ico {
+         width: 36px;
+@@ -557,7 +392,6 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+         padding: 4px;
+         margin-bottom: 6px;
+         border-radius: 10px;
+-        box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.22), 0 3px 4px rgba(0, 0, 0, 0.5);
+     }
+     .sugg-title {
+         font-size: 14px;
+@@ -570,7 +404,4 @@ gets about 10 points lighter (::before) and the rim brighter (::after), both fad
+         top: 2px;
+         right: 2px;
+     }
+-    .cell:hover {
+-        transform: none;
+-    }
+ }
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt
+index 0a8f835..9c4faf0 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/ActionBar.kt
+@@ -116,14 +116,11 @@ class ActionBar @JvmOverloads constructor(
+         vb.ibMore.setOnClickListener { callback?.showMoreMenu() }
+         vb.btnSearch.setOnClickListener { onSearchClick?.invoke() }
+ 
+-        //the groups and the address field clip their buttons to the rounded border
+-        vb.llNavigation.clipToOutline = true
+-        vb.llFunctions.clipToOutline = true
++        //the address field clips its buttons to its capsule (the groups of buttons have no box)
+         vb.llAddress.clipToOutline = true
+ 
+         if (Utils.isFireTV(context)) {
+             vb.ibVoiceSearch.visibility = GONE
+-            vb.vVoiceSearchDivider.visibility = GONE
+         } else {
+             vb.ibVoiceSearch.setOnClickListener { callback?.initiateVoiceSearch() }
+         }
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt
+index 487922d..f417de4 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/PageVideoChipView.kt
+@@ -9,7 +9,7 @@ import android.widget.TextView
+ import com.phlox.tvwebbrowser.R
+ 
+ /**
+- * The glass button in the corner of the page that offers a found video: "Open in the player on the full
++ * The flat button in the corner of the page that offers a found video: "Open in the player on the full
+  * screen" with the key that does it (OK). It takes no focus and no keys; [UxShell] gives it the OK key while it shows.
+  */
+ class PageVideoChipView(context: Context) : LinearLayout(context) {
+@@ -20,7 +20,7 @@ class PageVideoChipView(context: Context) : LinearLayout(context) {
+         orientation = HORIZONTAL
+         gravity = Gravity.CENTER_VERTICAL
+         val height = UxGlass.dp(context, HEIGHT_DP)
+-        background = UxGlass.chip(context, height)
++        background = UxGlass.chip(height)
+         setPadding(UxGlass.dp(context, 16f), 0, UxGlass.dp(context, 10f), 0)
+         isFocusable = false
+         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
+@@ -45,7 +45,7 @@ class PageVideoChipView(context: Context) : LinearLayout(context) {
+         val capHeight = UxGlass.dp(context, 28f)
+         cap.minWidth = UxGlass.dp(context, 40f)
+         cap.setPadding(UxGlass.dp(context, 10f), 0, UxGlass.dp(context, 10f), 0)
+-        cap.background = UxGlass.rounded(UxGlass.CAPSULE, capHeight / 2f, UxGlass.TEXT_FAINT, UxGlass.dp(context, 1f))
++        cap.background = UxGlass.rounded(UxGlass.VEIL_ON, capHeight / 2f)
+         addView(cap, LayoutParams(LayoutParams.WRAP_CONTENT, capHeight).apply {
+             marginStart = UxGlass.dp(context, 14f)
+         })
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+index 6d9b849..3b15383 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+@@ -30,7 +30,7 @@ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ 
+ /**
+- * The address bar over the page: a glass panel at the top with the field, under it the capsules of the
++ * The address bar over the page: a flat panel at the top with the field, under it the capsules of the
+  * suggestions (the typed text, bookmarks, history, queries of the search engine). It takes the keys while it
+  * shows and gives the focus back to the page when it goes. Opened by the Menu key, Up at the top of the page,
+  * the search box of the home page and the hotkey "address bar"; Back or Menu close it.
+@@ -54,6 +54,7 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+     }
+ 
+     private val panel = LinearLayout(context)
++    private val fieldRow = LinearLayout(context)
+     private val input = EditText(context)
+     private val list = LinearLayout(context)
+     private val hint = TextView(context)
+@@ -106,9 +107,9 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+         })
+     }
+ 
+-    /** The field: a capsule with the search glass and the text */
++    /** The field: a capsule with the loupe and the text; a thin ring shows while the text has the focus */
+     private fun buildField(): View {
+-        val row = LinearLayout(context)
++        val row = fieldRow
+         row.orientation = LinearLayout.HORIZONTAL
+         row.gravity = Gravity.CENTER_VERTICAL
+         val height = UxGlass.dp(context, FIELD_HEIGHT_DP)
+@@ -116,8 +117,7 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+         row.setPadding(UxGlass.dp(context, 18f), 0, UxGlass.dp(context, 18f), 0)
+         row.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
+ 
+-        val glass = UxGlass.icon(context, R.drawable.ic_search, 22f)
+-        row.addView(glass)
++        row.addView(UxGlass.icon(context, R.drawable.ic_search, 22f))
+ 
+         input.background = null
+         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 21f)
+@@ -164,6 +164,7 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+             }
+         }
+         input.setOnFocusChangeListener { _, focused ->
++            row.isActivated = focused
+             if (focused && rebuildPending) rebuild()
+         }
+         return row
+@@ -188,6 +189,7 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+         animate().alpha(1f).setDuration(OPEN_MS).setInterpolator(DecelerateInterpolator()).start()
+         panel.animate().translationY(0f).setDuration(OPEN_MS).setInterpolator(DecelerateInterpolator()).start()
+         input.requestFocus()
++        fieldRow.isActivated = input.hasFocus()
+         postDelayed({ if (isVisible && input.hasFocus()) showKeyboard() }, KEYBOARD_DELAY_MS)
+         //some keyboards of TVs drop a selection made before they show
+         if (prefill.isNotEmpty()) postDelayed({ if (isVisible) input.selectAll() }, SELECT_DELAY_MS)
+@@ -292,7 +294,7 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+         row.gravity = Gravity.CENTER_VERTICAL
+         row.isFocusable = true
+         row.isClickable = true
+-        row.background = UxGlass.capsule(context, height)
++        row.background = UxGlass.capsule(height)
+         row.setPadding(UxGlass.dp(context, 18f), 0, UxGlass.dp(context, 18f), 0)
+         row.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height).apply {
+             if (index > 0) topMargin = UxGlass.dp(context, 4f)
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt
+index e303bce..cb48d56 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxGlass.kt
+@@ -3,42 +3,29 @@ package com.phlox.tvwebbrowser.ux
+ import android.content.Context
+ import android.content.res.ColorStateList
+ import android.graphics.Color
+-import android.graphics.drawable.Drawable
+ import android.graphics.drawable.GradientDrawable
+-import android.graphics.drawable.LayerDrawable
+ import android.graphics.drawable.StateListDrawable
+ import android.widget.ImageView
+ 
+ /**
+- * The look of the new panels of the TV UI: "Graphite visionOS", smoky dark glass that is only a translucent
+- * gradient (no blur and no shadow: the GPU of a TV box redraws a blurred layer on every frame), no white fill
+- * (white only as the light on the top edge and in the rim), big rounded corners and capsules.
++ * The look of the new panels of the TV UI (the name is from the first, glass look of them): flat graphite. A panel is one
++ * matte plate, nearly opaque, with no gradient, rim, light or shadow (a shadow or a blur is a heavy layer for the GPU of
++ * a TV box); what lies on it is a white veil of 8%, 16% or 24%, and focus is the veil of 24% (a field: a thin ring).
+  * The look is the same in the light and the dark theme (the page behind is dimmed, so light text always reads), so it
+- * does not read the theme tokens. GLASS_*, GLARE, RIM, RIM_FOCUS, TEXT and TEXT_FAINT repeat the numbers of the night
+- * ds_glass_*, ds_line_strong, ds_focus and ds_ink tokens of the bar (values-night/colors.xml): when the palette changes,
+- * change both. PANEL_* and FIELD_* are only here: a panel floats over the page and a field is cut into it, darker than
+- * the panel (the field of the bar, ds_field_*, sits on the bar and is lighter).
++ * does not read the theme tokens. VEIL, VEIL_ON, VEIL_FOCUS, RING, TEXT and TEXT_FAINT repeat the numbers of the night
++ * ds_control, ds_bar_on, ds_bar_focus, ds_focus, ds_ink and ds_ink_faint tokens of the bar (values-night/colors.xml):
++ * when the palette changes, change both. PANEL is only here: a panel floats over the page, a little lighter than the bar.
+  */
+ object UxGlass {
+     const val SCRIM = 0x52000000
+-    /** Glass at rest: the top and the bottom of the gradient */
+-    const val GLASS_TOP = 0x9E444250.toInt()
+-    const val GLASS_BOTTOM = 0xBD18161F.toInt()
+-    /** Focused: about 10 points lighter */
+-    const val GLASS_FOCUS_TOP = 0xA3524F5F.toInt()
+-    const val GLASS_FOCUS_BOTTOM = 0xB8201E29.toInt()
+     /** Panels float over the page and nothing is blurred behind them: nearly opaque graphite */
+-    const val PANEL_TOP = 0xF02F2C35.toInt()
+-    const val PANEL_BOTTOM = 0xF0151219.toInt()
+-    /** A field cut into a panel */
+-    const val FIELD_TOP = 0xCC17151D.toInt()
+-    const val FIELD_BOTTOM = 0xCC0F0D14.toInt()
+-    /** The light on the upper half of the glass and along its edge */
+-    const val GLARE = 0x1DFFFFFF
+-    const val RIM = 0x42FFFFFF
+-    const val RIM_FOCUS = 0xD9FFFFFF.toInt()
+-    /** The key cap on the chip */
+-    const val CAPSULE = 0x1FFFFFFF
++    const val PANEL = 0xFF1B1B1F.toInt()
++    /** White veils over a panel: a field at rest, a lighter step (the key cap on the chip, a field in focus), focus */
++    const val VEIL = 0x14FFFFFF
++    const val VEIL_ON = 0x29FFFFFF
++    const val VEIL_FOCUS = 0x3DFFFFFF
++    /** The ring of a focused field */
++    const val RING = 0xD9FFFFFF.toInt()
+     /** White at 90%, secondary text at 66% */
+     const val TEXT = 0xE6FFFFFF.toInt()
+     const val TEXT_FAINT = 0xA8FFFFFF.toInt()
+@@ -55,56 +42,32 @@ object UxGlass {
+         if (strokeWidth > 0) setStroke(strokeWidth, stroke)
+     }
+ 
+-    /**
+-     * A piece of glass: the gradient with the rim, the light of the top edge ([GLARE] on the upper half) and, if
+-     * [edge], the light line just inside the rim (what a focused piece has)
+-     */
+-    fun glass(context: Context, radius: Float, top: Int, bottom: Int, rim: Int, rimWidth: Int, edge: Boolean = false): LayerDrawable {
+-        val layers = ArrayList<Drawable>(3)
+-        layers += GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, bottom)).apply {
+-            shape = GradientDrawable.RECTANGLE
+-            cornerRadius = radius
+-            setStroke(rimWidth, rim)
+-        }
+-        layers += GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(GLARE, Color.TRANSPARENT, Color.TRANSPARENT)).apply {
+-            shape = GradientDrawable.RECTANGLE
+-            cornerRadius = radius
+-        }
+-        val inset = rimWidth
+-        if (edge) {
+-            layers += GradientDrawable().apply {
+-                shape = GradientDrawable.RECTANGLE
+-                cornerRadius = maxOf(radius - inset, 0f)
+-                setStroke(dp(context, 1f), GLARE)
+-            }
+-        }
+-        return LayerDrawable(layers.toTypedArray()).also { if (edge) it.setLayerInset(2, inset, inset, inset, inset) }
+-    }
+-
+-    /** The glass panel */
+-    fun panel(context: Context): LayerDrawable =
+-        glass(context, dp(context, PANEL_RADIUS_DP).toFloat(), PANEL_TOP, PANEL_BOTTOM, RIM, dp(context, 1f))
++    /** The panel: one flat plate */
++    fun panel(context: Context): GradientDrawable = rounded(PANEL, dp(context, PANEL_RADIUS_DP).toFloat())
+ 
+-    /** A field of a panel: darker than the panel, with the bright rim of the focused glass */
+-    fun field(context: Context, height: Int): LayerDrawable =
+-        glass(context, height / 2f, FIELD_TOP, FIELD_BOTTOM, RIM_FOCUS, dp(context, 1.5f), edge = true)
++    /** A field of a panel: a capsule with a light veil, and a thin ring while it is activated (its text has the focus) */
++    fun field(context: Context, height: Int): StateListDrawable {
++        val radius = height / 2f
++        val states = StateListDrawable()
++        states.addState(intArrayOf(android.R.attr.state_activated), rounded(VEIL_ON, radius, RING, dp(context, 1.5f)))
++        states.addState(intArrayOf(), rounded(VEIL, radius))
++        return states
++    }
+ 
+-    /** The offer of a found video: panel glass with the bright rim */
+-    fun chip(context: Context, height: Int): LayerDrawable =
+-        glass(context, height / 2f, PANEL_TOP, PANEL_BOTTOM, RIM_FOCUS, dp(context, 1.5f), edge = true)
++    /** The offer of a found video: a flat capsule of the panel color */
++    fun chip(height: Int): GradientDrawable = rounded(PANEL, height / 2f)
+ 
+-    /** A capsule (a line of a list): at rest, and focused (lighter, bright rim) */
+-    fun capsule(context: Context, height: Int): StateListDrawable {
++    /** A capsule (a line of a list): nothing at rest, the light veil when focused */
++    fun capsule(height: Int): StateListDrawable {
+         val radius = height / 2f
+-        val ring = dp(context, 1.5f)
+         val states = StateListDrawable()
+-        states.addState(intArrayOf(android.R.attr.state_focused), glass(context, radius, GLASS_FOCUS_TOP, GLASS_FOCUS_BOTTOM, RIM_FOCUS, ring, edge = true))
+-        states.addState(intArrayOf(android.R.attr.state_pressed), glass(context, radius, GLASS_FOCUS_TOP, GLASS_FOCUS_BOTTOM, RIM_FOCUS, ring, edge = true))
+-        states.addState(intArrayOf(), glass(context, radius, GLASS_TOP, GLASS_BOTTOM, RIM, dp(context, 1f)))
++        states.addState(intArrayOf(android.R.attr.state_focused), rounded(VEIL_FOCUS, radius))
++        states.addState(intArrayOf(android.R.attr.state_pressed), rounded(VEIL_FOCUS, radius))
++        states.addState(intArrayOf(), rounded(Color.TRANSPARENT, radius))
+         return states
+     }
+ 
+-    /** An icon of the app (white paths) in the colour of the glass text */
++    /** An icon of the app (white paths) in the colour of the text of the panel */
+     fun icon(context: Context, resId: Int, sizeDp: Float, color: Int = TEXT): ImageView = ImageView(context).apply {
+         setImageResource(resId)
+         imageTintList = ColorStateList.valueOf(color)
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
+index a8c6b7a..380c444 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
+@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
+ 
+ /**
+  * The additions of the TV shell that keep to their own files: the address bar over the page
+- * ([QuickBarView]: Menu, Up at the top of the page, the search box of the home page, a hotkey) and the glass
++ * ([QuickBarView]: Menu, Up at the top of the page, the search box of the home page, a hotkey) and the
+  * button that offers a found video ([PageVideoChipView]). [com.phlox.tvwebbrowser.activity.main.TvShell] only
+  * creates it, passes the keys, the scroll position, the found videos and the "page is covered" state to it.
+  */
+diff --git a/app/src/main/res/drawable/ds_address_field_bg.xml b/app/src/main/res/drawable/ds_address_field_bg.xml
+index 6c24473..14cd117 100644
+--- a/app/src/main/res/drawable/ds_address_field_bg.xml
++++ b/app/src/main/res/drawable/ds_address_field_bg.xml
+@@ -1,106 +1,41 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- The address field: a graphite glass capsule, focused (lighter, bright rim and edge light), edited (selected stroke) -->
++<!--
++A search or address field, a flat capsule with no outline: a light veil over the surface at rest; focused (the address
++or its text has the focus): lighter, with a thin white ring; edited (activated or selected): the ring of the selected color
++-->
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+     <item android:state_activated="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsSelected" android:width="@dimen/ds_border_selected" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_capsule" />
++            <solid android:color="?attr/tbColorDsBarOn" />
++            <stroke android:color="?attr/tbColorDsSelected" android:width="@dimen/ds_border_selected" />
++        </shape>
+     </item>
+     <item android:state_selected="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsSelected" android:width="@dimen/ds_border_selected" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_capsule" />
++            <solid android:color="?attr/tbColorDsBarOn" />
++            <stroke android:color="?attr/tbColorDsSelected" android:width="@dimen/ds_border_selected" />
++        </shape>
+     </item>
+     <item android:state_focused="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="@dimen/ds_glass_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_capsule" />
++            <solid android:color="?attr/tbColorDsBarOn" />
++            <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
++        </shape>
+     </item>
+     <item android:state_hovered="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="@dimen/ds_glass_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_capsule" />
++            <solid android:color="?attr/tbColorDsBarOn" />
++            <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
++        </shape>
+     </item>
+     <item>
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsFieldTop" android:endColor="?attr/tbColorDsFieldBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_capsule" />
++            <solid android:color="?attr/tbColorDsControl" />
++        </shape>
+     </item>
+ </selector>
+diff --git a/app/src/main/res/drawable/ds_control_bg.xml b/app/src/main/res/drawable/ds_control_bg.xml
+index 03ac064..7194571 100644
+--- a/app/src/main/res/drawable/ds_control_bg.xml
++++ b/app/src/main/res/drawable/ds_control_bg.xml
+@@ -1,86 +1,47 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- A toolbar segment (inside a ds_toolbar_group_bg group): no fill at rest, focused (a lighter rounded plate with a bright rim), selected -->
++<!--
++A button of the browser bar: nothing at rest, only the icon. Focused (or hovered by the cursor): a round light plate under
++it, the one mark of focus. Current or activated (a panel is open, the incognito mode): a fainter plate. Also the segments
++of the filter groups of the TV screens. A theme attribute does not resolve in android:drawable of an item, so each plate
++is a shape inside the item.
++-->
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+     <item android:state_focused="true">
+         <layer-list>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
++            <item android:left="@dimen/ds_plate_inset" android:top="@dimen/ds_plate_inset" android:right="@dimen/ds_plate_inset" android:bottom="@dimen/ds_plate_inset">
+                 <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_plate_edge_inset" android:top="@dimen/ds_glass_plate_edge_inset" android:right="@dimen/ds_glass_plate_edge_inset" android:bottom="@dimen/ds_glass_plate_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
++                    <corners android:radius="@dimen/ds_radius_capsule" />
++                    <solid android:color="?attr/tbColorDsBarFocus" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item android:state_hovered="true">
+         <layer-list>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
++            <item android:left="@dimen/ds_plate_inset" android:top="@dimen/ds_plate_inset" android:right="@dimen/ds_plate_inset" android:bottom="@dimen/ds_plate_inset">
+                 <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_plate_edge_inset" android:top="@dimen/ds_glass_plate_edge_inset" android:right="@dimen/ds_glass_plate_edge_inset" android:bottom="@dimen/ds_glass_plate_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
++                    <corners android:radius="@dimen/ds_radius_capsule" />
++                    <solid android:color="?attr/tbColorDsBarFocus" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item android:state_activated="true">
+         <layer-list>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
++            <item android:left="@dimen/ds_plate_inset" android:top="@dimen/ds_plate_inset" android:right="@dimen/ds_plate_inset" android:bottom="@dimen/ds_plate_inset">
+                 <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
++                    <corners android:radius="@dimen/ds_radius_capsule" />
++                    <solid android:color="?attr/tbColorDsBarOn" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item android:state_selected="true">
+         <layer-list>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
++            <item android:left="@dimen/ds_plate_inset" android:top="@dimen/ds_plate_inset" android:right="@dimen/ds_plate_inset" android:bottom="@dimen/ds_plate_inset">
+                 <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
++                    <corners android:radius="@dimen/ds_radius_capsule" />
++                    <solid android:color="?attr/tbColorDsBarOn" />
+                 </shape>
+             </item>
+         </layer-list>
+diff --git a/app/src/main/res/drawable/ds_icon_button_bg.xml b/app/src/main/res/drawable/ds_icon_button_bg.xml
+index 2ff8836..7cf7770 100644
+--- a/app/src/main/res/drawable/ds_icon_button_bg.xml
++++ b/app/src/main/res/drawable/ds_icon_button_bg.xml
+@@ -1,106 +1,40 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- A button on its own, a glass tile: graphite at rest, focused (lighter, bright rim and edge light), selected (lighter, soft rim) -->
++<!--
++A button with a box, flat: the text buttons of forms and dialogs, the buttons of the headers of the TV screens. A light
++veil with no outline at rest; focused (or hovered): lighter, with a thin white ring; selected (or activated): lighter, no ring.
++The icon buttons of the bar have no box: see ds_control_bg
++-->
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+     <item android:state_focused="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="@dimen/ds_glass_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsControlFocused" />
++            <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
++        </shape>
+     </item>
+     <item android:state_hovered="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="@dimen/ds_glass_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsControlFocused" />
++            <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
++        </shape>
+     </item>
+     <item android:state_activated="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsControlSelected" />
++        </shape>
+     </item>
+     <item android:state_selected="true">
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsControlSelected" />
++        </shape>
+     </item>
+     <item>
+-        <layer-list>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassTop" android:endColor="?attr/tbColorDsGlassBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item>
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_glass" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:radius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsControl" />
++        </shape>
+     </item>
+ </selector>
+diff --git a/app/src/main/res/drawable/ds_new_tab_button_bg.xml b/app/src/main/res/drawable/ds_new_tab_button_bg.xml
+index 52e3131..b4642bd 100644
+--- a/app/src/main/res/drawable/ds_new_tab_button_bg.xml
++++ b/app/src/main/res/drawable/ds_new_tab_button_bg.xml
+@@ -1,70 +1,22 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- The new tab button after the tabs (a tab without a bottom border): dim glass, focused (lighter, bright rim) -->
++<!-- The new tab button after the tabs (a tab without a title): the veil of a tab at rest, the plate of a focused button when focused -->
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+     <item android:state_focused="true">
+-        <layer-list>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsBarFocus" />
++        </shape>
+     </item>
+     <item android:state_hovered="true">
+-        <layer-list>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsBarFocus" />
++        </shape>
+     </item>
+     <item>
+-        <layer-list>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <solid android:color="?attr/tbColorDsTab" />
+-                    <stroke android:color="?attr/tbColorDsLine" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-        </layer-list>
++        <shape android:shape="rectangle">
++            <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
++            <solid android:color="?attr/tbColorDsControl" />
++        </shape>
+     </item>
+ </selector>
+diff --git a/app/src/main/res/drawable/ds_tab_bg.xml b/app/src/main/res/drawable/ds_tab_bg.xml
+index c6158b7..9167d3f 100644
+--- a/app/src/main/res/drawable/ds_tab_bg.xml
++++ b/app/src/main/res/drawable/ds_tab_bg.xml
+@@ -1,104 +1,55 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- A tab (top corners, no bottom border): dim glass at rest, focused (lighter, bright rim), current (activated or selected: the full glass) -->
++<!--
++A tab: a flat plate with rounded top corners, no outline and a small gap to the next tab. A light veil at rest; the current
++tab (activated or selected) a step lighter; focused (or hovered): the same plate as a focused button of the bar
++-->
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+     <item android:state_focused="true">
+         <layer-list>
+-            <item android:bottom="-2dp">
++            <item android:left="@dimen/ds_tab_inset" android:right="@dimen/ds_tab_inset">
+                 <shape android:shape="rectangle">
+                     <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
++                    <solid android:color="?attr/tbColorDsBarFocus" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item android:state_hovered="true">
+         <layer-list>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_edge_inset" android:top="@dimen/ds_glass_edge_inset" android:right="@dimen/ds_glass_edge_inset" android:bottom="-2dp">
++            <item android:left="@dimen/ds_tab_inset" android:right="@dimen/ds_tab_inset">
+                 <shape android:shape="rectangle">
+                     <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
++                    <solid android:color="?attr/tbColorDsBarFocus" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item android:state_activated="true">
+         <layer-list>
+-            <item android:bottom="-2dp">
++            <item android:left="@dimen/ds_tab_inset" android:right="@dimen/ds_tab_inset">
+                 <shape android:shape="rectangle">
+                     <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsTabCurrentTop" android:endColor="?attr/tbColorDsTabCurrentBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
++                    <solid android:color="?attr/tbColorDsBarOn" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item android:state_selected="true">
+         <layer-list>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsTabCurrentTop" android:endColor="?attr/tbColorDsTabCurrentBottom" />
+-                    <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
++            <item android:left="@dimen/ds_tab_inset" android:right="@dimen/ds_tab_inset">
+                 <shape android:shape="rectangle">
+                     <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
++                    <solid android:color="?attr/tbColorDsBarOn" />
+                 </shape>
+             </item>
+         </layer-list>
+     </item>
+     <item>
+         <layer-list>
+-            <item android:bottom="-2dp">
+-                <shape android:shape="rectangle">
+-                    <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <solid android:color="?attr/tbColorDsTab" />
+-                    <stroke android:color="?attr/tbColorDsLine" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-            <item android:bottom="-2dp">
++            <item android:left="@dimen/ds_tab_inset" android:right="@dimen/ds_tab_inset">
+                 <shape android:shape="rectangle">
+                     <corners android:topLeftRadius="@dimen/ds_radius_lg" android:topRightRadius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
++                    <solid android:color="?attr/tbColorDsControl" />
+                 </shape>
+             </item>
+         </layer-list>
+diff --git a/app/src/main/res/drawable/ds_toolbar_group_bg.xml b/app/src/main/res/drawable/ds_toolbar_group_bg.xml
+index 63ae447..b137e9a 100644
+--- a/app/src/main/res/drawable/ds_toolbar_group_bg.xml
++++ b/app/src/main/res/drawable/ds_toolbar_group_bg.xml
+@@ -1,18 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- The glass of a group of toolbar segments: graphite gradient, a rim, the light of the top edge; the group clips its segments to it -->
+-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+-    <item>
+-        <shape android:shape="rectangle">
+-            <corners android:radius="@dimen/ds_radius_glass" />
+-            <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassTop" android:endColor="?attr/tbColorDsGlassBottom" />
+-            <stroke android:color="?attr/tbColorDsLineStrong" android:width="@dimen/ds_border_hairline" />
+-        </shape>
+-    </item>
+-    <item>
+-        <shape android:shape="rectangle">
+-            <corners android:radius="@dimen/ds_radius_glass" />
+-            <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-        </shape>
+-    </item>
+-</layer-list>
++<!-- A group of toolbar segments on a TV screen (the filters of the downloads): one flat rounded veil, no outline; the group clips its segments to it. The browser bar has no group boxes -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <corners android:radius="@dimen/ds_radius_lg" />
++    <solid android:color="?attr/tbColorDsControl" />
++</shape>
+diff --git a/app/src/main/res/layout/view_actionbar.xml b/app/src/main/res/layout/view_actionbar.xml
+index 71bf811..094167f 100644
+--- a/app/src/main/res/layout/view_actionbar.xml
++++ b/app/src/main/res/layout/view_actionbar.xml
+@@ -20,7 +20,7 @@ to each button never changes.
+       android:contentDescription="@string/close_application" />
+ 
+   <LinearLayout
+-      style="@style/Widget.TVBro.ToolbarGroup"
++      style="@style/Widget.TVBro.BarGroup"
+       android:id="@+id/llNavigation">
+ 
+     <ImageButton
+@@ -30,8 +30,6 @@ to each button never changes.
+         android:nextFocusDown="@+id/vTabs"
+         android:contentDescription="@string/navigate_back" />
+ 
+-    <View style="@style/Widget.TVBro.ToolbarSeparator" />
+-
+     <ImageButton
+         style="@style/Widget.TVBro.ImageButton.Ds.Segment"
+         android:id="@+id/ibForward"
+@@ -39,8 +37,6 @@ to each button never changes.
+         android:nextFocusDown="@+id/vTabs"
+         android:contentDescription="@string/navigate_forward" />
+ 
+-    <View style="@style/Widget.TVBro.ToolbarSeparator" />
+-
+     <ImageButton
+         style="@style/Widget.TVBro.ImageButton.Ds.Segment"
+         android:id="@+id/ibRefresh"
+@@ -66,8 +62,7 @@ to each button never changes.
+       android:layout_weight="1"
+       android:layout_marginStart="@dimen/ds_space_bar_gap"
+       android:orientation="horizontal"
+-      android:background="@drawable/ds_address_field_bg"
+-      android:padding="@dimen/ds_border_hairline">
++      android:background="@drawable/ds_address_field_bg">
+ 
+     <!-- sliders, or a warning sign on a page without a secure connection -->
+     <ImageButton
+@@ -77,8 +72,6 @@ to each button never changes.
+         android:nextFocusDown="@+id/vTabs"
+         android:contentDescription="@string/site_settings" />
+ 
+-    <View style="@style/Widget.TVBro.FieldDivider" />
+-
+     <FrameLayout
+         android:id="@+id/flUrl"
+         android:layout_width="0dp"
+@@ -112,10 +105,6 @@ to each button never changes.
+           android:importantForAutofill="no" />
+     </FrameLayout>
+ 
+-    <View
+-        style="@style/Widget.TVBro.FieldDivider"
+-        android:id="@+id/vVoiceSearchDivider" />
+-
+     <ImageButton
+         style="@style/Widget.TVBro.ImageButton.Ds.Field"
+         android:id="@+id/ibVoiceSearch"
+@@ -125,7 +114,7 @@ to each button never changes.
+   </com.phlox.tvwebbrowser.activity.main.view.AddressFieldLayout>
+ 
+   <LinearLayout
+-      style="@style/Widget.TVBro.ToolbarGroup"
++      style="@style/Widget.TVBro.BarGroup"
+       android:id="@+id/llFunctions">
+ 
+     <FrameLayout
+@@ -162,8 +151,6 @@ to each button never changes.
+           tools:visibility="visible" />
+     </FrameLayout>
+ 
+-    <View style="@style/Widget.TVBro.ToolbarSeparator" />
+-
+     <ImageButton
+         style="@style/Widget.TVBro.ImageButton.Ds.Segment"
+         android:id="@+id/ibFavorites"
+@@ -171,8 +158,6 @@ to each button never changes.
+         android:nextFocusDown="@+id/vTabs"
+         android:contentDescription="@string/bookmarks" />
+ 
+-    <View style="@style/Widget.TVBro.ToolbarSeparator" />
+-
+     <FrameLayout
+         android:layout_width="@dimen/ds_size_toolbar_segment"
+         android:layout_height="match_parent">
+@@ -207,8 +192,6 @@ to each button never changes.
+           tools:visibility="visible" />
+     </FrameLayout>
+ 
+-    <View style="@style/Widget.TVBro.ToolbarSeparator" />
+-
+     <!-- selected (activated) in the incognito mode -->
+     <ImageButton
+         style="@style/Widget.TVBro.ImageButton.Ds.Segment"
+@@ -217,8 +200,6 @@ to each button never changes.
+         android:nextFocusDown="@+id/vTabs"
+         android:contentDescription="@string/incognito_mode" />
+ 
+-    <View style="@style/Widget.TVBro.ToolbarSeparator" />
+-
+     <!-- History, Phone sync and Settings; selected (activated) while its menu is open -->
+     <ImageButton
+         style="@style/Widget.TVBro.ImageButton.Ds.Segment"
+diff --git a/app/src/main/res/values-night/colors.xml b/app/src/main/res/values-night/colors.xml
+index 462e20f..158f70f 100644
+--- a/app/src/main/res/values-night/colors.xml
++++ b/app/src/main/res/values-night/colors.xml
+@@ -28,9 +28,9 @@
+     <color name="badge_stroke">#4E4E4E</color>
+ 
+     <!--
+-    Design system tokens, dark theme (the ones that differ): graphite visionOS. Smoky dark glass, translucent, no
+-    blur and no white fill (white only as the light on the edges); text is white at 90%, secondary at 66%.
+-    Glass: the top and the bottom of the gradient, focused is about 10 points lighter; numbers of the Graphite concept.
++    Design system tokens, dark theme (the ones that differ): graphite. Dark translucent surfaces with no blur, no
++    gradient and no shadow; the controls are white at 8%, 17% and 24% over them; text is white at 90%, secondary at 66%.
++    The browser bar is one flat matte plate (ds_bg_chrome) with the plates of ds_bar_* on it.
+     -->
+     <color name="ds_bg_page">#0C0809</color>
+     <color name="ds_bg_chrome">#EB0E0C12</color>
+@@ -51,13 +51,7 @@
+     <color name="ds_on_badge">#1B1B1B</color>
+     <color name="ds_toast">#F026242E</color>
+     <color name="ds_danger">#FF8A80</color>
+-    <color name="ds_glass_top">#9E444250</color>
+-    <color name="ds_glass_bottom">#BD18161F</color>
+-    <color name="ds_glass_focus_top">#A3524F5F</color>
+-    <color name="ds_glass_focus_bottom">#B8201E29</color>
+-    <color name="ds_field_top">#A8282631</color>
+-    <color name="ds_field_bottom">#C2161420</color>
+-    <color name="ds_tab_current_top">#9E444250</color>
+-    <color name="ds_tab_current_bottom">#BD18161F</color>
+-    <color name="ds_glass_glare">#1DFFFFFF</color>
++    <!-- The flat plates of the bar: white at 16% (the current tab, an activated button) and at 24% (focus) over the dark bar -->
++    <color name="ds_bar_on">#29FFFFFF</color>
++    <color name="ds_bar_focus">#3DFFFFFF</color>
+ </resources>
+diff --git a/app/src/main/res/values/attrs.xml b/app/src/main/res/values/attrs.xml
+index 1275b04..7ec4778 100644
+--- a/app/src/main/res/values/attrs.xml
++++ b/app/src/main/res/values/attrs.xml
+@@ -102,24 +102,10 @@
+     <attr name="tbColorDsDanger" format="color" />
+     <!-- Behind sheets (32% black) -->
+     <attr name="tbColorDsScrim" format="color" />
+-    <!--
+-    Graphite glass of the browser bar: a gradient from the top to the bottom edge (translucent dark graphite, no
+-    white fill, no blur) and the light that falls on the top edge. The light theme keeps its flat fills.
+-    -->
+-    <!-- Groups of toolbar segments, standalone buttons, the search button: the top and the bottom -->
+-    <attr name="tbColorDsGlassTop" format="color" />
+-    <attr name="tbColorDsGlassBottom" format="color" />
+-    <!-- The same glass when focused or selected: about 10 points lighter -->
+-    <attr name="tbColorDsGlassFocusTop" format="color" />
+-    <attr name="tbColorDsGlassFocusBottom" format="color" />
+-    <!-- The address field at rest: a little darker than the buttons -->
+-    <attr name="tbColorDsFieldTop" format="color" />
+-    <attr name="tbColorDsFieldBottom" format="color" />
+-    <!-- The current tab (activated or selected): in the night theme the full glass, in the light theme white, the brightest of the strip -->
+-    <attr name="tbColorDsTabCurrentTop" format="color" />
+-    <attr name="tbColorDsTabCurrentBottom" format="color" />
+-    <!-- White light on the upper half of the glass and along its edge inside the rim -->
+-    <attr name="tbColorDsGlassGlare" format="color" />
++    <!-- The flat plates of the browser bar: the current tab and an activated button (a lighter step over the bar) -->
++    <attr name="tbColorDsBarOn" format="color" />
++    <!-- The plate under the focused (or hovered) button or tab of the bar: lighter still; the only mark of focus besides the ring of a field -->
++    <attr name="tbColorDsBarFocus" format="color" />
+     <!--
+     Sizes of the rows of the settings screens: the TV values are in Theme.TVBro, the phone ones in
+     ThemeOverlay.TVBro.Settings.Phone, which the phone page lays over its rows
+diff --git a/app/src/main/res/values/colors.xml b/app/src/main/res/values/colors.xml
+index 86df633..f323a93 100644
+--- a/app/src/main/res/values/colors.xml
++++ b/app/src/main/res/values/colors.xml
+@@ -51,14 +51,7 @@
+     <color name="ds_accent">#48A0FF</color>
+     <color name="ds_danger">#C5221F</color>
+     <color name="ds_scrim">#52000000</color>
+-    <!-- Glass tokens (see attrs.xml): the light theme keeps flat fills and no glare; the current tab stays white as it was -->
+-    <color name="ds_glass_top">#E6ECF4</color>
+-    <color name="ds_glass_bottom">#E6ECF4</color>
+-    <color name="ds_glass_focus_top">#E8F4F9</color>
+-    <color name="ds_glass_focus_bottom">#E8F4F9</color>
+-    <color name="ds_field_top">#FFFFFF</color>
+-    <color name="ds_field_bottom">#FFFFFF</color>
+-    <color name="ds_tab_current_top">#FFFFFF</color>
+-    <color name="ds_tab_current_bottom">#FFFFFF</color>
+-    <color name="ds_glass_glare">#00FFFFFF</color>
++    <!-- The flat plates of the bar (see attrs.xml): the current tab stays white as it was, a focused button is a light blue-gray plate -->
++    <color name="ds_bar_on">#FFFFFF</color>
++    <color name="ds_bar_focus">#D6E7F3</color>
+ </resources>
+diff --git a/app/src/main/res/values/dimens.xml b/app/src/main/res/values/dimens.xml
+index 5e81b04..4d2b781 100644
+--- a/app/src/main/res/values/dimens.xml
++++ b/app/src/main/res/values/dimens.xml
+@@ -58,14 +58,12 @@
+     <dimen name="ds_size_toast_min_width">370dp</dimen>
+     <dimen name="ds_radius_control">14dp</dimen>
+     <dimen name="ds_radius_lg">20dp</dimen>
+-    <!-- The graphite glass of the bar: groups, the address field and standalone buttons are almost capsules (the bar is 56dp high) -->
+-    <dimen name="ds_radius_glass">24dp</dimen>
+-    <!-- The gap between a group or a field and the plate of its focused segment -->
+-    <dimen name="ds_glass_inset">3dp</dimen>
+-    <!-- The light line inside the bright rim of a focused tile, field or tab: just inside the outline (ds_focus_outline) -->
+-    <dimen name="ds_glass_edge_inset">1.5dp</dimen>
+-    <!-- The same line on the plate of a focused segment: the plate inset plus the outline (ds_glass_inset + ds_focus_outline) -->
+-    <dimen name="ds_glass_plate_edge_inset">4.5dp</dimen>
++    <!-- More than half of any field or button: a drawable cuts the radius to half of its height, so the shape is a capsule (a circle on a square) at any height -->
++    <dimen name="ds_radius_capsule">48dp</dimen>
++    <!-- The gap between a button of the bar and its focus plate, so the plates of two neighbours never touch -->
++    <dimen name="ds_plate_inset">3dp</dimen>
++    <!-- The half of the gap between two tabs, cut from each side of a tab -->
++    <dimen name="ds_tab_inset">2dp</dimen>
+     <dimen name="ds_border_hairline">1dp</dimen>
+     <dimen name="ds_border_selected">1.5dp</dimen>
+     <!-- The outline of a focused control (the focused fills of the light theme are almost invisible) -->
+@@ -83,10 +81,10 @@
+     <dimen name="ds_field_icon_padding_vertical">16dp</dimen>
+     <dimen name="ds_field_divider_height">28dp</dimen>
+     <dimen name="ds_toolbar_separator_margin">10dp</dimen>
+-    <!-- The search button of the bar: the glass, the loupe, the word -->
+-    <dimen name="ds_search_button_padding_start">10dp</dimen>
+-    <dimen name="ds_search_button_padding_end">12dp</dimen>
+-    <dimen name="ds_search_button_icon_text">4dp</dimen>
++    <!-- The search button of the bar: the loupe and the word, no box -->
++    <dimen name="ds_search_button_padding_start">14dp</dimen>
++    <dimen name="ds_search_button_padding_end">18dp</dimen>
++    <dimen name="ds_search_button_icon_text">6dp</dimen>
+     <dimen name="ds_text_search_button">16sp</dimen>
+     <dimen name="ds_space_field_inset">12dp</dimen>
+     <dimen name="ds_badge_margin_top">6dp</dimen>
+diff --git a/app/src/main/res/values/styles.xml b/app/src/main/res/values/styles.xml
+index f7ccf01..22ba011 100644
+--- a/app/src/main/res/values/styles.xml
++++ b/app/src/main/res/values/styles.xml
+@@ -45,7 +45,7 @@
+         <item name="android:padding">@dimen/ds_cursor_menu_center_icon_padding</item>
+     </style>
+ 
+-    <!-- A segment of a toolbar group -->
++    <!-- An icon button of the bar (a plate under it only when focused or on); also a segment of a filter group on the TV screens -->
+     <style name="Widget.TVBro.ImageButton.Ds.Segment">
+         <item name="android:layout_width">@dimen/ds_size_toolbar_segment</item>
+         <item name="android:layout_height">match_parent</item>
+@@ -56,19 +56,19 @@
+         <item name="android:paddingBottom">@dimen/ds_toolbar_icon_padding_vertical</item>
+     </style>
+ 
+-    <!-- A button on its own in the bar (the close-app button) -->
++    <!-- A button on its own in the bar (the close-app button, the back button of the TV screens): the icon, a round plate when focused -->
+     <style name="Widget.TVBro.ImageButton.Ds.Standalone">
+         <item name="android:layout_width">@dimen/ds_size_chrome_control</item>
+         <item name="android:layout_height">@dimen/ds_size_chrome_control</item>
+-        <item name="android:background">@drawable/ds_icon_button_bg</item>
++        <item name="android:background">@drawable/ds_control_bg</item>
+         <item name="android:padding">@dimen/ds_close_icon_padding</item>
+     </style>
+ 
+-    <!-- A button inside the address field -->
++    <!-- A button inside the address field: the icon, a round plate when focused -->
+     <style name="Widget.TVBro.ImageButton.Ds.Field">
+         <item name="android:layout_width">@dimen/ds_size_toolbar_segment</item>
+         <item name="android:layout_height">match_parent</item>
+-        <item name="android:background">@drawable/ds_field_button_bg</item>
++        <item name="android:background">@drawable/ds_control_bg</item>
+         <item name="android:paddingStart">@dimen/ds_field_icon_padding_horizontal</item>
+         <item name="android:paddingEnd">@dimen/ds_field_icon_padding_horizontal</item>
+         <item name="android:paddingTop">@dimen/ds_field_icon_padding_vertical</item>
+@@ -130,7 +130,15 @@
+         <item name="android:importantForAccessibility">no</item>
+     </style>
+ 
+-    <!-- A group of toolbar segments; the group clips them to its rounded border (ActionBar sets clipToOutline) -->
++    <!-- A group of buttons of the browser bar: no box and no separators, only the gap to its neighbours -->
++    <style name="Widget.TVBro.BarGroup" parent="">
++        <item name="android:layout_width">wrap_content</item>
++        <item name="android:layout_height">match_parent</item>
++        <item name="android:layout_marginStart">@dimen/ds_space_bar_gap</item>
++        <item name="android:orientation">horizontal</item>
++    </style>
++
++    <!-- A group of toolbar segments on a TV screen (the filters of the downloads) in a flat box; the group clips them to its rounded border -->
+     <style name="Widget.TVBro.ToolbarGroup" parent="">
+         <item name="android:layout_width">wrap_content</item>
+         <item name="android:layout_height">match_parent</item>
+@@ -149,12 +157,12 @@
+         <item name="android:background">?attr/tbColorDsDivider</item>
+     </style>
+ 
+-    <!-- The search button of the bar: a glass tile with a loupe and the word, it opens the address and search bar -->
++    <!-- The search button of the bar: a loupe and the word with no box (a round plate when focused), it opens the address and search bar -->
+     <style name="Widget.TVBro.SearchButton" parent="">
+         <item name="android:layout_width">wrap_content</item>
+         <item name="android:layout_height">match_parent</item>
+         <item name="android:layout_marginStart">@dimen/ds_space_bar_gap</item>
+-        <item name="android:background">@drawable/ds_icon_button_bg</item>
++        <item name="android:background">@drawable/ds_control_bg</item>
+         <item name="android:focusable">true</item>
+         <item name="android:clickable">true</item>
+         <item name="android:gravity">center_vertical</item>
+diff --git a/app/src/main/res/values/themes.xml b/app/src/main/res/values/themes.xml
+index 33b3bb7..94be06c 100644
+--- a/app/src/main/res/values/themes.xml
++++ b/app/src/main/res/values/themes.xml
+@@ -60,15 +60,8 @@
+         <item name="tbColorDsAccent">@color/ds_accent</item>
+         <item name="tbColorDsDanger">@color/ds_danger</item>
+         <item name="tbColorDsScrim">@color/ds_scrim</item>
+-        <item name="tbColorDsGlassTop">@color/ds_glass_top</item>
+-        <item name="tbColorDsGlassBottom">@color/ds_glass_bottom</item>
+-        <item name="tbColorDsGlassFocusTop">@color/ds_glass_focus_top</item>
+-        <item name="tbColorDsGlassFocusBottom">@color/ds_glass_focus_bottom</item>
+-        <item name="tbColorDsFieldTop">@color/ds_field_top</item>
+-        <item name="tbColorDsFieldBottom">@color/ds_field_bottom</item>
+-        <item name="tbColorDsTabCurrentTop">@color/ds_tab_current_top</item>
+-        <item name="tbColorDsTabCurrentBottom">@color/ds_tab_current_bottom</item>
+-        <item name="tbColorDsGlassGlare">@color/ds_glass_glare</item>
++        <item name="tbColorDsBarOn">@color/ds_bar_on</item>
++        <item name="tbColorDsBarFocus">@color/ds_bar_focus</item>
+         <item name="alertDialogTheme">@style/ThemeOverlay.TVBro.Dialog.Alert</item>
+         <item name="tbSettingsRowMinHeight">@dimen/ds_settings_row_min_height</item>
+         <item name="tbSettingsRowPadding">@dimen/ds_settings_row_padding</item>
+diff --git a/app/src/main/res/drawable/ds_field_button_bg.xml b/app/src/main/res/drawable/ds_field_button_bg.xml
+deleted file mode 100644
+index 797f689..0000000
+--- a/app/src/main/res/drawable/ds_field_button_bg.xml
++++ /dev/null
+@@ -1,57 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- A button inside the address field (the site button, the mic): no fill at rest, focused (a lighter rounded plate with a bright rim) -->
+-<selector xmlns:android="http://schemas.android.com/apk/res/android">
+-    <item android:state_focused="true">
+-        <layer-list>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_plate_edge_inset" android:top="@dimen/ds_glass_plate_edge_inset" android:right="@dimen/ds_glass_plate_edge_inset" android:bottom="@dimen/ds_glass_plate_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
+-    </item>
+-    <item android:state_hovered="true">
+-        <layer-list>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:startColor="?attr/tbColorDsGlassFocusTop" android:endColor="?attr/tbColorDsGlassFocusBottom" />
+-                    <stroke android:color="?attr/tbColorDsFocus" android:width="@dimen/ds_focus_outline" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_inset" android:top="@dimen/ds_glass_inset" android:right="@dimen/ds_glass_inset" android:bottom="@dimen/ds_glass_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <gradient android:angle="270" android:centerY="0.5" android:startColor="?attr/tbColorDsGlassGlare"
+-                        android:centerColor="@android:color/transparent" android:endColor="@android:color/transparent" />
+-                </shape>
+-            </item>
+-            <item android:left="@dimen/ds_glass_plate_edge_inset" android:top="@dimen/ds_glass_plate_edge_inset" android:right="@dimen/ds_glass_plate_edge_inset" android:bottom="@dimen/ds_glass_plate_edge_inset">
+-                <shape android:shape="rectangle">
+-                    <corners android:radius="@dimen/ds_radius_lg" />
+-                    <stroke android:color="?attr/tbColorDsGlassGlare" android:width="@dimen/ds_border_hairline" />
+-                </shape>
+-            </item>
+-        </layer-list>
+-    </item>
+-    <item>
+-        <shape android:shape="rectangle">
+-            <solid android:color="@android:color/transparent" />
+-        </shape>
+-    </item>
+-</selector>

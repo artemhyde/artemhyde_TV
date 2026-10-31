@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.glasstv.picture"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Права не нужны: картинку пишет «Сторож», мы только шлём ему команды (Android 11+: чужое приложение видно через queries) -->
+    <queries>
+        <package android:name="app.glasstv.guard" />
+        <!-- Вкладка «Звук» в шапке открывает соседнюю полосу -->
+        <package android:name="app.glasstv.sound" />
+    </queries>
+
+    <application
+        android:label="Картинка"
+        android:icon="@drawable/icon"
+        android:banner="@drawable/banner"
+        android:allowBackup="false"
+        android:theme="@style/Picture">
+
+        <!-- Полоса поверх текущего приложения: прозрачная тема, фильм за ней продолжает идти -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,732 @@
+{
+  "version": 1,
+  "updated": "2026-10-27",
+  "source": "Wikimedia Commons: избранные (Featured pictures) и качественные (Quality images) фото, уменьшенные копии шириной 1920",
+  "slots": {
+    "morning": "06:00-12:00",
+    "day": "12:00-18:00",
+    "evening": "18:00-06:00 (вечер и ночь)"
+  },
+  "photos": [
+    {
+      "id": "m01",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Hochries%2C_Alpes_del_Chiemgau%2C_Alemania%2C_2024-10-19%2C_DD_34-36_HDR.jpg/1920px-Hochries%2C_Alpes_del_Chiemgau%2C_Alemania%2C_2024-10-19%2C_DD_34-36_HDR.jpg",
+      "caption": "Гора Хохрис, Германия",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Hochries, Alpes del Chiemgau, Alemania, 2024-10-19, DD 34-36 HDR.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Hochries,_Alpes_del_Chiemgau,_Alemania,_2024-10-19,_DD_34-36_HDR.jpg"
+    },
+    {
+      "id": "m02",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Blassenstein_Erlauftal_mit_Nebel_02_Panorama.JPG/1920px-Blassenstein_Erlauftal_mit_Nebel_02_Panorama.JPG",
+      "caption": "Долина Эрлауф, Австрия",
+      "author": "Uoaei1",
+      "license": "CC BY-SA 3.0",
+      "file": "Blassenstein Erlauftal mit Nebel 02 Panorama.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:Blassenstein_Erlauftal_mit_Nebel_02_Panorama.JPG"
+    },
+    {
+      "id": "m03",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Sunrise%2C_Koh_Yao_Noi_%28island%29%2C_Phang_Nga_Bay%2C_Thailand.jpg/1920px-Sunrise%2C_Koh_Yao_Noi_%28island%29%2C_Phang_Nga_Bay%2C_Thailand.jpg",
+      "caption": "Остров Ко-Яо-Ной, Таиланд",
+      "author": "Vyacheslav Argenberg",
+      "license": "CC BY 4.0",
+      "file": "Sunrise, Koh Yao Noi (island), Phang Nga Bay, Thailand.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sunrise,_Koh_Yao_Noi_(island),_Phang_Nga_Bay,_Thailand.jpg"
+    },
+    {
+      "id": "m04",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Campsite_at_Mystic_Beach%2C_Vancouver_Island%2C_Canada.jpg/1920px-Campsite_at_Mystic_Beach%2C_Vancouver_Island%2C_Canada.jpg",
+      "caption": "Пляж Мистик, Канада",
+      "author": "Michal Klajban",
+      "license": "CC BY-SA 4.0",
+      "file": "Campsite at Mystic Beach, Vancouver Island, Canada.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Campsite_at_Mystic_Beach,_Vancouver_Island,_Canada.jpg"
+    },
+    {
+      "id": "m05",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Nybrokajen_Blasieholmen_Stockholm_2016_01.jpg/1920px-Nybrokajen_Blasieholmen_Stockholm_2016_01.jpg",
+      "caption": "Нюбрукайен, Стокгольм, Швеция",
+      "author": "Julian Herzog",
+      "license": "CC BY 4.0",
+      "file": "Nybrokajen Blasieholmen Stockholm 2016 01.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Nybrokajen_Blasieholmen_Stockholm_2016_01.jpg"
+    },
+    {
+      "id": "m06",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/A_small_loch_in_the_saddle_between_Beinn_an_Dothaidh_and_Beinn_Dorain%2C_Scotland_01.jpg/1920px-A_small_loch_in_the_saddle_between_Beinn_an_Dothaidh_and_Beinn_Dorain%2C_Scotland_01.jpg",
+      "caption": "Горы Бен-Дорейн, Шотландия",
+      "author": "Michal Klajban",
+      "license": "CC BY-SA 4.0",
+      "file": "A small loch in the saddle between Beinn an Dothaidh and Beinn Dorain, Scotland 01.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:A_small_loch_in_the_saddle_between_Beinn_an_Dothaidh_and_Beinn_Dorain,_Scotland_01.jpg"
+    },
+    {
+      "id": "m07",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Felsenegg_sunrise_HDR_20200115.jpg/1920px-Felsenegg_sunrise_HDR_20200115.jpg",
+      "caption": "Цюрихское озеро, Швейцария",
+      "author": "Daniel Kraft",
+      "license": "CC BY-SA 3.0",
+      "file": "Felsenegg sunrise HDR 20200115.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Felsenegg_sunrise_HDR_20200115.jpg"
+    },
+    {
+      "id": "m08",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/View_from_McQueens_Pass_towards_Lyttelton_Harbour%2C_New_Zealand.jpg/1920px-View_from_McQueens_Pass_towards_Lyttelton_Harbour%2C_New_Zealand.jpg",
+      "caption": "Гавань Литтелтон, Новая Зеландия",
+      "author": "Michal Klajban",
+      "license": "CC BY-SA 4.0",
+      "file": "View from McQueens Pass towards Lyttelton Harbour, New Zealand.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:View_from_McQueens_Pass_towards_Lyttelton_Harbour,_New_Zealand.jpg"
+    },
+    {
+      "id": "m09",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/1_taipei_sunrise_panorama_dxr_edit_pangen_141215_1.jpg/1920px-1_taipei_sunrise_panorama_dxr_edit_pangen_141215_1.jpg",
+      "caption": "Тайбэй, Тайвань",
+      "author": "Chensiyuan",
+      "license": "CC BY-SA 4.0",
+      "file": "1 taipei sunrise panorama dxr edit pangen 141215 1.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:1_taipei_sunrise_panorama_dxr_edit_pangen_141215_1.jpg"
+    },
+    {
+      "id": "m10",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Flatirons_Sunrise.jpg/1920px-Flatirons_Sunrise.jpg",
+      "caption": "Скалы Флэтайронс, США",
+      "author": "Tyler Cipriani",
+      "license": "CC BY-SA 4.0",
+      "file": "Flatirons Sunrise.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Flatirons_Sunrise.jpg"
+    },
+    {
+      "id": "m11",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Foggy_Reflections_-_Loch_Tummel.jpg/1920px-Foggy_Reflections_-_Loch_Tummel.jpg",
+      "caption": "Лох-Таммел, Шотландия",
+      "author": "Eric Kilby",
+      "license": "CC BY-SA 4.0",
+      "file": "Foggy Reflections - Loch Tummel.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Foggy_Reflections_-_Loch_Tummel.jpg"
+    },
+    {
+      "id": "m12",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Shivaliks_Himalayas_Aerial_Dehaze_Himachal_Feb20_R16_02827.jpg/1920px-Shivaliks_Himalayas_Aerial_Dehaze_Himachal_Feb20_R16_02827.jpg",
+      "caption": "Предгорья Гималаев, Индия",
+      "author": "Timothy A. Gonsalves",
+      "license": "CC BY-SA 4.0",
+      "file": "Shivaliks Himalayas Aerial Dehaze Himachal Feb20 R16 02827.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Shivaliks_Himalayas_Aerial_Dehaze_Himachal_Feb20_R16_02827.jpg"
+    },
+    {
+      "id": "m13",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/Tessellated_Pavement_Sunrise_Landscape.jpg/1920px-Tessellated_Pavement_Sunrise_Landscape.jpg",
+      "caption": "Мозаичная мостовая, Австралия",
+      "author": "JJ Harrison",
+      "license": "CC BY-SA 2.5",
+      "file": "Tessellated Pavement Sunrise Landscape.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Tessellated_Pavement_Sunrise_Landscape.jpg"
+    },
+    {
+      "id": "m14",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/Sunrise_at_Ethiopia%C2%B4s_salt_flats.jpg/1920px-Sunrise_at_Ethiopia%C2%B4s_salt_flats.jpg",
+      "caption": "Соляные равнины, Эфиопия",
+      "author": "Thomas Fuhrmann",
+      "license": "CC BY-SA 4.0",
+      "file": "Sunrise at Ethiopia´s salt flats.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sunrise_at_Ethiopia%C2%B4s_salt_flats.jpg"
+    },
+    {
+      "id": "m15",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Sunrise_Annapurna_Pokhara_Nepal_Feb13_DSC_1583.jpg/1920px-Sunrise_Annapurna_Pokhara_Nepal_Feb13_DSC_1583.jpg",
+      "caption": "Аннапурна, Непал",
+      "author": "Timothy A. Gonsalves",
+      "license": "CC BY-SA 4.0",
+      "file": "Sunrise Annapurna Pokhara Nepal Feb13 DSC 1583.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sunrise_Annapurna_Pokhara_Nepal_Feb13_DSC_1583.jpg"
+    },
+    {
+      "id": "m16",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Amanecer_en_el_lago_Titicaca%2C_Puno%2C_Per%C3%BA%2C_2015-08-01%2C_DD_01.JPG/1920px-Amanecer_en_el_lago_Titicaca%2C_Puno%2C_Per%C3%BA%2C_2015-08-01%2C_DD_01.JPG",
+      "caption": "Озеро Титикака, Перу",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Amanecer en el lago Titicaca, Puno, Perú, 2015-08-01, DD 01.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:Amanecer_en_el_lago_Titicaca,_Puno,_Per%C3%BA,_2015-08-01,_DD_01.JPG"
+    },
+    {
+      "id": "m17",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Gunung_Bromo_sunrise_-_Indonesia.jpg/1920px-Gunung_Bromo_sunrise_-_Indonesia.jpg",
+      "caption": "Вулкан Бромо, Индонезия",
+      "author": "Thomas Fuhrmann",
+      "license": "CC BY-SA 4.0",
+      "file": "Gunung Bromo sunrise - Indonesia.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Gunung_Bromo_sunrise_-_Indonesia.jpg"
+    },
+    {
+      "id": "m18",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Watzmann_%28Stangga%C3%9F%29.jpg/1920px-Watzmann_%28Stangga%C3%9F%29.jpg",
+      "caption": "Ватцман, Германия",
+      "author": "Jörg Braukmann",
+      "license": "CC BY-SA 4.0",
+      "file": "Watzmann (Stanggaß).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Watzmann_(Stangga%C3%9F).jpg"
+    },
+    {
+      "id": "m19",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Karst_peaks_with_sea_of_clouds_at_sunrise%2C_South_view_from_the_top_of_Mount_Nam_Xay%2C_Vang_Vieng%2C_Laos.jpg/1920px-Karst_peaks_with_sea_of_clouds_at_sunrise%2C_South_view_from_the_top_of_Mount_Nam_Xay%2C_Vang_Vieng%2C_Laos.jpg",
+      "caption": "Ванг-Вьенг, Лаос",
+      "author": "Basile Morin",
+      "license": "CC BY-SA 4.0",
+      "file": "Karst peaks with sea of clouds at sunrise, South view from the top of Mount Nam Xay, Vang Vieng, Laos.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Karst_peaks_with_sea_of_clouds_at_sunrise,_South_view_from_the_top_of_Mount_Nam_Xay,_Vang_Vieng,_Laos.jpg"
+    },
+    {
+      "id": "m20",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/006_Dune_45_in_Sossusvlei_at_sunrise_Photo_by_Giles_Laurent.jpg/1920px-006_Dune_45_in_Sossusvlei_at_sunrise_Photo_by_Giles_Laurent.jpg",
+      "caption": "Дюна 45, Намибия",
+      "author": "Giles Laurent",
+      "license": "CC BY-SA 4.0",
+      "file": "006 Dune 45 in Sossusvlei at sunrise Photo by Giles Laurent.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:006_Dune_45_in_Sossusvlei_at_sunrise_Photo_by_Giles_Laurent.jpg"
+    },
+    {
+      "id": "m21",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Sk%C3%BAtu%C3%A1_valley_seen_from_Siglufj%C3%B6r%C3%B0ur_%282024%29.jpg/1920px-Sk%C3%BAtu%C3%A1_valley_seen_from_Siglufj%C3%B6r%C3%B0ur_%282024%29.jpg",
+      "caption": "Сиглюфьордюр, Исландия",
+      "author": "ThibautRe",
+      "license": "CC BY-SA 4.0",
+      "file": "Skútuá valley seen from Siglufjörður (2024).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sk%C3%BAtu%C3%A1_valley_seen_from_Siglufj%C3%B6r%C3%B0ur_(2024).jpg"
+    },
+    {
+      "id": "m22",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Mont_St_Michel_at_sunrise.jpg/1920px-Mont_St_Michel_at_sunrise.jpg",
+      "caption": "Мон-Сен-Мишель, Франция",
+      "author": "Lynx1211",
+      "license": "CC BY-SA 4.0",
+      "file": "Mont St Michel at sunrise.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Mont_St_Michel_at_sunrise.jpg"
+    },
+    {
+      "id": "m23",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Lake_Tahoe_at_morning_-_7-2023.jpg/1920px-Lake_Tahoe_at_morning_-_7-2023.jpg",
+      "caption": "Озеро Тахо, США",
+      "author": "John D.",
+      "license": "CC BY 2.0",
+      "file": "Lake Tahoe at morning - 7-2023.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Lake_Tahoe_at_morning_-_7-2023.jpg"
+    },
+    {
+      "id": "m24",
+      "slot": "morning",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Seat_of_the_European_Central_Bank_and_Frankfurt_Skyline_at_dawn_20150422_1.jpg/1920px-Seat_of_the_European_Central_Bank_and_Frankfurt_Skyline_at_dawn_20150422_1.jpg",
+      "caption": "Франкфурт-на-Майне, Германия",
+      "author": "DXR",
+      "license": "CC BY-SA 4.0",
+      "file": "Seat of the European Central Bank and Frankfurt Skyline at dawn 20150422 1.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Seat_of_the_European_Central_Bank_and_Frankfurt_Skyline_at_dawn_20150422_1.jpg"
+    },
+    {
+      "id": "d01",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/1_lake_louise_pano_2019.jpg/1920px-1_lake_louise_pano_2019.jpg",
+      "caption": "Озеро Луиз, Канада",
+      "author": "Chensiyuan",
+      "license": "CC BY-SA 4.0",
+      "file": "1 lake louise pano 2019.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:1_lake_louise_pano_2019.jpg"
+    },
+    {
+      "id": "d02",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Mount_Shasta%2C_Lake_Siskiyou%2C_SW_view.jpg/1920px-Mount_Shasta%2C_Lake_Siskiyou%2C_SW_view.jpg",
+      "caption": "Гора Шаста, США",
+      "author": "Radomianin",
+      "license": "CC BY-SA 4.0",
+      "file": "Mount Shasta, Lake Siskiyou, SW view.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Mount_Shasta,_Lake_Siskiyou,_SW_view.jpg"
+    },
+    {
+      "id": "d03",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Diamonds_Thudufushi_Beach_and_Water_Villas%2C_May_2017_-04.jpg/1920px-Diamonds_Thudufushi_Beach_and_Water_Villas%2C_May_2017_-04.jpg",
+      "caption": "Атолл Ари, Мальдивы",
+      "author": "Martin Falbisoner",
+      "license": "CC BY-SA 4.0",
+      "file": "Diamonds Thudufushi Beach and Water Villas, May 2017 -04.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Diamonds_Thudufushi_Beach_and_Water_Villas,_May_2017_-04.jpg"
+    },
+    {
+      "id": "d04",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/120408_Pheriche_Pano_4k.jpg/1920px-120408_Pheriche_Pano_4k.jpg",
+      "caption": "Долина Кхумбу, Непал",
+      "author": "Faj2323",
+      "license": "CC BY-SA 4.0",
+      "file": "120408 Pheriche Pano 4k.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:120408_Pheriche_Pano_4k.jpg"
+    },
+    {
+      "id": "d05",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Glaciar_Margerie%2C_Parque_Nacional_Bah%C3%ADa_del_Glaciar%2C_Alaska%2C_Estados_Unidos%2C_2017-08-19%2C_DD_33.jpg/1920px-Glaciar_Margerie%2C_Parque_Nacional_Bah%C3%ADa_del_Glaciar%2C_Alaska%2C_Estados_Unidos%2C_2017-08-19%2C_DD_33.jpg",
+      "caption": "Ледник Маржери, Аляска",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Glaciar Margerie, Parque Nacional Bahía del Glaciar, Alaska, Estados Unidos, 2017-08-19, DD 33.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Glaciar_Margerie,_Parque_Nacional_Bah%C3%ADa_del_Glaciar,_Alaska,_Estados_Unidos,_2017-08-19,_DD_33.jpg"
+    },
+    {
+      "id": "d06",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Pangong_Tso_2.jpg/1920px-Pangong_Tso_2.jpg",
+      "caption": "Озеро Пангонг-Цо, Индия",
+      "author": "KennyOMG",
+      "license": "CC BY-SA 4.0",
+      "file": "Pangong Tso 2.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Pangong_Tso_2.jpg"
+    },
+    {
+      "id": "d07",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/1_zhangjiajie_huangshizhai_wulingyuan_panorama_2012.jpg/1920px-1_zhangjiajie_huangshizhai_wulingyuan_panorama_2012.jpg",
+      "caption": "Чжанцзяцзе, Китай",
+      "author": "Chensiyuan",
+      "license": "CC BY-SA 4.0",
+      "file": "1 zhangjiajie huangshizhai wulingyuan panorama 2012.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:1_zhangjiajie_huangshizhai_wulingyuan_panorama_2012.jpg"
+    },
+    {
+      "id": "d08",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Aerial_image_of_Stromboli_%28view_from_the_northeast%29.jpg/1920px-Aerial_image_of_Stromboli_%28view_from_the_northeast%29.jpg",
+      "caption": "Вулкан Стромболи, Италия",
+      "author": "Carsten Steger",
+      "license": "CC BY-SA 4.0",
+      "file": "Aerial image of Stromboli (view from the northeast).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Aerial_image_of_Stromboli_(view_from_the_northeast).jpg"
+    },
+    {
+      "id": "d09",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Flysch_coast_between_Deba_and_Zumaia.jpg/1920px-Flysch_coast_between_Deba_and_Zumaia.jpg",
+      "caption": "Флишевое побережье, Испания",
+      "author": "Jörg Braukmann",
+      "license": "CC BY-SA 4.0",
+      "file": "Flysch coast between Deba and Zumaia.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Flysch_coast_between_Deba_and_Zumaia.jpg"
+    },
+    {
+      "id": "d10",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Caribbean_Sea_-_Long_Exposure.jpg/1920px-Caribbean_Sea_-_Long_Exposure.jpg",
+      "caption": "Карибское море",
+      "author": "Martin Falbisoner",
+      "license": "CC BY-SA 4.0",
+      "file": "Caribbean Sea - Long Exposure.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Caribbean_Sea_-_Long_Exposure.jpg"
+    },
+    {
+      "id": "d11",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/%D0%A7%D0%B8%D0%BD%D0%BA%D0%B8_%D0%BF%D0%BB%D0%B0%D1%82%D0%BE_%D0%A3%D1%81%D1%82%D1%8E%D1%80%D1%82._%D0%A3%D1%80%D0%BE%D1%87%D0%B8%D1%89%D0%B5_%D0%91%D0%BE%D0%B7%D0%B6%D1%8B%D1%80%D0%B0.jpg/1920px-%D0%A7%D0%B8%D0%BD%D0%BA%D0%B8_%D0%BF%D0%BB%D0%B0%D1%82%D0%BE_%D0%A3%D1%81%D1%82%D1%8E%D1%80%D1%82._%D0%A3%D1%80%D0%BE%D1%87%D0%B8%D1%89%D0%B5_%D0%91%D0%BE%D0%B7%D0%B6%D1%8B%D1%80%D0%B0.jpg",
+      "caption": "Плато Устюрт, Казахстан",
+      "author": "Максат79",
+      "license": "CC BY-SA 4.0",
+      "file": "Чинки плато Устюрт. Урочище Бозжыра.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:%D0%A7%D0%B8%D0%BD%D0%BA%D0%B8_%D0%BF%D0%BB%D0%B0%D1%82%D0%BE_%D0%A3%D1%81%D1%82%D1%8E%D1%80%D1%82._%D0%A3%D1%80%D0%BE%D1%87%D0%B8%D1%89%D0%B5_%D0%91%D0%BE%D0%B7%D0%B6%D1%8B%D1%80%D0%B0.jpg"
+    },
+    {
+      "id": "d12",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/Lake_Willoughby_October_2021_003.jpg/1920px-Lake_Willoughby_October_2021_003.jpg",
+      "caption": "Озеро Уиллоуби, США",
+      "author": "King of Hearts",
+      "license": "CC BY-SA 4.0",
+      "file": "Lake Willoughby October 2021 003.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Lake_Willoughby_October_2021_003.jpg"
+    },
+    {
+      "id": "d13",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Waimea_Canyon%2C_Kaua%CA%BBi.jpg/1920px-Waimea_Canyon%2C_Kaua%CA%BBi.jpg",
+      "caption": "Каньон Ваймеа, Гавайи",
+      "author": "Frank Schulenburg",
+      "license": "CC BY-SA 4.0",
+      "file": "Waimea Canyon, Kauaʻi.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Waimea_Canyon,_Kaua%CA%BBi.jpg"
+    },
+    {
+      "id": "d14",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Lac_d%27Arpitetta%2C_Besso_et_Glacier_de_Moming.jpg/1920px-Lac_d%27Arpitetta%2C_Besso_et_Glacier_de_Moming.jpg",
+      "caption": "Озеро Арпитетта, Швейцария",
+      "author": "Christian David",
+      "license": "CC BY-SA 4.0",
+      "file": "Lac d'Arpitetta, Besso et Glacier de Moming.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Lac_d%27Arpitetta,_Besso_et_Glacier_de_Moming.jpg"
+    },
+    {
+      "id": "d15",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Glaciar_Matanuska%2C_Alaska%2C_Estados_Unidos%2C_2017-08-22%2C_DD_67.jpg/1920px-Glaciar_Matanuska%2C_Alaska%2C_Estados_Unidos%2C_2017-08-22%2C_DD_67.jpg",
+      "caption": "Ледник Матануска, Аляска",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Glaciar Matanuska, Alaska, Estados Unidos, 2017-08-22, DD 67.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Glaciar_Matanuska,_Alaska,_Estados_Unidos,_2017-08-22,_DD_67.jpg"
+    },
+    {
+      "id": "d16",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Sydney_%28AU%29%2C_Opera_House_--_2019_--_3054.jpg/1920px-Sydney_%28AU%29%2C_Opera_House_--_2019_--_3054.jpg",
+      "caption": "Сиднейская опера, Австралия",
+      "author": "Dietmar Rabich",
+      "license": "CC BY-SA 4.0",
+      "file": "Sydney (AU), Opera House -- 2019 -- 3054.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sydney_(AU),_Opera_House_--_2019_--_3054.jpg"
+    },
+    {
+      "id": "d17",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Lower_Manhattan_from_Jersey_City_July_2014_002.jpg/1920px-Lower_Manhattan_from_Jersey_City_July_2014_002.jpg",
+      "caption": "Нижний Манхэттен, США",
+      "author": "King of Hearts",
+      "license": "CC BY-SA 3.0",
+      "file": "Lower Manhattan from Jersey City July 2014 002.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Lower_Manhattan_from_Jersey_City_July_2014_002.jpg"
+    },
+    {
+      "id": "sd01",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/CH.VS.Zermatt_Sunnegga_Grindjisee_Matterhorn_9034_16x9-R_16K.jpg/1920px-CH.VS.Zermatt_Sunnegga_Grindjisee_Matterhorn_9034_16x9-R_16K.jpg",
+      "caption": "Маттерхорн, Швейцария",
+      "author": "Roy Egloff",
+      "license": "CC BY-SA 4.0",
+      "file": "CH.VS.Zermatt Sunnegga Grindjisee Matterhorn 9034 16x9-R 16K.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:CH.VS.Zermatt_Sunnegga_Grindjisee_Matterhorn_9034_16x9-R_16K.jpg"
+    },
+    {
+      "id": "d19",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Umeda_Sky_Building%2C_Osaka%2C_November_2016_-01.jpg/1920px-Umeda_Sky_Building%2C_Osaka%2C_November_2016_-01.jpg",
+      "caption": "Умеда Скай Билдинг, Япония",
+      "author": "Martin Falbisoner",
+      "license": "CC BY-SA 4.0",
+      "file": "Umeda Sky Building, Osaka, November 2016 -01.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Umeda_Sky_Building,_Osaka,_November_2016_-01.jpg"
+    },
+    {
+      "id": "d20",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Vasco_da_Gama_Bridge_B%26W_%28crop2%29.jpg/1920px-Vasco_da_Gama_Bridge_B%26W_%28crop2%29.jpg",
+      "caption": "Мост Васко да Гама, Португалия",
+      "author": "William Warby",
+      "license": "CC BY 2.0",
+      "file": "Vasco da Gama Bridge B&W (crop2).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Vasco_da_Gama_Bridge_B%26W_(crop2).jpg"
+    },
+    {
+      "id": "d21",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Golden_Gate_Bridge_as_seen_from_Marshall%E2%80%99s_Beach%2C_March_2018.jpg/1920px-Golden_Gate_Bridge_as_seen_from_Marshall%E2%80%99s_Beach%2C_March_2018.jpg",
+      "caption": "Золотые Ворота, США",
+      "author": "Frank Schulenburg",
+      "license": "CC BY-SA 4.0",
+      "file": "Golden Gate Bridge as seen from Marshall’s Beach, March 2018.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Golden_Gate_Bridge_as_seen_from_Marshall%E2%80%99s_Beach,_March_2018.jpg"
+    },
+    {
+      "id": "d22",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bixby_Creek_Bridge%2C_California%2C_USA_-_May_2013.jpg/1920px-Bixby_Creek_Bridge%2C_California%2C_USA_-_May_2013.jpg",
+      "caption": "Мост Бикси-Крик, США",
+      "author": "Diliff",
+      "license": "CC BY-SA 3.0",
+      "file": "Bixby Creek Bridge, California, USA - May 2013.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Bixby_Creek_Bridge,_California,_USA_-_May_2013.jpg"
+    },
+    {
+      "id": "d23",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Ayuntamiento_y_Shard%2C_Londres%2C_Inglaterra%2C_2014-08-11%2C_DD_076.JPG/1920px-Ayuntamiento_y_Shard%2C_Londres%2C_Inglaterra%2C_2014-08-11%2C_DD_076.JPG",
+      "caption": "Лондон, Великобритания",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Ayuntamiento y Shard, Londres, Inglaterra, 2014-08-11, DD 076.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:Ayuntamiento_y_Shard,_Londres,_Inglaterra,_2014-08-11,_DD_076.JPG"
+    },
+    {
+      "id": "d24",
+      "slot": "day",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Seattle_%28WA%2C_USA%29%2C_Museum_of_Pop_Culture%2C_Fassade_--_2022_--_1588.jpg/1920px-Seattle_%28WA%2C_USA%29%2C_Museum_of_Pop_Culture%2C_Fassade_--_2022_--_1588.jpg",
+      "caption": "Музей поп-культуры, Сиэтл",
+      "author": "Dietmar Rabich",
+      "license": "CC BY-SA 4.0",
+      "file": "Seattle (WA, USA), Museum of Pop Culture, Fassade -- 2022 -- 1588.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Seattle_(WA,_USA),_Museum_of_Pop_Culture,_Fassade_--_2022_--_1588.jpg"
+    },
+    {
+      "id": "e01",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/San_Francisco_Bay_Bridge_Western_Span_at_night.jpg/1920px-San_Francisco_Bay_Bridge_Western_Span_at_night.jpg",
+      "caption": "Бэй-Бридж, Сан-Франциско",
+      "author": "Dllu",
+      "license": "CC BY-SA 4.0",
+      "file": "San Francisco Bay Bridge Western Span at night.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:San_Francisco_Bay_Bridge_Western_Span_at_night.jpg"
+    },
+    {
+      "id": "e02",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/13-08-09-peak-by-RalfR-04.jpg/1920px-13-08-09-peak-by-RalfR-04.jpg",
+      "caption": "Гонконг, Китай",
+      "author": "Ralf Roletschek",
+      "license": "CC BY-SA 3.0",
+      "file": "13-08-09-peak-by-RalfR-04.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:13-08-09-peak-by-RalfR-04.jpg"
+    },
+    {
+      "id": "e03",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Sydney_Harbour_Bridge_from_Circular_Quay.jpg/1920px-Sydney_Harbour_Bridge_from_Circular_Quay.jpg",
+      "caption": "Харбор-Бридж, Сидней",
+      "author": "JJ Harrison",
+      "license": "CC BY-SA 3.0",
+      "file": "Sydney Harbour Bridge from Circular Quay.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sydney_Harbour_Bridge_from_Circular_Quay.jpg"
+    },
+    {
+      "id": "e04",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Tokyo_Tower%2C_Minato_City.jpg/1920px-Tokyo_Tower%2C_Minato_City.jpg",
+      "caption": "Токио, Япония",
+      "author": "David Kernan",
+      "license": "CC BY 4.0",
+      "file": "Tokyo Tower, Minato City.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Tokyo_Tower,_Minato_City.jpg"
+    },
+    {
+      "id": "e05",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/Eiffel_Tower_and_Pont_Alexandre_III_at_night.jpg/1920px-Eiffel_Tower_and_Pont_Alexandre_III_at_night.jpg",
+      "caption": "Эйфелева башня, Франция",
+      "author": "Getfunky Paris",
+      "license": "CC BY 2.0",
+      "file": "Eiffel Tower and Pont Alexandre III at night.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Eiffel_Tower_and_Pont_Alexandre_III_at_night.jpg"
+    },
+    {
+      "id": "e06",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/Skylines_of_the_Central_Business_District%2C_Singapore_at_dusk.jpg/1920px-Skylines_of_the_Central_Business_District%2C_Singapore_at_dusk.jpg",
+      "caption": "Сингапур",
+      "author": "Basile Morin",
+      "license": "CC BY-SA 4.0",
+      "file": "Skylines of the Central Business District, Singapore at dusk.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Skylines_of_the_Central_Business_District,_Singapore_at_dusk.jpg"
+    },
+    {
+      "id": "e07",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Vilnius_Modern_Skyline_At_Dusk%2C_Lithuania_-_Diliff.jpg/1920px-Vilnius_Modern_Skyline_At_Dusk%2C_Lithuania_-_Diliff.jpg",
+      "caption": "Вильнюс, Литва",
+      "author": "Diliff",
+      "license": "CC BY-SA 3.0",
+      "file": "Vilnius Modern Skyline At Dusk, Lithuania - Diliff.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Vilnius_Modern_Skyline_At_Dusk,_Lithuania_-_Diliff.jpg"
+    },
+    {
+      "id": "e08",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Hemispheric_Twilight_-_Valencia%2C_Spain_-_Jan_2007.jpg/1920px-Hemispheric_Twilight_-_Valencia%2C_Spain_-_Jan_2007.jpg",
+      "caption": "Город искусств и наук, Испания",
+      "author": "Diliff",
+      "license": "CC BY-SA 3.0",
+      "file": "Hemispheric Twilight - Valencia, Spain - Jan 2007.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Hemispheric_Twilight_-_Valencia,_Spain_-_Jan_2007.jpg"
+    },
+    {
+      "id": "e09",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Super_moon_over_City_of_London_from_Tate_Modern_2018-01-31_4.jpg/1920px-Super_moon_over_City_of_London_from_Tate_Modern_2018-01-31_4.jpg",
+      "caption": "Лондон, Великобритания",
+      "author": "Colin",
+      "license": "CC BY-SA 4.0",
+      "file": "Super moon over City of London from Tate Modern 2018-01-31 4.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Super_moon_over_City_of_London_from_Tate_Modern_2018-01-31_4.jpg"
+    },
+    {
+      "id": "e10",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/20150716_Mexico_City_at_Night_IMG_6614_by_sebaso.jpg/1920px-20150716_Mexico_City_at_Night_IMG_6614_by_sebaso.jpg",
+      "caption": "Мехико, Мексика",
+      "author": "Sebaso",
+      "license": "CC0",
+      "file": "20150716 Mexico City at Night IMG 6614 by sebaso.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:20150716_Mexico_City_at_Night_IMG_6614_by_sebaso.jpg"
+    },
+    {
+      "id": "e11",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Lower_Manhattan_from_Jersey_City_September_2020_panorama.jpg/1920px-Lower_Manhattan_from_Jersey_City_September_2020_panorama.jpg",
+      "caption": "Нижний Манхэттен, США",
+      "author": "King of Hearts",
+      "license": "CC BY-SA 4.0",
+      "file": "Lower Manhattan from Jersey City September 2020 panorama.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Lower_Manhattan_from_Jersey_City_September_2020_panorama.jpg"
+    },
+    {
+      "id": "e12",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/BMW_Welt_Night.jpg/1920px-BMW_Welt_Night.jpg",
+      "caption": "BMW Welt, Мюнхен, Германия",
+      "author": "Richard Bartz",
+      "license": "CC BY-SA 2.5",
+      "file": "BMW Welt Night.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:BMW_Welt_Night.jpg"
+    },
+    {
+      "id": "e13",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Law_Courts_during_blue_hour%2C_Christchurch%2C_New_Zealand.jpg/1920px-Law_Courts_during_blue_hour%2C_Christchurch%2C_New_Zealand.jpg",
+      "caption": "Крайстчерч, Новая Зеландия",
+      "author": "Michal Klajban",
+      "license": "CC BY-SA 4.0",
+      "file": "Law Courts during blue hour, Christchurch, New Zealand.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Law_Courts_during_blue_hour,_Christchurch,_New_Zealand.jpg"
+    },
+    {
+      "id": "e14",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Matterhorn_sunset_2016_%28Unsplash%29.jpg/1920px-Matterhorn_sunset_2016_%28Unsplash%29.jpg",
+      "caption": "Маттерхорн, Швейцария",
+      "author": "Sam Ferrara",
+      "license": "CC0",
+      "file": "Matterhorn sunset 2016 (Unsplash).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Matterhorn_sunset_2016_(Unsplash).jpg"
+    },
+    {
+      "id": "e15",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Sunset_view_of_Everest.jpg/1920px-Sunset_view_of_Everest.jpg",
+      "caption": "Эверест, Непал",
+      "author": "Nir B. Gurung",
+      "license": "CC BY-SA 4.0",
+      "file": "Sunset view of Everest.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Sunset_view_of_Everest.jpg"
+    },
+    {
+      "id": "e16",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Marmolada_Sunset.jpg/1920px-Marmolada_Sunset.jpg",
+      "caption": "Мармолада, Италия",
+      "author": "Dmitry A. Mottl",
+      "license": "CC BY-SA 3.0",
+      "file": "Marmolada Sunset.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Marmolada_Sunset.jpg"
+    },
+    {
+      "id": "e17",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Jokulsarlon_lake%2C_Iceland.jpg/1920px-Jokulsarlon_lake%2C_Iceland.jpg",
+      "caption": "Ёкюльсаурлоун, Исландия",
+      "author": "Kenny Muir",
+      "license": "CC BY 2.0",
+      "file": "Jokulsarlon lake, Iceland.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Jokulsarlon_lake,_Iceland.jpg"
+    },
+    {
+      "id": "e18",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Puesta_de_sol%2C_desierto_de_Namib%2C_Namibia%2C_2018-08-05%2C_DD_92.jpg/1920px-Puesta_de_sol%2C_desierto_de_Namib%2C_Namibia%2C_2018-08-05%2C_DD_92.jpg",
+      "caption": "Пустыня Намиб, Намибия",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Puesta de sol, desierto de Namib, Namibia, 2018-08-05, DD 92.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Puesta_de_sol,_desierto_de_Namib,_Namibia,_2018-08-05,_DD_92.jpg"
+    },
+    {
+      "id": "e19",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Llyn_Ogwen_Milky_Way.jpg/1920px-Llyn_Ogwen_Milky_Way.jpg",
+      "caption": "Лин-Огуэн, Уэльс",
+      "author": "John Badham",
+      "license": "CC BY-SA 4.0",
+      "file": "Llyn Ogwen Milky Way.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Llyn_Ogwen_Milky_Way.jpg"
+    },
+    {
+      "id": "e20",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Brighton_MMB_34_West_Pier.jpg/1920px-Brighton_MMB_34_West_Pier.jpg",
+      "caption": "Старый пирс, Брайтон",
+      "author": "mattbuck",
+      "license": "CC BY-SA 4.0",
+      "file": "Brighton MMB 34 West Pier.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Brighton_MMB_34_West_Pier.jpg"
+    },
+    {
+      "id": "e21",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Abend_an_der_K%C3%BCste_bei_Lohme%2C_R%C3%BCgen%2C_170422%2C_ako.jpg/1920px-Abend_an_der_K%C3%BCste_bei_Lohme%2C_R%C3%BCgen%2C_170422%2C_ako.jpg",
+      "caption": "Остров Рюген, Германия",
+      "author": "Ansgar Koreng",
+      "license": "CC BY-SA 4.0",
+      "file": "Abend an der Küste bei Lohme, Rügen, 170422, ako.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Abend_an_der_K%C3%BCste_bei_Lohme,_R%C3%BCgen,_170422,_ako.jpg"
+    },
+    {
+      "id": "e22",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Eilean_Donan_at_Dusk.jpg/1920px-Eilean_Donan_at_Dusk.jpg",
+      "caption": "Замок Эйлен-Донан, Шотландия",
+      "author": "Syxaxis Photography",
+      "license": "CC BY-SA 4.0",
+      "file": "Eilean Donan at Dusk.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Eilean_Donan_at_Dusk.jpg"
+    },
+    {
+      "id": "e23",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Seljalandsfoss%2C_Su%C3%B0urland%2C_Islandia%2C_2014-08-16%2C_DD_201-203_HDR.JPG/1920px-Seljalandsfoss%2C_Su%C3%B0urland%2C_Islandia%2C_2014-08-16%2C_DD_201-203_HDR.JPG",
+      "caption": "Водопад Сельяландсфосс, Исландия",
+      "author": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "file": "Seljalandsfoss, Suðurland, Islandia, 2014-08-16, DD 201-203 HDR.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:Seljalandsfoss,_Su%C3%B0urland,_Islandia,_2014-08-16,_DD_201-203_HDR.JPG"
+    },
+    {
+      "id": "e24",
+      "slot": "evening",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Schenna_%28IT%29%2C_Abendd%C3%A4mmerung_--_2026_--_4135.jpg/1920px-Schenna_%28IT%29%2C_Abendd%C3%A4mmerung_--_2026_--_4135.jpg",
+      "caption": "Шенна, Италия",
+      "author": "Dietmar Rabich",
+      "license": "CC BY-SA 4.0",
+      "file": "Schenna (IT), Abenddämmerung -- 2026 -- 4135.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Schenna_(IT),_Abendd%C3%A4mmerung_--_2026_--_4135.jpg"
+    }
+  ]
+}

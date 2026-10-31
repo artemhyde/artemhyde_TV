@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Волна звука: девять столбиков, середина выше краёв (те же пропорции, что на баннере) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:strokeColor="#8878A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M2,9.8 L2,14.2" />
+    <path android:strokeColor="#A878A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M4.5,7.5 L4.5,16.5" />
+    <path android:strokeColor="#CC78A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M7,4.9 L7,19.1" />
+    <path android:strokeColor="#FF78A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M9.5,3 L9.5,21" />
+    <path android:strokeColor="#FF9CC0FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M12,2 L12,22" />
+    <path android:strokeColor="#FF78A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M14.5,3 L14.5,21" />
+    <path android:strokeColor="#CC78A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M17,4.9 L17,19.1" />
+    <path android:strokeColor="#A878A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M19.5,7.5 L19.5,16.5" />
+    <path android:strokeColor="#8878A9FF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M22,9.8 L22,14.2" />
+</vector>

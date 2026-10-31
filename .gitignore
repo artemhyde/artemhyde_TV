@@ -1,0 +1,41 @@
+# Ключи подписи и пароли: никогда не публиковать
+keys/
+*.jks
+*.keystore
+*.pass
+
+# Личные настройки и данные этого ТВ (создаёт мастер)
+config/settings.local.json
+config/*.local.*
+backup/
+rollback/
+
+# Рабочие снимки и разборы экрана ТВ (названия сетей, аккаунты, адреса), если мастер положил их не в backup/
+.tv-work/
+
+# Личные настройки Claude Code (разрешённые команды с адресом вашего ТВ) и личные заметки
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Результаты сборки
+out/
+apps/*/build/
+tvbro/build/
+tvbro/src/
+tvbro/work/
+tvbro/tv-bro/
+*.apk
+*.aab
+*.idsig
+
+# Мусор инструментов
+__pycache__/
+*.pyc
+*.orig
+*.rej
+*.log
+local.properties
+.gradle/
+.idea/
+.DS_Store
+Thumbs.db

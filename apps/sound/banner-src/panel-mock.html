@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<!-- Макет панели «Звук» в HTML: те же размеры в dp (1 dp = 2 px, экран 960x540 dp), что в MainActivity.java. Это НЕ снимок с ТВ:
+     шрифт здесь не Roboto, поэтому переносы строк могут чуть отличаться. Нужен, чтобы увидеть пропорции до установки. -->
+<style>
+:root{--dp:2px}
+*{box-sizing:border-box}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:Roboto,'Segoe UI',Arial,sans-serif}
+body{position:relative;background:linear-gradient(135deg,#3b5a4a 0%,#7a8f6a 40%,#caa86b 70%,#5b3d2e 100%)}
+.panel{position:absolute;left:calc(50% - 410*var(--dp));top:calc(50% - 209*var(--dp));width:calc(820*var(--dp));padding:calc(26*var(--dp)) calc(36*var(--dp)) calc(20*var(--dp));
+ background:rgba(20,20,24,.95);border-radius:calc(30*var(--dp));border:1px solid rgba(255,255,255,.12);box-shadow:0 24px 48px rgba(0,0,0,.45);color:#fff}
+.head{display:flex;align-items:center;height:calc(40*var(--dp))}
+.title{font-size:calc(28*var(--dp));font-weight:500}
+.pill{margin-left:calc(14*var(--dp));padding:calc(3*var(--dp)) calc(12*var(--dp)) calc(4*var(--dp));font-size:calc(15*var(--dp));color:#78A9FF;background:rgba(120,169,255,.15);border-radius:calc(14*var(--dp))}
+.gap{flex:1}
+.status{font-size:calc(15*var(--dp));color:rgba(255,255,255,.6)}
+.cards{display:flex;gap:calc(12*var(--dp));height:calc(88*var(--dp));margin-top:calc(12*var(--dp))}
+.card{flex:1;padding:calc(11*var(--dp)) calc(14*var(--dp)) calc(10*var(--dp));border-radius:calc(18*var(--dp));background:rgba(255,255,255,.09)}
+.card .t{font-size:calc(19*var(--dp));font-weight:500;white-space:nowrap;height:calc(26*var(--dp))}
+.card .h{font-size:calc(13*var(--dp));color:rgba(255,255,255,.6);padding-top:calc(3*var(--dp));line-height:1.25}
+.card.sel{background:rgba(120,169,255,.15);box-shadow:inset 0 0 0 calc(2*var(--dp)) #78A9FF}
+.card.sel .t{color:#78A9FF}
+.card.foc{background:#fff;transform:scale(1.05)}
+.card.foc .t{color:#141418}.card.foc .h{color:rgba(20,20,24,.7)}
+.row{display:flex;align-items:center;height:calc(44*var(--dp));margin-top:calc(4*var(--dp));padding:0 calc(16*var(--dp));border-radius:calc(16*var(--dp))}
+.row.first{margin-top:calc(14*var(--dp))}
+.row.foc{background:rgba(255,255,255,.1);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.lab{width:calc(290*var(--dp));font-size:calc(17*var(--dp));color:rgba(255,255,255,.7);white-space:nowrap}
+.row.foc .lab{color:#fff}
+.bar{flex:1;position:relative;height:100%;margin:0 calc(8*var(--dp))}
+.track{position:absolute;left:calc(12*var(--dp));right:calc(12*var(--dp));top:calc(50% - 3*var(--dp));height:calc(6*var(--dp));border-radius:calc(3*var(--dp));background:rgba(255,255,255,.18)}
+.fill{position:absolute;top:0;bottom:0;border-radius:calc(3*var(--dp));background:rgba(120,169,255,.53)}
+.row.foc .fill{background:#78A9FF}
+.thumb{position:absolute;top:50%;width:calc(16*var(--dp));height:calc(16*var(--dp));margin:calc(-8*var(--dp)) 0 0 calc(-8*var(--dp));border-radius:50%;background:#d9e4f7}
+.row.foc .thumb{width:calc(20*var(--dp));height:calc(20*var(--dp));margin:calc(-10*var(--dp)) 0 0 calc(-10*var(--dp));background:#fff}
+.val{width:calc(52*var(--dp));text-align:right;font-size:calc(20*var(--dp));font-weight:500;color:rgba(255,255,255,.8)}
+.hint{padding:calc(12*var(--dp)) 0 0 calc(16*var(--dp));font-size:calc(13*var(--dp));color:rgba(255,255,255,.4);white-space:nowrap}
+</style></head><body>
+<div class="panel">
+ <div class="head"><span class="title">Звук</span><span class="pill">Свой</span><span class="gap"></span><span class="status">Применено</span></div>
+ <div class="cards">
+  <div class="card sel"><div class="t">Кино</div><div class="h">чёткие диалоги и без громких взрывов</div></div>
+  <div class="card foc"><div class="t">Музыка и концерты</div><div class="h">глубокий бас и сцена</div></div>
+  <div class="card"><div class="t">Ночной</div><div class="h">максимальное сжатие громких звуков</div></div>
+  <div class="card"><div class="t">Чистый</div><div class="h">как задумано (всё выключено)</div></div>
+ </div>
+ <div class="row first"><span class="lab">Чёткость речи</span><div class="bar"><div class="track"><div class="fill" style="left:0;width:58%"></div></div><div class="thumb" style="left:calc(12*var(--dp) + (100% - 24*var(--dp))*0.58)"></div></div><span class="val">7</span></div>
+ <div class="row foc"><span class="lab">Выравнивание взрывов и шёпота</span><div class="bar"><div class="track"><div class="fill" style="left:0;width:60%"></div></div><div class="thumb" style="left:calc(12*var(--dp) + (100% - 24*var(--dp))*0.60)"></div></div><span class="val">6</span></div>
+ <div class="row"><span class="lab">Глубина баса (60–120 Гц)</span><div class="bar"><div class="track"><div class="fill" style="left:50%;width:10%"></div></div><div class="thumb" style="left:calc(12*var(--dp) + (100% - 24*var(--dp))*0.60)"></div></div><span class="val">+1</span></div>
+ <div class="row"><span class="lab">Прозрачность и детали (4–10 кГц)</span><div class="bar"><div class="track"></div><div class="thumb" style="left:calc(12*var(--dp) + (100% - 24*var(--dp))*0.5)"></div></div><span class="val">0</span></div>
+ <div class="hint">Влево и вправо: менять  ·  Вверх и вниз: выбор  ·  OK: режим  ·  Назад: закрыть</div>
+</div>
+</body></html>

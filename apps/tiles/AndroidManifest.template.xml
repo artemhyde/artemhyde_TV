@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Шаблон: build.sh подставляет @PKG@, @TARGET@, @LABEL@, @LAMPA@ и @COMPONENT@ для каждого ярлыка -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="@PKG@"
+    android:versionCode="5"
+    android:versionName="1.0">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Без этого Android 11+ не покажет ярлыку чужое приложение -->
+    <queries>
+        <package android:name="@TARGET@" />
+    </queries>
+
+    <application
+        android:label="@LABEL@"
+        android:icon="@drawable/banner"
+        android:banner="@drawable/banner"
+        android:allowBackup="false">
+
+        <activity
+            android:name="app.glasstv.tile.Launch"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <meta-data android:name="target" android:value="@TARGET@" />
+            <meta-data android:name="lampaActivity" android:value="@LAMPA@" />
+            <meta-data android:name="component" android:value="@COMPONENT@" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
