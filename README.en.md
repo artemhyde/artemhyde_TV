@@ -4,7 +4,7 @@
 
 **Stock Google TV with ads ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
 ![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif)  
-Drag the curtain yourself: [open the comparison](https://rawcdn.githack.com/artemhyde/artemhyde_TV/c10faec203d65df66899831591c6e6fb234e71d5/docs/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
+Drag the curtain yourself: [open the comparison](https://rawcdn.githack.com/artemhyde/artemhyde_TV/25449814067ed627bdf7d273cd681ccbf81638a0/docs/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 A home screen, night mode, sound and picture controls for Google TV and TCL, set up for you by your own Claude Code. In packages and folders the project keeps its technical name, glasstv (`app.glasstv.*`).
 

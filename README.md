@@ -4,7 +4,7 @@
 
 **Заводской Google TV с рекламой ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
 ![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif)  
-Подвигать шторку самому: [открыть сравнение](https://rawcdn.githack.com/artemhyde/artemhyde_TV/c10faec203d65df66899831591c6e6fb234e71d5/docs/before-after.html) или на своём компьютере `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
+Подвигать шторку самому: [открыть сравнение](https://rawcdn.githack.com/artemhyde/artemhyde_TV/25449814067ed627bdf7d273cd681ccbf81638a0/docs/before-after.html) или на своём компьютере `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 Домашний экран, ночной режим, звук и картинка для Google TV и TCL, которые настраивает ваш Claude Code. В пакетах и папках проект зовётся техническим именем glasstv (`app.glasstv.*`).
 
