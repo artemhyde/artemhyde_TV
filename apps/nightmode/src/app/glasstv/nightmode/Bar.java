@@ -10,7 +10,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 
-// Сквозной ползунок «Яркость» для пульта: влево темнее, вправо светлее, шаг за шагом (удержание кнопки листает).
+// Сквозной ползунок «Яркость» для пульта: влево темнее, вправо светлее, шаг 1, при удержании кнопки быстрее.
+// Удержание останавливается на нуле: дальше (в красную зону или обратно) только новым нажатием.
 // Вверх и вниз уходят на соседние кнопки. Шкала одна на всю ширину, у отметки «0» разрыв: правее неё настоящая подсветка
 // панели (белая заливка от нуля), левее красная зона затемнения (красная заливка от нуля влево, бегунок розовеет).
 // Там, где подсветкой управлять нельзя, отметки «0» нет, шкала вся из затемнения (zero = -1) и заливается слева до бегунка
@@ -70,13 +71,14 @@ final class Bar extends View {
     }
 
     @Override public boolean onKeyDown(int code, KeyEvent e) {
-        if (code == KeyEvent.KEYCODE_DPAD_LEFT) { nudge(-1); return true; }    // на краю тоже «съедаем»: курсор не прыгает
-        if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { nudge(1); return true; }
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT) { nudge(-1, e.getRepeatCount()); return true; }    // на краю тоже «съедаем»: курсор не прыгает
+        if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { nudge(1, e.getRepeatCount()); return true; }
         return super.onKeyDown(code, e);
     }
 
-    private void nudge(int d) {
-        int n = Math.max(0, Math.min(steps, value + d));
+    private void nudge(int dir, int repeat) {
+        int n = Math.max(0, Math.min(steps, value + dir * (repeat < 6 ? 1 : repeat < 16 ? 2 : 5)));
+        if (repeat > 0 && zero >= 0 && (value - zero) * (n - zero) <= 0) n = zero;
         if (n == value) return;
         setPos(n, true);
         if (listener != null) listener.onPos(n);
@@ -155,8 +157,8 @@ final class Bar extends View {
             cv.drawRoundRect(rect, th, th, paint);
         }
 
-        // Деления: по точке на каждый шаг, на нуле чёрточка
-        for (int i = 0; i <= steps; i++) {
+        // Деления: точка каждые 10 шагов, на нуле чёрточка
+        for (int i = 0; i <= steps; i += 10) {
             if (i == zero) continue;
             paint.setColor(zero >= 0 && i < zero ? 0x80E5604F : 0x59FFFFFF);
             cv.drawCircle(x0 + span * i / steps, cy + 16 * dp, 1.5f * dp, paint);

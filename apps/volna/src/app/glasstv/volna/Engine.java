@@ -4,6 +4,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.browse.MediaBrowser;
 import android.media.session.MediaController;
@@ -55,6 +56,9 @@ final class Engine {
     private boolean sendWhenConnected;    // после подключения отправить уже выбранный трек
     private int errorsInRow;
     private int mismatchInRow;
+    private long lastEventAt;             // когда Aura последний раз что-то присылала
+    private long stallSince;              // с какого момента музыка стоит
+    boolean fakeStall;                    // проверка сторожа с ПК: --es do fakestall
 
     // Что играет сейчас (по данным Aura)
     String curId;
@@ -130,6 +134,10 @@ final class Engine {
         driving = false;
         switching = false;
         waitingForBrain = false;
+        startWhenConnected = false;
+        sendWhenConnected = false;
+        fakeStall = false;
+        h.removeCallbacks(watchdog);
         h.removeCallbacks(endOfTrack);
         h.removeCallbacks(switchTimeout);
         h.removeCallbacks(retry);
@@ -257,8 +265,8 @@ final class Engine {
     }
 
     private final MediaController.Callback cb = new MediaController.Callback() {
-        @Override public void onMetadataChanged(MediaMetadata md) { onMeta(md); }
-        @Override public void onPlaybackStateChanged(PlaybackState st) { onState(st); }
+        @Override public void onMetadataChanged(MediaMetadata md) { lastEventAt = SystemClock.elapsedRealtime(); onMeta(md); }
+        @Override public void onPlaybackStateChanged(PlaybackState st) { lastEventAt = SystemClock.elapsedRealtime(); onState(st); }
         @Override public void onSessionDestroyed() { lost("Aura закрылась"); }
     };
 
@@ -321,6 +329,7 @@ final class Engine {
         curDur = dur;
         curArt = art;
         likeLabel = null;
+        if (ctl != null) readLike(ctl.getPlaybackState());
         if (driving && planned != null) {
             switching = false;
             h.removeCallbacks(switchTimeout);
@@ -377,8 +386,7 @@ final class Engine {
         posBase = st.getPosition();
         posTime = st.getLastPositionUpdateTime();
         speed = st.getPlaybackSpeed() == 0 ? 1f : st.getPlaybackSpeed();
-        for (PlaybackState.CustomAction a : st.getCustomActions())
-            if (LIKE_ACTION.equals(a.getAction())) likeLabel = String.valueOf(a.getName());
+        readLike(st);
         scheduleEnd();
         // Счётчик ошибок обнуляется, только когда трек реально заиграл
         if (state == PlaybackState.STATE_PLAYING && position() > 3000) errorsInRow = 0;
@@ -397,7 +405,82 @@ final class Engine {
         notifyAll(false);
     }
 
+    private void readLike(PlaybackState st) {
+        if (st == null) return;
+        for (PlaybackState.CustomAction a : st.getCustomActions())
+            if (LIKE_ACTION.equals(a.getAction())) likeLabel = String.valueOf(a.getName());
+    }
+
     private final Runnable retry = () -> { if (driving) playNext(); };
+
+    // ===== Сторож зависания (ноябрь): 02.11 волна замерла на одном треке на 3-й минуте =====
+    // Пока Aura пишет «загрузка», наш таймер конца трека не идёт и ждать можно вечно. Раз в секунду смотрим, что с музыкой.
+    // Стоит дольше 7 с (в начале трека 12 с: там долго ищется ссылка) или Aura молчит после команды: её плеер сбрасывается
+    // (stop и новое подключение), играет следующий трек. Убить чужой процесс Android 14 не даёт: killBackgroundProcesses
+    // работает только на свои, зато умерший процесс поднимется сам при подключении (на TCL нужны AUTO_START и ASSOC_START,
+    // иначе прошивка режет запуск: forbid bind service, так волна и замерла).
+    // Пять неудач подряд: повтор раз в минуту, чтобы без интернета не дёргать Aura по кругу
+    static final long STALL_MS = 7_000, STALL_START_MS = 12_000;
+
+    private void watch() {
+        stallSince = 0;
+        h.removeCallbacks(watchdog);
+        if (driving) h.postDelayed(watchdog, 1000);
+    }
+
+    private final Runnable watchdog = new Runnable() {
+        @Override public void run() {
+            if (!driving) return;
+            h.postDelayed(this, 1000);
+            long now = SystemClock.elapsedRealtime();
+            String why = ctl == null ? null : stallReason(now);
+            if (why == null) { stallSince = 0; return; }
+            if (stallSince == 0) stallSince = now;
+            if (now - stallSince >= (position() < 1000 ? STALL_START_MS : STALL_MS)) restartAura(why);
+        }
+    };
+
+    private String stallReason(long now) {
+        if (fakeStall) return "проверка с ПК";
+        if (switching) return lastEventAt < switchAt ? "Aura не отвечает на команду" : null;   // ответила, но ищет: это ведёт switchTimeout
+        if (state == PlaybackState.STATE_BUFFERING) return "загрузка стоит на одном месте";
+        if (state == PlaybackState.STATE_PLAYING && curId != null && !audioActive()) return "Aura пишет «играет», а звука нет";
+        return null;
+    }
+
+    boolean audioActive() {
+        AudioManager am = app.getSystemService(AudioManager.class);
+        return am == null || am.isMusicActive();
+    }
+
+    void restartAura(String why) {
+        Log.w("volna", "сторож: " + why + " («" + curTitle + "», " + position() / 1000 + " с), перезапускаю Aura");
+        errorsInRow++;
+        stallSince = 0;
+        fakeStall = false;
+        switching = false;
+        h.removeCallbacks(endOfTrack);
+        h.removeCallbacks(switchTimeout);
+        h.removeCallbacks(retry);
+        h.removeCallbacks(acceptNearest);
+        h.removeCallbacks(searchAgain);
+        h.removeCallbacks(connectTimeout);
+        h.removeCallbacks(reconnect);
+        MediaController c = ctl;
+        if (c != null) {
+            try { c.getTransportControls().stop(); } catch (Exception ignored) { }
+            c.unregisterCallback(cb);
+        }
+        ctl = null;
+        connecting = false;
+        dropBrowser();
+        state = PlaybackState.STATE_NONE;
+        startWhenConnected = true;   // после подключения сразу следующий трек
+        sendWhenConnected = false;
+        status = errorsInRow > 5 ? "Aura не может играть, проверь интернет" : "Aura зависла, перезапускаю";
+        notifyAll(false);
+        h.postDelayed(reconnect, errorsInRow > 5 ? 60_000 : 1500);
+    }
 
     // За секунду до конца трека сами ставим следующий, чтобы Aura не успела включить своё
     private final Runnable endOfTrack = new Runnable() {
@@ -429,6 +512,7 @@ final class Engine {
         waitingForBrain = false;
         errorsInRow = 0;
         mismatchInRow = 0;
+        watch();
         playNext();
     }
 
@@ -520,6 +604,7 @@ final class Engine {
         brain.drop(chosen.id);
         driving = true;
         waitingForBrain = false;
+        watch();
         Track t = new Track(chosen.id, chosen.title, chosen.artist, chosen.durationMs);
         t.kind = Track.FAMILIAR;
         t.badge = chosen.badge.isEmpty() ? "▶ Вы выбрали" : chosen.badge;
@@ -599,11 +684,13 @@ final class Engine {
         return out;
     }
 
-    // Если Aura за 15 секунд так и не включила трек, берём следующий; при долгой беде пробуем раз в минуту
+    // Если Aura за 15 секунд так и не включила трек, берём следующий, со второго раза подряд перезапускаем её;
+    // при долгой беде пробуем раз в минуту
     private final Runnable switchTimeout = () -> {
         if (!switching || !driving) return;
         errorsInRow++;
-        if (errorsInRow <= 5) { playNext(); return; }
+        if (errorsInRow == 1) { playNext(); return; }
+        if (errorsInRow <= 5) { restartAura("Aura не включила трек за 15 с"); return; }
         switching = false;
         status = "Нет связи с Aura или YouTube, пробую снова";
         notifyAll(false);
@@ -643,26 +730,41 @@ final class Engine {
     boolean liked() {
         if (curId == null) return false;
         if (store.liked.contains(curId)) return true;
-        if (!store.profile.isEmpty()) return false;   // лайк в Aura принадлежит аккаунту пользователя
+        return store.profile.isEmpty() && auraLiked();   // лайк в Aura принадлежит аккаунту первого профиля
+    }
+
+    // Aura сама подписывает кнопку лайка, и только по подписи видно, стоит ли лайк у неё
+    private boolean auraLiked() {
         return likeLabel != null && (likeLabel.contains("Убрать") || likeLabel.toLowerCase(Locale.ROOT).contains("remove") || likeLabel.contains("Не нрав"));
     }
 
-    // Лайк: в память «Волны»; у первого профиля ещё и в Aura (уходит в аккаунт YouTube Music пользователя).
-    // Лайки второго профиля в Aura не идут, иначе смешались бы с библиотекой пользователя
+    // Единственное место, откуда лайк уходит в Aura, а из неё (если выполнен вход) в аккаунт YouTube Music. Только первый профиль:
+    // лайки второго остаются в его собственной памяти и с библиотекой аккаунта не смешиваются
+    private void auraLike(boolean want) {
+        if (!store.profile.isEmpty() || ctl == null || likeLabel == null || auraLiked() == want) return;
+        ctl.getTransportControls().sendCustomAction(LIKE_ACTION, null);
+    }
+
+    // Сердце: поставить лайк, а на треке с лайком снять его
     void like() {
         if (curId == null) return;
         Track t = current();
-        boolean already = liked();
-        if (!already && ctl != null && store.profile.isEmpty()) ctl.getTransportControls().sendCustomAction(LIKE_ACTION, null);
-        store.like(t);
-        brain.onLike(t);
+        if (liked()) {
+            auraLike(false);
+            store.unlike(t);
+        } else {
+            auraLike(true);
+            store.like(t);
+            brain.onLike(t);
+        }
         notifyAll(false);
     }
 
-    // «Не моё»: в блок-лист, вес направления вниз, сразу следующий
+    // «Не моё»: снять лайк, если он был, в блок-лист, вес направления вниз, сразу следующий
     void dislike() {
         if (curId == null) { next(); return; }
         Track t = current();
+        auraLike(false);
         store.dislike(t);
         brain.onDislike(t);
         next();

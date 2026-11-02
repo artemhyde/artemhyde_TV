@@ -28,6 +28,8 @@ public class Cmd extends BroadcastReceiver {
             case "dislike": e.dislike(); break;
             case "stop": e.stop(); break;
             case "seekend": e.seekNearEnd(); break;   // для проверки смены треков: за 6 с до конца
+            case "fakestall": e.fakeStall = true; break;   // для проверки сторожа: как будто музыка встала, через 7 с он сработает
+            case "restart": e.restartAura("проверка с ПК"); break;
             case "profile": e.setProfile(Store.SECOND.equals(i.getStringExtra("id")) ? Store.SECOND : Store.MAIN); break;
             case "profile_name": e.ui.edit().putString("name_" + Store.SECOND, i.getStringExtra("name")).apply(); break;
             // Посмотреть, что волна подберёт, без звука: --es do peek --es mode new|my
@@ -46,6 +48,7 @@ public class Cmd extends BroadcastReceiver {
         Log.i("volna", "состояние: волна=" + (e.driving ? Brain.MODE_NAMES[e.mode] : "нет") + " aura=" + e.state
                 + " трек=" + e.curId + " «" + e.curTitle + "» — " + e.curArtist + " [" + e.badge + "]"
                 + " план=" + (e.planned == null ? null : e.planned.id) + " далее=" + (nx == null ? null : nx.title + " [" + nx.badge + "]")
-                + " статус=" + e.status + " лайк=" + e.liked() + " профиль=" + e.profileName(e.store.profile));
+                + " статус=" + e.status + " лайк=" + e.liked() + " профиль=" + e.profileName(e.store.profile)
+                + " звук=" + e.audioActive() + " позиция=" + e.position() / 1000);
     }
 }

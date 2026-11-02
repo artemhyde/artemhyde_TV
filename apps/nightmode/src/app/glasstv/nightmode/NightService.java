@@ -5,10 +5,12 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.app.admin.DevicePolicyManager;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
@@ -19,7 +21,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -32,16 +33,18 @@ import java.util.Locale;
 
 // Держит затемнение поверх всех приложений, показывает обратный отсчёт и усыпляет телевизор
 public class NightService extends Service {
-    static final String START = "start", ADD = "add", STYLE = "style", STOP = "stop", LEVEL = "level";
-    // Один сквозной ползунок «Яркость» (27.10): слева красная зона, справа настоящая подсветка панели.
-    // Шкала слева направо: затемнение поверх экрана 80, 70 … 10 % (шаг 10, подсветка при этом 0), отметка «0», дальше подсветка
-    // панели 5, 10 … 100 (шаг 5, TvBacklightManager TCL, тот же ползунок «Яркость», что в меню картинки).
-    // Уровень это одно число со знаком: -80..-10 затемнение в %, 0..100 подсветка. Он лежит в prefs "lvl" и есть сам ночной режим:
-    // службу будит любое движение ползунка, а выбранное она держит, пока не выключат (или не кончится таймер).
-    // Подсветкой управлять нельзя (включена «Адаптивная регулировка яркости» TCL или нет службы): шкала короче и вся из затемнения
-    // 80 … 0 % (шаг 5), уровень тогда -80..0, всё положительное считается «без затемнения»
-    static final int RED_STEPS = 8, BL_STEPS = 20, ZERO = RED_STEPS, STEPS = RED_STEPS + BL_STEPS, VEIL_STEPS = 16;
-    static final int MIN_LEVEL = -80, MAX_LEVEL = 100;
+    static final String START = "start", ADD = "add", STYLE = "style", STOP = "stop", LEVEL = "level", RELEASE = "release";
+    // Один сквозной ползунок «Яркость» (ноябрь), шаг 1 на всей шкале. Уровень это одно число со знаком, лежит в prefs "lvl".
+    // 0..100: настоящая подсветка панели 1:1 (TvBacklightManager TCL, тот же ползунок «Яркость», что в меню картинки). Это обычная
+    // яркость телевизора, служба для неё не нужна: меню пишет её само, а если служба шла, при закрытии меню отпускает её (RELEASE).
+    // -1..-100: красная зона, служба держит её, пока не выключат. Подсветка 0, вуаль растёт до предела (0,8) к -50,
+    // а от -50 до -100 темнее становится сама картинка: контраст без сохранения плавно вдвое вниз (TvPqManager, как в меню TCL).
+    // Подсветкой управлять нельзя (включена «Адаптивная регулировка яркости» TCL или нет службы): шкала только из затемнения,
+    // уровень -100..0, вуаль до 0,8 к -100, всё положительное считается «без затемнения»
+    static final int SCALE = 100;             // шагов в каждую сторону от нуля
+    static final int MIN_LEVEL = -SCALE, MAX_LEVEL = 100;
+    static final int VEIL_FULL = -50;         // на этом уровне вуаль уже на пределе, дальше работает контраст
+    static final float CONTRAST_MIN = 0.5f;   // на -100 контраст вдвое ниже исходного
     static final float WARM = 0.16f;          // «Тёплый свет»: янтарная добавка к вуали красной зоны (до 16 %)
     static final float WARM_RAMP = 0.4f;      // добавка нарастает, пока вуаль не дойдёт до 40 %: шаг через ноль не прыгает
     static final int MIN_BACKLIGHT = 0;       // ноль подсветки: самое тёмное, что разрешает меню TCL
@@ -56,6 +59,7 @@ public class NightService extends Service {
     static volatile long endAt;              // elapsedRealtime; 0 = без таймера
     static volatile Rect hole;               // окно открытого меню в координатах экрана: его вуаль не накрывает (null: меню закрыто)
     static volatile float holeR;             // скругление углов этого окна, px
+    static NightService self;                // меню и служба в одном процессе: вырез в вуали меняется напрямую
 
     WindowManager wm;
     Veil shade;
@@ -68,6 +72,7 @@ public class NightService extends Service {
     boolean badgeShown;
     boolean stuck;                           // таймер вышел, а усыпить нечем: держим экран тёмным
     int lastBacklight = -1;
+    int lastContrast = -1;
     boolean useBl;                           // подсветкой управляем мы (датчик света TCL выключен)
 
     static void send(Context c, String action, int seconds) {
@@ -92,7 +97,21 @@ public class NightService extends Service {
         super.onCreate();
         wm = getSystemService(WindowManager.class);
         prefs = getSharedPreferences("night", MODE_PRIVATE);
-        migrate(prefs);
+        self = this;
+        registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+    }
+
+    // Телевизор выключили: ночной режим окончен, следующее включение с обычной яркостью и без вуали
+    final BroadcastReceiver screenOff = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (running) finishNight(false);
+        }
+    };
+
+    // Вырез под меню поменялся (при разворачивании плашки это каждый кадр, поэтому без команды службе)
+    static void refreshHole() {
+        NightService s = self;
+        if (s != null && s.shade != null) s.shade.setHole(hole, holeR);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -132,6 +151,12 @@ public class NightService extends Service {
         } else if (STYLE.equals(action)) {
             applyShade();
         } else if (STOP.equals(action)) {
+            finishNight(false);
+            return START_NOT_STICKY;
+        } else if (RELEASE.equals(action)) {
+            // Меню закрыли правее нуля: выбранное теперь обычная яркость, возвращать нечего
+            if (running && useBl) Backlight.set(level(prefs, true), true);
+            prefs.edit().remove("bl0").apply();
             finishNight(false);
             return START_NOT_STICKY;
         }
@@ -218,81 +243,38 @@ public class NightService extends Service {
     }
 
     // Шкала ползунка: число шагов и шаг отметки «0» (с подсветкой и без неё)
-    static int steps(boolean bl) { return bl ? STEPS : VEIL_STEPS; }
+    static int steps(boolean bl) { return bl ? 2 * SCALE : SCALE; }
 
-    static int zero(boolean bl) { return bl ? ZERO : -1; }
+    static int zero(boolean bl) { return bl ? SCALE : -1; }
 
     // Уровень на шаге шкалы и обратно
-    static int levelAt(int idx, boolean bl) {
-        if (!bl) return (idx - VEIL_STEPS) * 5;
-        return idx < ZERO ? (idx - ZERO) * 10 : (idx - ZERO) * 5;
-    }
+    static int levelAt(int idx, boolean bl) { return idx - SCALE; }
 
-    static int indexOf(int lvl, boolean bl) {
-        int i = bl ? ZERO + Math.round(lvl / (lvl < 0 ? 10f : 5f)) : VEIL_STEPS + (lvl < 0 ? Math.round(lvl / 5f) : 0);
-        return Math.max(0, Math.min(steps(bl), i));
-    }
-
-    // Уровень, который отвечает подсветке телевизора сейчас (до шага 5); -1 у подсветки значит «не знаем», тогда без изменений
-    static int levelOf(int backlight) {
-        return backlight < 0 ? 0 : Math.min(MAX_LEVEL, Math.round(backlight / 5f) * 5);
-    }
+    static int indexOf(int lvl, boolean bl) { return Math.max(0, Math.min(steps(bl), lvl + SCALE)); }
 
     // Выбранный уровень. Пока его никто не выбирал, ночь идёт на нынешней яркости (а не на нуле подсветки)
     static int level(SharedPreferences prefs, boolean bl) {
-        if (!prefs.contains("lvl")) return levelOf(bl ? Backlight.get() : -1);
+        if (!prefs.contains("lvl")) return bl ? Math.max(0, Backlight.get()) : 0;
         return Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, prefs.getInt("lvl", 0)));
-    }
-
-    // Прошлые версии хранили выбор иначе: "pos" (шаг 0..20, слева светлее: 16 шагов подсветки от рабочей до нуля, дальше 4 шага
-    // затемнения 20..80 %), ещё раньше "mode" («Вполовину» или «Минимум») и "dim" (четыре уровня). Переносим по смыслу:
-    // «Вполовину» это половина обычной подсветки, «Минимум» затемнение 80 %. Нужно, пока служба после обновления
-    // подхватывает идущую ночь
-    static void migrate(SharedPreferences prefs) {
-        if (!prefs.contains("pos") && !prefs.contains("mode") && !prefs.contains("dim")) return;
-        if (!prefs.contains("lvl")) {
-            int p;
-            if (prefs.contains("pos")) {
-                p = prefs.getInt("pos", 8);
-            } else {
-                int m = prefs.contains("mode") ? prefs.getInt("mode", 0) : (prefs.getInt("dim", 1) >= 2 ? 1 : 0);
-                p = m >= 1 ? 20 : 8;
-            }
-            p = Math.max(0, Math.min(20, p));
-            int lvl;
-            if (p > 16) {
-                lvl = -20 * (p - 16);
-            } else {
-                int base = prefs.getInt("bl0", -1);
-                if (base < 0) base = Backlight.get();
-                lvl = base < 0 ? 0 : levelOf(Math.round(base * (1f - p / 16f)));
-            }
-            prefs.edit().putInt("lvl", lvl).apply();
-        }
-        prefs.edit().remove("pos").remove("mode").remove("dim").apply();
     }
 
     // Можно ли вести подсветку самим: датчик света TCL выключен и служба отвечает
     static boolean canBacklight() { return Backlight.lightSensor() == 0 && Backlight.get() >= 0; }
 
-    // Вуаль поверх экрана на уровне: только красная зона (подсветка при этом 0), правее нуля вуали нет
-    static float veil(int lvl) { return lvl < 0 ? -lvl / 100f : 0f; }
+    // Вуаль поверх экрана на уровне: только красная зона, правее нуля вуали нет. Предел 0,8 (больше система не даёт окну поверх других)
+    static float veil(int lvl, boolean bl) {
+        if (lvl >= 0) return 0f;
+        return bl ? Math.min(CAP, -lvl / (float) -VEIL_FULL * CAP) : -lvl / (float) SCALE * CAP;
+    }
 
     // Плотность слоя поверх. Правее нуля слоя нет совсем: это настоящая подсветка, вправо светлее (иначе 50 вышло бы темнее
     // исходных 45). В красной зоне вуаль уровня, а тёплый свет (если включён) добавляет янтарь сверху. Слои складываются как
     // прозрачности, 1-(1-a)(1-w), поэтому каждый шаг вниз виден; плотнее CAP не бывает
-    static float overlay(SharedPreferences prefs, int lvl) {
-        float a = veil(lvl);
+    static float overlay(SharedPreferences prefs, int lvl, boolean bl) {
+        float a = veil(lvl, bl);
         if (a == 0f || !prefs.getBoolean("warm", true)) return a;
         float w = WARM * Math.min(1f, a / WARM_RAMP);
         return Math.min(CAP, a + w * (1f - a));
-    }
-
-    // Подсветка на шаге шкалы правее нуля. Шаг, где стояла обычная подсветка (до округления до 5), держит её точное число:
-    // «исходное» на ползунке и есть исходное, а не соседнее круглое
-    int backlightAt(int lvl) {
-        int b = prefs.getInt("bl0", -1);
-        return b >= 0 && levelOf(b) == lvl ? b : lvl;
     }
 
     // Обычная подсветка до ночного режима: запоминаем один раз в "bl0", чтобы вернуть
@@ -307,11 +289,29 @@ public class NightService extends Service {
 
     static void restoreBacklight(Context c, SharedPreferences prefs) {
         int b = prefs.getInt("bl0", -1);
-        if (b >= 0) Backlight.set(b, false);
-        // Старые версии писали системную яркость: вернуть и её, если осталась
-        int b0 = prefs.getInt("b0", -1);
-        if (b0 >= 0) try { Settings.System.putInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, b0); } catch (Exception ignored) { }
-        prefs.edit().remove("bl0").remove("b0").apply();
+        if (b >= 0) Backlight.set(b, true);
+        prefs.edit().remove("bl0").apply();
+    }
+
+    static void restoreContrast(SharedPreferences prefs) {
+        int c0 = prefs.getInt("ct0", -1);
+        if (c0 < 0) return;
+        Backlight.setContrast(c0);
+        prefs.edit().remove("ct0").apply();
+    }
+
+    // Служба мертва, а следы остались (убили процесс, обновили приложение): вернуть контраст и сказать «Сторожу», что режим
+    // выключен. Подсветку из "bl0" возвращаем только после красной зоны: правее нуля выбранное и есть обычная яркость, а старая
+    // цифра в "bl0" не значит ничего. Из-за неё при открытии меню подсветка прыгала на прошлое значение (0 → 80, ноябрь)
+    static void recover(Context c, SharedPreferences prefs) {
+        restoreContrast(prefs);
+        boolean was = prefs.getBoolean("active", false);
+        if (!was || prefs.getInt("lvl", 0) >= 0) prefs.edit().remove("bl0").apply();
+        if (was) {
+            prefs.edit().putBoolean("active", false).putLong("endAt", 0).apply();
+            restoreBacklight(c, prefs);
+            notifyGuard(c, false);
+        }
     }
 
     // «Сторож» ночью сам ведёт подсветку: пока мы её меняем, пусть не принимает это за пульт
@@ -327,13 +327,34 @@ public class NightService extends Service {
         lastBacklight = target;
     }
 
+    // Ниже -50 вуаль уже на пределе, дальше темнее становится сама картинка. Исходный контраст лежит в "ct0" до выхода из зоны
+    void applyContrast(int lvl) {
+        if (!useBl || lvl >= VEIL_FULL) {
+            restoreContrast(prefs);
+            lastContrast = -1;
+            return;
+        }
+        int c0 = prefs.getInt("ct0", -1);
+        if (c0 < 0) {
+            c0 = Backlight.getContrast();
+            if (c0 < 0) return;
+            prefs.edit().putInt("ct0", c0).apply();
+        }
+        float pr = (VEIL_FULL - lvl) / (float) (VEIL_FULL - MIN_LEVEL);
+        int v = Math.round(c0 * (1f + (CONTRAST_MIN - 1f) * pr));
+        if (v == lastContrast) return;
+        Backlight.setContrast(v);
+        lastContrast = v;
+    }
+
     void applyShade() {
         if (shade == null) return;
         int lvl = level(prefs, useBl);
-        float a = stuck ? CAP : overlay(prefs, lvl);
+        float a = stuck ? CAP : overlay(prefs, lvl, useBl);
         if (useBl) base(prefs);
         // Подсветка: выбранная правее нуля, в красной зоне ноль; без управления ей не трогаем (-1)
-        int bl = !useBl ? -1 : stuck || lvl < 0 ? MIN_BACKLIGHT : Math.max(MIN_BACKLIGHT, backlightAt(lvl));
+        int bl = !useBl ? -1 : stuck || lvl < 0 ? MIN_BACKLIGHT : lvl;
+        applyContrast(lvl);
         if (endAt != 0) {
             long left = endAt - SystemClock.elapsedRealtime();
             if (left < FADE_MS) {
@@ -390,7 +411,9 @@ public class NightService extends Service {
         prefs.edit().putBoolean("active", false).putLong("endAt", 0).apply();
         removeWindows();
         restoreBacklight(this, prefs);   // до сна, чтобы утром телевизор включился с обычной яркостью
+        restoreContrast(prefs);
         lastBacklight = -1;
+        lastContrast = -1;
         notifyGuard(this, false);
         if (sleep) {
             try { getSystemService(DevicePolicyManager.class).lockNow(); } catch (SecurityException ignored) { }
@@ -407,8 +430,10 @@ public class NightService extends Service {
     @Override public void onDestroy() {
         h.removeCallbacks(tick);
         removeWindows();
-        if (!prefs.getBoolean("active", false)) restoreBacklight(this, prefs);
+        try { unregisterReceiver(screenOff); } catch (Exception ignored) { }
+        if (!prefs.getBoolean("active", false)) { restoreBacklight(this, prefs); restoreContrast(prefs); }
         running = false;
+        if (self == this) self = null;
         super.onDestroy();
     }
 

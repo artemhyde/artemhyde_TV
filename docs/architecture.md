@@ -1,4 +1,4 @@
-# Как устроен GlassTV
+# Как устроен HYDE TV
 
 Метки: [общее] верно для любого Google TV, [TCL] особенность прошивки или пульта TCL.
 
@@ -12,7 +12,7 @@
    v
 ТВ
   система производителя: входы HDMI, тюнер, Wi-Fi, клавиатура, быстрая панель. Не трогаем
-  роли:  главный экран = Дом    заставка = Дом    слушатель уведомлений = Волна
+  роли:  главный экран = Дом    заставка Android выключена    слушатель уведомлений = Волна
          админ устройства = Ночной режим (и Key Mapper)
          служба спецвозможностей = Key Mapper (за ней следит Сторож)
          беспроводная отладка = её держит Сторож
@@ -25,9 +25,9 @@
 
 | Пакет | Что делает | Как открывается |
 |---|---|---|
-| app.glasstv.home «Дом» | Главный экран и заставка: фото по времени суток, часы, погода, курсы (по желанию), стих, плитки, «Все приложения». Полоса таблеток на шестерёнку | Главный экран; невидимый вход «Быстрая полоса» для Key Mapper; заставка (Dream) |
-| app.glasstv.guard «Сторож» | Служба переднего плана: беспроводная отладка, Key Mapper, ночная подсветка, умный звук, картинка по времени, возврат на главный экран. Принимает команды от «Звука», «Картинки» | Запускается сам при загрузке; экран состояния; команды `am broadcast` |
-| app.glasstv.nightmode «Ночной режим» | Один ползунок яркости (подсветка панели и красная зона затемнения), таймер сна, тёплый свет. В конце сна `lockNow` | Плитка, полоса таблеток, кнопка пульта. Права: SYSTEM_ALERT_WINDOW, WRITE_SETTINGS, админ устройства |
+| app.glasstv.home «Дом» | Главный экран и экран блокировки: фото по времени суток, часы, погода, курсы (по желанию), стих, плитки, «Все приложения». Полоса таблеток на шестерёнку | Главный экран; невидимый вход «Быстрая полоса» для Key Mapper |
+| app.glasstv.guard «Сторож» | Служба переднего плана: беспроводная отладка, Key Mapper, подсветка на границах 22:00 и 7:00, таймер простоя, умный звук, картинка по времени, возврат на главный экран. Принимает команды от «Звука», «Картинки» | Запускается сам при загрузке; экран состояния; команды `am broadcast` |
+| app.glasstv.nightmode «Ночной режим» | Плашка с одним ползунком яркости 1:1 (подсветка панели и красная зона до −100 %: вуаль и контраст `TvPqManager` без сохранения), вторым нажатием полное меню: таймер сна, тёплый свет. Служба живёт только для красной зоны и таймера. В конце сна `lockNow` | Плитка, полоса таблеток, кнопка пульта. Права: SYSTEM_ALERT_WINDOW, WRITE_SETTINGS, админ устройства |
 | app.glasstv.sound «Звук» | Полоса поверх фильма: режимы и ползунки Dolby | Полоса таблеток, кнопка пульта, кнопка в «Ночном режиме» |
 | app.glasstv.picture «Картинка» | Полоса поверх фильма: режимы и ползунки картинки TCL | Полоса таблеток, кнопка пульта |
 | app.glasstv.volna «Волна» | Музыка через Aura Music: «Моя волна», «Новое для вас», тексты, профили вкуса | Плитка, карточка из полосы таблеток; слушатель уведомлений держит процесс живым |
@@ -38,22 +38,22 @@
 
 **Роли и права (всё без root, выдаётся с компьютера)** [общее]
 - Главный экран: `cmd package set-home-activity app.glasstv.home/.HomeActivity`, проверка `cmd role get-role-holders --user 0 android.app.role.HOME`
-- Заставка: `settings put secure screensaver_components app.glasstv.home/.Dream`
+- Заставка Android выключена: `settings put secure screensaver_enabled 0`, `screensaver_activate_on_sleep 0`, `screensaver_activate_on_dock 0`, `settings put system screen_off_timeout 2147483647`. Простой ведут «Дом» (`FLAG_KEEP_SCREEN_ON`, 1 минута на плитках, 5 в сетке) и «Сторож» (раз в минуту читает `dumpsys power`: 10 минут без нажатий, нет замка экрана и видео, тогда главный экран с extra `idle`)
 - Слушатель уведомлений: `cmd notification allow_listener app.glasstv.volna/app.glasstv.volna.Listener`
 - Админ устройства: `dpm set-active-admin app.glasstv.nightmode/.AdminReceiver` (нужен для блокировки экрана в конце таймера)
 - Служба спецвозможностей: Key Mapper; «Сторож» перезапускает её, переписывая `enabled_accessibility_services` (право WRITE_SECURE_SETTINGS)
-- appops: SYSTEM_ALERT_WINDOW (NightMode, Volna, Guard), WRITE_SETTINGS (NightMode), GET_USAGE_STATS (Home), AUTO_START (Home, Volna, Guard; на TCL без него автозапуск режется)
-- `pm grant`: WRITE_SECURE_SETTINGS (Guard, Key Mapper), POST_NOTIFICATIONS (NightMode)
+- appops: SYSTEM_ALERT_WINDOW (NightMode, Volna, Guard), WRITE_SETTINGS (NightMode, Guard), GET_USAGE_STATS (Home), AUTO_START (Home, Volna, Guard, Aura Music; на TCL без него автозапуск режется), ASSOC_START (Aura Music; на TCL без него журнал пишет `forbid bind service`, служба застревает в ожидании перезапуска, и музыка встаёт насовсем)
+- `pm grant`: WRITE_SECURE_SETTINGS (Guard, Key Mapper), DUMP (Guard, таймер простоя), POST_NOTIFICATIONS (NightMode)
 - Белый список Doze: `dumpsys deviceidle whitelist +<пакет>`
 - Компиляция: `pm compile -m speed -f <пакет>` после каждой установки
 
 **Как приложения связаны**
 - Дом и Волна: «Дом» шлёт `am broadcast -n app.glasstv.volna/.Cmd --es do home_on|home_off|my`, «Волна» шлёт «Дому» на приёмник `.Now` extras `playing`, `title`, `artist` и `hello`
-- Волна и Aura Music: MediaBrowser к службе Aura, `playFromMediaId`, пользовательское действие лайка; состояние читается через MediaSession и слушатель уведомлений
+- Волна и Aura Music: MediaBrowser к службе Aura, `playFromMediaId`, пользовательское действие `TOGGLE_LIKE` (подпись кнопки «Нравится» или «Убрать лайк» показывает состояние; только первый профиль); состояние читается через MediaSession и слушатель уведомлений. Сторож зависания раз в секунду: загрузка на одном месте дольше 7 с (в начале трека 12 с), играет без звука (`AudioManager.isMusicActive`) или нет ответа на команду, тогда `stop`, новое подключение, следующий трек. Проверка: `am broadcast -n app.glasstv.volna/.Cmd --es do fakestall`
 - Звук и «Сторож»: `am broadcast -n app.glasstv.guard/.Cmd --es do eq --es a state|set`, extras `preset` (kino, music, night, clean, custom), `de` 0..12, `vl` 0..10, `bass` и `treble` от −5 до +5; ответ JSON в resultData. Значения «Сторож» хранит у себя, Dolby пишется только изменившимся ключом
 - Картинка и «Сторож»: `--es do pic --es a state|set|reset`, extras `preset` (kino, day, hdr, soft), `backlight` 5..100, `black` 0..2, `peak` 0..3, `warm` −5..5. Выбор держится до границы 22:00 или 7:00
 - Автоматика картинки «Сторожа»: `--es do pq --es a dump|apply|restore|auto`, `dump` только читает
-- «Сторож», остальное: `--es do bl` (прочитать подсветку), `--es do sound` (умный звук), `--es do softwake --ez on false` (мягкое включение экрана), `--es do home` (на главный экран). Итог команд в `adb logcat -d -s guard`
+- «Сторож», остальное: `--es do bl` (прочитать подсветку), `--es do sound` (умный звук), `--es do night --ez on true|false` (отработать границу 22:00 или 7:00), `--es do home` (на главный экран). Итог команд в `adb logcat -d -s guard`
 - Ночной режим с компьютера: `am start -n app.glasstv.nightmode/.MainActivity --ei seconds 70` (запуск таймера), `--ez unadmin true` (снять права админа перед обновлением)
 - Полоса таблеток: активность `app.glasstv.home/.PillsActivity` в своей задаче, невидимый вход `.PillsLaunch` для «Launch app» в Key Mapper
 
@@ -84,10 +84,9 @@
 - docs/: документация
 
 **Ограничения Android 14** [общее]
-- Приложение не может закрывать чужие: killBackgroundProcesses действует только на свои процессы
+- Приложение не может закрывать чужие: killBackgroundProcesses действует только на свои процессы (проверено и на Aura Music: её процесс остаётся, сбрасывается только плеер)
 - Окна-накладки с флагом NOT_TOUCHABLE ограничены прозрачностью 0,8: поэтому ночное затемнение делится на 0,8, а значок отсчёта делается окном без этого флага
 - Служба переднего плана требует тип (specialUse с описанием), чужие приложения видны только через `<queries>`, низкий targetSdk блокируется, нужно право на уведомления
-- `cmd dreams` требует root: заставку проверяют, временно уменьшив `screen_off_timeout`
 - Картинка в картинке на некоторых прошивках вырезана (проверка `pm has-feature android.software.picture_in_picture`)
 - Подключить Bluetooth-наушники одной кнопкой из обычного приложения нельзя: можно только открыть экран настроек
 - Телевизор приглушает экран по бездействию: будить `KEYCODE_WAKEUP`

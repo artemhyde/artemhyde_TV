@@ -30,7 +30,7 @@
 
 **Вернуть вручную, если скрипта нет**
 - Главный экран: `cmd role add-role-holder --user 0 android.app.role.HOME <прежний пакет>` (прежний записан в ledger.tsv и в снимке)
-- Заставка: `settings put secure screensaver_components <прежнее значение>`
+- Заставка: `settings put secure screensaver_enabled <прежнее значение>`, так же `screensaver_activate_on_sleep`, `screensaver_activate_on_dock` и `settings put system screen_off_timeout <прежнее значение>`; `screensaver_components` проект больше не меняет, но после старых версий там мог остаться «Дом": верните прежнее значение из снимка
 - Отключённые пакеты: `pm enable --user 0 <пакет>`; на TCL в первую очередь `com.google.android.apps.tv.launcherx` и `com.google.android.tungsten.setupwraith`, потом те, что записаны в ledger.tsv (список возможных пакетов: data/tcl-packages.tsv)
 - Если пропали входы или эфирное ТВ: `pm enable --user 0 com.tcl.ttvs` и перезагрузка
 - Свои приложения: `pm uninstall app.glasstv.home` и так же `guard`, `nightmode`, `sound`, `picture`, `volna`, `clip`, `tile.*` (после смены главного экрана на старый)

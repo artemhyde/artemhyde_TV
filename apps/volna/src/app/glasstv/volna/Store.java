@@ -154,6 +154,16 @@ final class Store {
         save();
     }
 
+    // Лайк сняли, но и в блок-лист трек не идёт: просто больше не любимый, вес лайка уходит вместе с ним
+    void unlike(Track t) {
+        if (!liked.remove(t.id)) return;
+        likedMeta.remove(t.id);
+        for (String a : t.artists()) artistScore.put(a, score(a) - 1.5f);
+        bumpTags(t.tags, -0.35f);
+        dirty = true;
+        save();
+    }
+
     void dislike(Track t) {
         disliked.add(t.id);
         liked.remove(t.id);

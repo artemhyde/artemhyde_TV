@@ -61,4 +61,29 @@ final class Backlight {
             return false;
         }
     }
+
+    // Контраст картинки, главное окно (0), тот же параметр, что в меню TCL. Меньше нуля: служба недоступна или не поддерживает
+    static int getContrast() {
+        try {
+            Object m = Class.forName("com.tcl.tv.pq.TvPqManager").getMethod("getInstance").invoke(null);
+            return (Integer) m.getClass().getMethod("getContrast", int.class).invoke(m, 0);
+        } catch (Throwable e) {
+            Log.w("nightmode", "контраст TCL: чтение не удалось", e);
+            return -1;
+        }
+    }
+
+    // Только применить, без сохранения: при сбое после перезагрузки вернётся сохранённый
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    static boolean setContrast(int v) {
+        try {
+            Object m = Class.forName("com.tcl.tv.pq.TvPqManager").getMethod("getInstance").invoke(null);
+            Class ap = Class.forName("com.tcl.tv.pq.EnApplyType"), act = Class.forName("com.tcl.tv.pq.EnTclActType");
+            return (Boolean) m.getClass().getMethod("setContrast", int.class, ap, int.class, act).invoke(m, 0,
+                    Enum.valueOf(ap, "EN_APPLY_CURRENT"), Math.max(0, Math.min(100, v)), Enum.valueOf(act, "EN_TCL_ACT_EXEC"));
+        } catch (Throwable e) {
+            Log.w("nightmode", "контраст TCL: запись не удалась", e);
+            return false;
+        }
+    }
 }

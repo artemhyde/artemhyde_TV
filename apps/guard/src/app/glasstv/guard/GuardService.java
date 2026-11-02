@@ -69,13 +69,13 @@ public class GuardService extends Service {
         h.postDelayed(checkKeys, SystemClock.elapsedRealtime() < 5 * 60_000 ? 60_000 : 3_000);
         h.postDelayed(periodic, 15 * 60_000);
         h.postDelayed(nightTick, 10_000);
-        // Рабочая подсветка на случай мягкого включения после сна (до первого сна её ещё никто не запомнил)
-        h.postDelayed(() -> { int b = Backlight.get(); if (b > 0 && !isNight()) p.edit().putInt("blBeforeSleep", b).apply(); }, 5_000);
+        h.postDelayed(idleTick, 60_000);
+        noDream();
         // Умный звук: если пользователь включал, эффект встанет сам (после загрузки ТВ и после перезапуска службы)
         sound = new SmartSound(this, p, this::log);
         sound.start();
         h.postDelayed(pqTick, 8_000);
-        h.postDelayed(() -> picWake("запуск", false), 10_000);   // выбор из «Картинки» после перезагрузки ТВ или обновления Сторожа
+        h.postDelayed(() -> picWake("запуск"), 10_000);   // выбор из «Картинки» после перезагрузки ТВ или обновления Сторожа
 
         IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_ON);
         f.addAction(Intent.ACTION_SCREEN_OFF);
@@ -119,10 +119,9 @@ public class GuardService extends Service {
     private final BroadcastReceiver events = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
-                showWakeVeil();
+                if (saverActive) setSaver(false);
                 homeOnScreenOff();
             } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
-                softWake();
                 homeCancel();
                 // Телевизор включили: через пару секунд проверить пульт и отладку
                 h.removeCallbacks(checkKeys);
@@ -140,12 +139,10 @@ public class GuardService extends Service {
                 // ПРАВКА ПРОВЕРКИ: после пробуждения TCL сам возвращает сохранённую картинку (по комментарию ниже, GuardService.java:109, дневная подсветка возвращается через
                 // 2-4 с), поэтому запись на +0,5 с может быть затёрта; второй заход через 12 с ничего не пишет, если вечер на месте, и подхватывает «система сбросила»
                 h.postDelayed(() -> applyPq("после пробуждения"), 12_000);
-                // Выбор из «Картинки» TCL тоже затирает при пробуждении: три прохода (мягкое включение держит подсветку до 5,8 с, на первом её не трогаем)
-                h.postDelayed(() -> picWake("включение экрана", true), 3_000);
-                h.postDelayed(() -> picWake("включение экрана", false), 6_500);
-                h.postDelayed(() -> picWake("после пробуждения", false), 12_000);
-                // После пробуждения TCL может вернуть дневную подсветку: ночью быстро опускаем снова
-                h.postDelayed(() -> applyNight(4_000), 2_000);
+                // Выбор из «Картинки» TCL тоже затирает при пробуждении: три прохода
+                h.postDelayed(() -> picWake("включение экрана"), 3_000);
+                h.postDelayed(() -> picWake("включение экрана"), 6_500);
+                h.postDelayed(() -> picWake("после пробуждения"), 12_000);
             } else if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(i.getAction())) {
                 // Наушники отвалились: пауза, чтобы звук не рявкнул на всю комнату
                 AudioManager am = getSystemService(AudioManager.class);
@@ -159,6 +156,7 @@ public class GuardService extends Service {
     private final Runnable periodic = new Runnable() {
         @Override public void run() {
             keepAdb("проверка");
+            noDream();
             applyPq("проверка");
             checkKeys.run();
             h.postDelayed(this, 15 * 60_000);
@@ -167,13 +165,15 @@ public class GuardService extends Service {
 
     // ===== Экран погас: на главный экран (27.10) =====
     // ТВ должен просыпаться на «Доме», а не в том приложении, где его выключили. Закрывать чужие приложения системой не дано,
-    // поэтому на 1,5 с после ACTION_SCREEN_OFF, если экран всё ещё погашен, отправляем на главный экран (его роль у «Дома»).
+    // поэтому через 2 с после ACTION_SCREEN_OFF, если экран всё ещё погашен, отправляем на главный экран (его роль у «Дома»).
+    // При включении ничего не делаем: подсветку не трогаем и вуаль не кладём, экран загорается сразу (ноябрь: мягкое включение
+    // сбрасывало подсветку в 0 и поднимало её за 800 мс, а плата TCL к этому моменту уже включила матрицу: выходило двойное мигание).
     // Если идёт видео (медиасессия в состоянии «играет», например режим «Только аудио» у YouTube), экран не трогаем: раз в
     // минуту смотрим, не остановилось ли оно, пока экран погашен, но не дольше 30 минут. Фоновая музыка «Волны» (Aura) не
     // мешает: главный экран её не останавливает. AudioManager.isMusicActive здесь не годится: Lampa держит поток AAudio
     // «запущенным» всё время, даже без звука (проверено на ТВ 27.10). Только Handler, без будильников: Doze не будим.
     // Не спорит с включением: как только экран зажёгся, проверка снимается, а следующее выключение начинает её заново
-    static final long HOME_DELAY = 1_500, HOME_POLL = 60_000, HOME_MAX = 30 * 60_000;
+    static final long HOME_DELAY = 2_000, HOME_POLL = 60_000, HOME_MAX = 30 * 60_000;
     private boolean homePending;   // музыка играла при погасшем экране: главный экран отправим, когда она стихнет
     private long homeSince;        // когда экран погас (отсчёт тридцати минут)
     private final Runnable homeCheck = () -> homeStep("экран погас", true);
@@ -217,7 +217,7 @@ public class GuardService extends Service {
         String how = homePending ? why + ", видео остановилось" : why;
         homePending = false;
         try {
-            startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            startActivity(homeIntent(true));
             log(how + ": на главный экран");
         } catch (Exception e) {
             log(how + ": главный экран не открылся (" + e.getClass().getSimpleName() + ")");
@@ -244,15 +244,103 @@ public class GuardService extends Service {
         return null;
     }
 
-    // ===== Ночь: с 22:00 до 7:00 экран темнее =====
+    // ===== Простой: один таймер вместо заставки Android (ноябрь) =====
+    // Заставки Android нет совсем (screensaver_enabled 0): это был второй экран поверх всего. «Дом» сам ведёт простой у себя,
+    // а для остальных окон его ведёт «Сторож»: 10 минут без нажатий, ничего не идёт, и открывается экран блокировки «Дома».
+    // Время последнего нажатия и замки экрана знает только служба питания, поэтому раз в минуту читаем dumpsys power (право DUMP
+    // выдаётся с ПК: pm grant app.glasstv.guard android.permission.DUMP). Плеер, который идёт, держит замок экрана
+    // (SCREEN_BRIGHT_WAKE_LOCK), и это видно здесь же, в том числе у плееров без медиасессии (Lampa, браузер)
+    static final long IDLE_APP_MS = 10 * 60_000;
+    private long idleSentFor = -1;     // нажатие, после которого блокировку уже открыли: второй раз не открываем
+    private boolean idleDenied;
+    private static final java.util.regex.Pattern LAST_USER = java.util.regex.Pattern.compile("lastUserActivityTime=(\\d+) \\((\\d+) ms ago\\)");
+
+    private final Runnable idleTick = new Runnable() {
+        @Override public void run() {
+            PowerManager pm = getSystemService(PowerManager.class);
+            if (pm != null && pm.isInteractive() && homeIsOurs()) new Thread(GuardService.this::checkIdle, "guard-idle").start();
+            h.postDelayed(this, 60_000);
+        }
+    };
+
+    private void checkIdle() {
+        long last = -1, ago = -1;
+        boolean keepOn = false;
+        try {
+            Process pr = new ProcessBuilder("dumpsys", "power").redirectErrorStream(true).start();
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(pr.getInputStream()))) {
+                for (String s; (s = r.readLine()) != null; ) {
+                    if (last < 0) {
+                        java.util.regex.Matcher m = LAST_USER.matcher(s);
+                        if (m.find()) { last = Long.parseLong(m.group(1)); ago = Long.parseLong(m.group(2)); }
+                    }
+                    if (s.contains("SCREEN_BRIGHT_WAKE_LOCK") || s.contains("SCREEN_DIM_WAKE_LOCK") || s.contains("FULL_WAKE_LOCK")) keepOn = true;
+                }
+            }
+            pr.waitFor();
+        } catch (Exception e) {
+            ago = -1;
+        }
+        if (ago < 0) {
+            if (!idleDenied) h.post(() -> log("Простой не виден: выдать с ПК pm grant app.glasstv.guard android.permission.DUMP"));
+            idleDenied = true;
+            return;
+        }
+        idleDenied = false;
+        if (ago < IDLE_APP_MS || keepOn || last == idleSentFor || playingVideo() != null) return;
+        idleSentFor = last;
+        h.post(() -> {
+            try {
+                startActivity(homeIntent(false));
+                log("Простой 10 минут: экран блокировки");
+            } catch (Exception e) {
+                log("Простой: главный экран не открылся (" + e.getClass().getSimpleName() + ")");
+            }
+        });
+    }
+
+    // Главный экран: idle просит его сразу встать на экран блокировки, now: без переходов (ТВ выключили)
+    Intent homeIntent(boolean now) {
+        return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra("idle", true).putExtra("now", now);
+    }
+
+    // Простой и заставку ведём, только если главный экран сейчас «Дом»: иначе это не наш экран, Android разберётся сам
+    boolean homeIsOurs() {
+        android.content.pm.ResolveInfo r = getPackageManager().resolveActivity(
+                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+        return r != null && r.activityInfo != null && "app.glasstv.home".equals(r.activityInfo.packageName);
+    }
+
+    // Заставка Android могла вернуться (обновление прошивки, настройки): держим её выключенной
+    void noDream() {
+        if (!homeIsOurs()) return;
+        try {
+            ContentResolver cr = getContentResolver();
+            if (Settings.Secure.getInt(cr, "screensaver_enabled", 1) != 0) {
+                Settings.Secure.putInt(cr, "screensaver_enabled", 0);
+                log("Заставка Android снова выключена");
+            }
+            // Без заставки по этому таймеру экран просто погас бы посреди чего угодно
+            if (Settings.System.canWrite(this) && Settings.System.getInt(cr, Settings.System.SCREEN_OFF_TIMEOUT, 0) < Integer.MAX_VALUE) {
+                Settings.System.putInt(cr, Settings.System.SCREEN_OFF_TIMEOUT, Integer.MAX_VALUE);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    // ===== Подсветка: только на границах 22:00 и 7:00 (ноябрь) =====
     // Подсветку панели меняет только TCL (TvBacklightManager, тот же ползунок «Яркость» в быстрой панели), системный
-    // screen_brightness до панели не доходит. Ночью «Сторож» плавно опускает саму подсветку: картинка остаётся
-    // контрастной, а не серой, как под вуалью. Запись без сохранения: после перезагрузки вернётся дневная.
-    // Если включена «Адаптивная регулировка яркости», подсветку ведёт датчик света и перебьёт нас: тогда как раньше
-    // ложится тёмная вуаль. С пультом не спорим: если яркость поменяли руками, до утра её не трогаем
+    // screen_brightness до панели не доходит. «Сторож» трогает её ровно два раза в сутки и больше никогда: ни при включении
+    // экрана, ни по таймерам, ни после ночного режима. Сутки начинаются в 7:00.
+    // В 22:00 сверяем подсветку с той, что осталась после прошлой границы (blBase). Не совпала: сегодня яркость меняли руками
+    // (панель TCL, наш ползунок, «Картинка»), и ночной уровень не ставим. Поменяли после 22:00: сюда мы уже не вернёмся.
+    // В 7:00 возвращаем дневную, только если ночной уровень ставил сам «Сторож» (тогда есть blDay).
+    // Запись с сохранением: чтобы при включении ТВ не вернул прошлую яркость. Подсветка читается и пишется и на выключенном ТВ
+    // (проверено 02.11), поэтому границу можно пройти и во сне, при включении ничего догонять не надо.
+    // Если включена «Адаптивная регулировка яркости» или службы TCL нет, вместо подсветки на ночь ложится тёмная вуаль
 
     static final int NIGHT_FROM = 22, NIGHT_TO = 7;
-    static final int NIGHT_LEVEL = 11;    // ночная подсветка из 100 (днём обычно 45); 27.10 сделана темнее (было 18)
+    static final int NIGHT_LEVEL = 11;    // ночная подсветка из 100
     static final float NIGHT_VEIL = 0.6f;   // система режет прозрачность окна поверх до 0,8: на экране выходит около 0,48
     private android.view.View veil;
     private Runnable ramp;
@@ -261,19 +349,16 @@ public class GuardService extends Service {
     void setNightModeActive(boolean on) {
         nmActive = on;
         if (on) stopRamp();
-        else {
-            h.postDelayed(() -> applyNight(4_000), 1_500);   // режим выключили: вернуть свой ночной или дневной уровень
-            h.postDelayed(() -> picWake("ночной режим выключен", false), 2_500);   // и подсветку выбора из «Картинки», если он держится
-        }
+        else h.postDelayed(() -> picWake("ночной режим выключен"), 2_500);   // подсветку выбора из «Картинки», если он держится
     }
 
-    // «Картинке» нужно знать, ведёт ли «Ночной режим» подсветку и идёт ли мягкое включение
+    // «Картинке» нужно знать, ведёт ли «Ночной режим» подсветку
     boolean nmActive() { return nmActive; }
 
     // Повтор выбора из «Картинки» (Pic.java): ничего не пишет, если выбора нет или он уже снят границей 22:00 и 7:00
-    void picWake(String why, boolean softWakeBusy) {
+    void picWake(String why) {
         Pic.expireDue(this, p);
-        Pic.reapply(getApplicationContext(), p, why, softWakeBusy && wakeStep != null);
+        Pic.reapply(getApplicationContext(), p, why);
     }
 
     static boolean isNight() {
@@ -285,88 +370,112 @@ public class GuardService extends Service {
 
     int nightLevel() { return p.getInt("nightLevel", NIGHT_LEVEL); }
 
-    void applyNight() { applyNight(60_000); }
-
-    void applyNight(long fadeMs) {
-        Pic.expireDue(this, p);   // граница прошла: выбор из «Картинки» снят и подсветка вернулась до того, как ночной ход решит, что делать
-        if (nightEnabled() && isNight()) startNight(fadeMs);
-        else endNight(nightEnabled() ? fadeMs : 1_500);
+    // Последняя уже наступившая граница, в миллисекундах
+    static long lastBoundary(long now) {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.setTimeInMillis(now);
+        int hr = c.get(java.util.Calendar.HOUR_OF_DAY);
+        c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        if (hr >= NIGHT_FROM) c.set(java.util.Calendar.HOUR_OF_DAY, NIGHT_FROM);
+        else if (hr >= NIGHT_TO) c.set(java.util.Calendar.HOUR_OF_DAY, NIGHT_TO);
+        else { c.add(java.util.Calendar.DAY_OF_MONTH, -1); c.set(java.util.Calendar.HOUR_OF_DAY, NIGHT_FROM); }
+        return c.getTimeInMillis();
     }
 
-    void startNight(long fadeMs) {
-        // Выбор пользователя в «Картинке» держится до границы 22:00 или 7:00: ни хода подсветки, ни вуали (её он бы затемнил сверх выбора)
-        if (Pic.held(p)) { if (veil != null) hideVeil(1_500); return; }
-        int sensor = Backlight.lightSensor(), cur = Backlight.get();
+    // Раз в полминуты сверяем часы с границей: так она не теряется, даже если процессор спал или «Сторож» перезапускался
+    private final Runnable nightTick = new Runnable() {
+        @Override public void run() {
+            long b = lastBoundary(System.currentTimeMillis()), done = p.getLong("boundaryAt", 0);
+            if (done == 0) {
+                // Первый запуск этой версии: границу не отрабатываем, только запоминаем, что сейчас стоит
+                int cur = Backlight.get();
+                android.content.SharedPreferences.Editor e = p.edit().putLong("boundaryAt", b)
+                        .remove("nightManual").remove("blSet").remove("blBeforeSleep").remove("softWake");
+                if (cur >= 0) e.putInt("blBase", cur);
+                if (!isNight()) e.remove("blDay");
+                e.apply();
+            } else if (b > done) {
+                p.edit().putLong("boundaryAt", b).apply();
+                onBoundary(isNight());
+            }
+            h.postDelayed(this, 30_000);
+        }
+    };
+
+    // Граница: 22:00 (night) или 7:00. Единственное место, где «Сторож» сам меняет подсветку
+    void onBoundary(boolean night) {
+        Pic.expireDue(this, p);   // граница снимает выбор из «Картинки», он возвращает то, что было до него
+        if (!nightEnabled()) return;
+        int sensor = Backlight.lightSensor(), cur = saverActive ? saverPrev : Backlight.get();
         if (sensor == 1 || cur < 0) {
             // Подсветку ведёт датчик (или служба TCL недоступна): только вуаль
-            if (veil == null) showVeil(fadeMs);
-            p.edit().putString("nightHow", "вуаль").apply();
+            p.edit().putString("nightHow", night ? "вуаль" : "").apply();
+            if (night) showVeil(60_000); else if (veil != null) { hideVeil(60_000); log("Утро: вуаль убрана"); }
             return;
         }
         if (veil != null) hideVeil(1_500);
-        p.edit().putString("nightHow", "подсветка").apply();
-        if (nmActive || saverActive || p.getBoolean("nightManual", false) || ramp != null) return;
-        int set = p.getInt("blSet", -1), day = p.getInt("blDay", -1), night = nightLevel();
-        if (set >= 0 && cur == set) return;   // уже ночная
-        if (set >= 0 && cur != day) {
-            // Мы ставили одно, а сейчас другое, и это не дневная после пробуждения: поменяли с пульта
-            p.edit().putBoolean("nightManual", true).apply();
-            log("Яркость поменяли с пульта (" + cur + "): до утра не трогаю");
+        p.edit().putString("nightHow", night ? "подсветка" : "").apply();
+        if (nmActive) {
+            log((night ? "22:00" : "7:00") + ": подсветку ведёт «Ночной режим», не трогаю");
             return;
         }
-        if (cur <= night) return;   // и так темно
-        p.edit().putInt("blDay", cur).apply();
-        log("Вечер: подсветка " + cur + " → " + night + " до 7:00");
-        rampTo(cur, night, fadeMs, true);
-    }
-
-    void endNight(long fadeMs) {
-        if (nmActive || saverActive) return;   // утро во время «Ночного режима» или заставки: вернём, когда они кончатся
-        if (veil != null) {
-            hideVeil(fadeMs);
-            log(isNight() ? "Ночное затемнение выключено" : "Утро: вуаль убрана");
-        }
-        stopRamp();
-        if (Pic.held(p)) return;   // выбор из «Картинки» держится: дневную подсветку не возвращаем
-        int day = p.getInt("blDay", -1), set = p.getInt("blSet", -1);
-        boolean manual = p.getBoolean("nightManual", false);
-        p.edit().remove("nightManual").remove("nightHow").apply();
-        if (day < 0) return;
-        int cur = Backlight.get();
-        if (cur >= 0 && cur < day && (cur == set || !manual)) {
-            log(isNight() ? "Ночная подсветка выключена: снова " + day : "Утро: подсветка снова " + day);
-            rampTo(cur, day, fadeMs, false);
+        if (night) {
+            int base = p.getInt("blBase", -1), level = nightLevel();
+            if (base >= 0 && cur != base) {
+                log("22:00: яркость сегодня меняли (" + base + " → " + cur + "), не трогаю до завтра");
+                return;
+            }
+            if (cur <= level) { log("22:00: и так темно (" + cur + ")"); return; }
+            p.edit().putInt("blDay", cur).apply();
+            log("Вечер: подсветка " + cur + " → " + level + " до 7:00");
+            moveBacklight(cur, level);
         } else {
-            p.edit().remove("blDay").remove("blSet").apply();
+            int day = p.getInt("blDay", -1);
+            p.edit().remove("blDay").apply();
+            if (day < 0 || cur == day) { p.edit().putInt("blBase", cur).apply(); return; }
+            log("Утро: подсветка снова " + day);
+            moveBacklight(cur, day);
         }
     }
 
-    // Плавно, по одному делению: за минуту на глаз незаметно. Каждый шаг сверяет, что подсветку не трогали
-    private void rampTo(int from, int to, long ms, boolean night) {
+    // На работающем экране плавно, по одному делению за минуту, на выключенном сразу. Конец хода сохраняем.
+    // Пока идёт ход, каждый шаг сверяет, что подсветку не трогали: тронули, и ход окончен, остаётся то, что выбрали
+    private void moveBacklight(int from, int to) {
         stopRamp();
-        int steps = Math.max(1, Math.abs(to - from));
-        long every = Math.max(120, ms / steps);
-        final int dir = to > from ? 1 : -1;
-        p.edit().putInt("blSet", from).apply();
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean awake = pm != null && pm.isInteractive();
+        if (saverActive) {
+            // Подсветка сейчас вдвое ниже: новая рабочая сохраняется, а вдвое от неё держим до первой кнопки
+            saverPrev = to;
+            Backlight.set(to, true);
+            Backlight.set(Math.max(1, Math.round(to / 2f)), false);
+            p.edit().putInt("blBase", to).apply();
+            return;
+        }
+        if (!awake || from == to) {
+            Backlight.set(to, true);
+            p.edit().putInt("blBase", to).apply();
+            return;
+        }
+        final int steps = Math.abs(to - from), dir = to > from ? 1 : -1;
+        final long every = Math.max(120, 60_000 / steps);
         ramp = new Runnable() {
             int v = from;
             @Override public void run() {
                 int cur = Backlight.get();
-                if (nmActive || saverActive || Pic.held(p)) { ramp = null; return; }   // выбор в «Картинке» сильнее ночного хода
-                if (cur != v) {
+                if (nmActive || saverActive || Pic.held(p) || cur != v) {
                     ramp = null;
-                    if (night) {
-                        p.edit().putBoolean("nightManual", true).apply();
-                        log("Яркость поменяли с пульта (" + cur + "): до утра не трогаю");
-                    }
+                    if (cur >= 0) p.edit().putInt("blBase", cur).apply();
+                    if (cur != v) log("Яркость поменяли во время перехода (" + cur + "): оставляю");
                     return;
                 }
                 v += dir;
-                Backlight.set(v, false);
-                p.edit().putInt("blSet", v).apply();
+                Backlight.set(v, v == to);
                 if (v == to) {
                     ramp = null;
-                    if (!night) p.edit().remove("blDay").remove("blSet").apply();
+                    p.edit().putInt("blBase", to).apply();
                     return;
                 }
                 h.postDelayed(this, every);
@@ -380,74 +489,8 @@ public class GuardService extends Service {
         ramp = null;
     }
 
-    // ===== Мягкое включение (27.10) =====
-    // ТВ в режиме «Всегда онлайн» просыпается за секунду и сразу на прежнем месте, без всякого перехода.
-    // Перед сном кладём тёмную вуаль (система не даёт окну поверх плотнее 0,8), а при включении подсветка панели
-    // поднимается с нуля до рабочей за 800 мс и вуаль растворяется за секунду. TCL через 2–4 с после пробуждения
-    // сама возвращает сохранённую дневную подсветку: 5 секунд держим нашу (ночью это ночной уровень)
-    private android.view.View wakeVeil;
-    private Runnable wakeStep;
-
-    boolean softWakeEnabled() { return p.getBoolean("softWake", true); }
-
-    void showWakeVeil() {
-        // Рабочая подсветка запоминается ДО сна: в первые мгновения после пробуждения TCL отдаёт 0 (проверено 27.10,
-        // иначе включение уводило подсветку в ноль и держало её там)
-        int before = Backlight.get();
-        if (before > 0 && !saverActive && !nmActive) p.edit().putInt("blBeforeSleep", before).apply();
-        if (!softWakeEnabled() || wakeVeil != null) return;
-        android.view.View v = new android.view.View(this);
-        v.setBackgroundColor(0xFF000000);
-        v.setAlpha(0.8f);
-        android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(-1, -1,
-                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                android.graphics.PixelFormat.TRANSLUCENT);
-        lp.setTitle("guard-wake");
-        try {
-            getSystemService(android.view.WindowManager.class).addView(v, lp);
-            wakeVeil = v;
-        } catch (Exception ignored) { }
-    }
-
-    void softWake() {
-        if (!softWakeEnabled()) return;
-        if (wakeVeil == null) showWakeVeil();
-        final android.view.View v = wakeVeil;
-        wakeVeil = null;
-        if (v != null) v.animate().alpha(0f).setDuration(1_000).withEndAction(() -> {
-            try { getSystemService(android.view.WindowManager.class).removeView(v); } catch (Exception ignored) { }
-        }).start();
-        if (nmActive || saverActive || Backlight.lightSensor() != 0) return;   // подсветку ведёт не «Сторож»
-        int set = p.getInt("blSet", -1), before = p.getInt("blBeforeSleep", -1);
-        final int pic = Pic.wantBacklight(p);   // выбор из «Картинки» держится: поднимаем до него
-        final int target = pic > 0 ? pic : isNight() && nightEnabled() && !p.getBoolean("nightManual", false) && set > 0 ? set : before;
-        if (target <= 0) return;   // не знаем рабочую: подсветку не трогаем, остаётся только растворение вуали
-        if (wakeStep != null) h.removeCallbacks(wakeStep);
-        final long start = android.os.SystemClock.uptimeMillis();
-        Backlight.set(0, false);
-        wakeStep = new Runnable() {
-            @Override public void run() {
-                long t = android.os.SystemClock.uptimeMillis() - start;
-                if (t < 800) {
-                    float k = t / 800f;
-                    k = 1f - (1f - k) * (1f - k);   // плавный разгон в конце медленнее
-                    Backlight.set(Math.round(target * k), false);
-                    h.postDelayed(this, 40);
-                } else if (t < 5_800) {
-                    if (Backlight.get() != target) Backlight.set(target, false);   // TCL вернула свою: ставим нашу
-                    h.postDelayed(this, 200);
-                } else {
-                    wakeStep = null;
-                }
-            }
-        };
-        h.post(wakeStep);
-    }
-
-    // ===== Заставка: через 15 минут простоя подсветка вдвое (27.10) =====
-    // Заставку «Дома» шлёт --es do saver --ez on true|false; любая кнопка (конец заставки) возвращает сразу
+    // ===== Экран блокировки: через 15 минут простоя подсветка вдвое =====
+    // «Дом» шлёт --es do saver --ez on true|false; любая кнопка возвращает сразу
     private boolean saverActive;
     private int saverPrev = -1;
 
@@ -469,13 +512,12 @@ public class GuardService extends Service {
                     if (k < 1f) h.postDelayed(this, 100);
                 }
             });
-            log("Заставка: подсветка вдвое, " + from + " → " + to);
+            log("Простой: подсветка вдвое, " + from + " → " + to);
         } else {
             if (!saverActive) return;
             saverActive = false;
             if (saverPrev >= 0) Backlight.set(saverPrev, false);
             saverPrev = -1;
-            h.postDelayed(() -> applyNight(4_000), 1_000);
         }
     }
 
@@ -514,24 +556,15 @@ public class GuardService extends Service {
     // Кнопка на экране «Сторож»: ночное затемнение вкл/выкл
     void setNightEnabled(boolean on) {
         p.edit().putBoolean("nightEnabled", on).apply();
-        applyNight();
-    }
-
-    // Следующая проверка ровно на границе 22:00 или 7:00 (плюс несколько секунд)
-    private final Runnable nightTick = new Runnable() {
-        @Override public void run() {
-            applyNight();
-            java.util.Calendar c = java.util.Calendar.getInstance();
-            java.util.Calendar next = (java.util.Calendar) c.clone();
-            next.set(java.util.Calendar.MINUTE, 0);
-            next.set(java.util.Calendar.SECOND, 5);
-            int hr = c.get(java.util.Calendar.HOUR_OF_DAY);
-            if (hr < NIGHT_TO) next.set(java.util.Calendar.HOUR_OF_DAY, NIGHT_TO);
-            else if (hr < NIGHT_FROM) next.set(java.util.Calendar.HOUR_OF_DAY, NIGHT_FROM);
-            else { next.add(java.util.Calendar.DAY_OF_MONTH, 1); next.set(java.util.Calendar.HOUR_OF_DAY, NIGHT_TO); }
-            h.postDelayed(this, Math.max(60_000, next.getTimeInMillis() - c.getTimeInMillis()));
+        // Выключили посреди ночи: вернуть дневную сразу, а не ждать 7:00. Включили: ночь начнётся со следующих 22:00
+        int day = p.getInt("blDay", -1);
+        if (!on && day >= 0 && !nmActive) {
+            p.edit().remove("blDay").apply();
+            int cur = Backlight.get();
+            if (cur >= 0) moveBacklight(cur, day);
         }
-    };
+        if (!on && veil != null) hideVeil(1_500);
+    }
 
     // ===== Картинка TCL: «Вечер» с 22:00 и «День» с 7:00 (Pq.java) =====
     // Границы те же, что у ночи (NIGHT_FROM, NIGHT_TO). Правило «не спорить с пультом» живёт в Pq.tick():

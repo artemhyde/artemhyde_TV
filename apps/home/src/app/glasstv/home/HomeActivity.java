@@ -46,6 +46,10 @@ public class HomeActivity extends Activity {
             "com.brouken.player", "com.google.android.youtube.tv", "com.neilturner.aerialviews", "com.android.tv.settings",
             "com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx"));
     static final long IDLE_MS = 60_000;
+    // Сетка «Все приложения» открыта дольше: выбирать там можно спокойно, а без нажатий она сама уступит экрану блокировки
+    static final long GRID_IDLE_MS = 5 * 60_000;
+    // На экране блокировки 15 минут без нажатий: «Сторож» убавляет подсветку вдвое, любая кнопка возвращает сразу
+    static final long SAVER_MS = 15 * 60_000;
     static final int PAD = 26;   // запас вокруг ряда: рост плитки, свечение и тень не обрезаются
     static final int IDLE = 0, ACTIVE = 1, GRID = 2;
     static final int GRID_TOP = 96;   // верх первой строки «Всех приложений»
@@ -70,7 +74,7 @@ public class HomeActivity extends Activity {
         super.onCreate(b);
         dp = getResources().getDisplayMetrics().density;
         Fonts.init(this);
-        amb = new Ambient(this, false);
+        amb = new Ambient(this);
         root = amb.root;
 
         // Прозрачность ряда применяется к каждой плитке напрямую, без отдельного слоя во весь экран
@@ -139,6 +143,8 @@ public class HomeActivity extends Activity {
         // Фон окна под корнем не виден (корень сам тёмный, сверху фото), а видеоядро заливало его каждый кадр:
         // с частицами экран перерисовывается целиком, и эта лишняя заливка 1080p стоила около миллисекунды (27.10)
         getWindow().setBackgroundDrawable(null);
+        // Заставки Android больше нет, и пока открыт «Дом», экран не гаснет сам
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root.getViewTreeObserver().addOnGlobalFocusChangeListener((o, n) -> onFocus(n));
         amb.onNow = this::updateSuggest;
         hideShelf(false);
@@ -161,7 +167,12 @@ public class HomeActivity extends Activity {
         back.setText("«Назад»: на главный экран");
         gridHead[1] = back;
         gridLayer.addView(back, Grid.at(back, dp, Grid.RIGHT, 64, true, 0));
-        gridBox = new LinearLayout(this);
+        // Высота сетки не ограничена экраном: иначе строки за его нижним краем сжимались в ноль и все ложились друг на друга
+        gridBox = new LinearLayout(this) {
+            @Override protected void onMeasure(int w, int h) {
+                super.onMeasure(w, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            }
+        };
         gridBox.setOrientation(LinearLayout.VERTICAL);
         gridBox.setClipChildren(false);
         gridBox.setClipToPadding(false);
@@ -483,6 +494,7 @@ public class HomeActivity extends Activity {
         gridLayer.setVisibility(View.VISIBLE);
         gridLayer.animate().alpha(1f).translationY(0).setStartDelay(M.t(60)).setDuration(M.t(380))
                 .setInterpolator(Ambient.EASE).start();
+        restartIdle();
         gridLayer.post(() -> {
             View first = gridBox.getChildCount() > 0 ? ((LinearLayout) gridBox.getChildAt(0)).getChildAt(0) : null;
             if (first != null) first.requestFocus();
@@ -501,6 +513,7 @@ public class HomeActivity extends Activity {
         shelf.animate().alpha(1f).translationY(0).setStartDelay(M.t(60)).setDuration(M.t(360)).setInterpolator(Ambient.EASE).start();
         View back = allTile != null ? allTile : lastDock;
         if (back != null) back.requestFocus();
+        restartIdle();
     }
 
     // Пока открыта сетка, невидимый ряд под ней не должен ловить фокус: иначе «вниз» уводит рамку в пустоту
@@ -512,16 +525,55 @@ public class HomeActivity extends Activity {
     // Простой: плитки и капсулы уходят вниз и тают, фон снова резкий, стих возвращается
     void toIdle() {
         if (state == IDLE) return;
+        boolean fromGrid = state == GRID;
+        if (fromGrid) {
+            // Сетка плавно уходит, под ней сразу экран блокировки: плитки ряда уже спрятаны, им выезжать незачем
+            amb.setGrid(false);
+            shelfFocusable(true);
+            gridLayer.animate().alpha(0f).translationY(px(20)).setStartDelay(0).setDuration(M.t(420))
+                    .setInterpolator(Ambient.EASE).withEndAction(() -> gridLayer.setVisibility(View.GONE)).start();
+            shelf.setTranslationY(0);
+        }
+        state = IDLE;
+        hideShelf(!fromGrid);
+        if (fromGrid) shelf.setAlpha(1f);
+        amb.setActive(false);
+        h.removeCallbacks(saverOn);
+        h.postDelayed(saverOn, SAVER_MS);
+    }
+
+    // Сразу экран блокировки, без анимаций: ТВ выключили, при включении первый же кадр должен быть чистым
+    void idleNow() {
+        h.removeCallbacks(goIdle);
         if (state == GRID) {
             amb.setGrid(false);
             shelfFocusable(true);
+            gridLayer.animate().cancel();
             gridLayer.setVisibility(View.GONE);
+            shelf.animate().cancel();
             shelf.setAlpha(1f);
             shelf.setTranslationY(0);
         }
         state = IDLE;
-        hideShelf(true);
-        amb.setActive(false);
+        hideShelf(false);
+        amb.setIdleNow();
+    }
+
+    // Подсветку вдвое убавляет «Сторож» (у него доступ к подсветке TCL), он же возвращает её по команде
+    boolean saverSent;
+    final Runnable saverOn = () -> { saverSent = true; guardSaver(true); };
+
+    void saverOff() {
+        h.removeCallbacks(saverOn);
+        if (!saverSent) return;
+        saverSent = false;
+        guardSaver(false);
+    }
+
+    void guardSaver(boolean on) {
+        try {
+            sendBroadcast(new Intent().setClassName("app.glasstv.guard", "app.glasstv.guard.Cmd").putExtra("do", "saver").putExtra("on", on));
+        } catch (Exception ignored) { }
     }
 
     void hideShelf(boolean animated) {
@@ -566,12 +618,13 @@ public class HomeActivity extends Activity {
 
     void restartIdle() {
         h.removeCallbacks(goIdle);
-        h.postDelayed(goIdle, IDLE_MS);
+        h.postDelayed(goIdle, state == GRID ? GRID_IDLE_MS : IDLE_MS);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             restartIdle();
+            saverOff();
             if (state == IDLE) {
                 // Первое нажатие только «разблокирует» экран
                 if (e.getRepeatCount() == 0) toActive(true);
@@ -590,9 +643,23 @@ public class HomeActivity extends Activity {
         return super.dispatchKeyEvent(e);
     }
 
-    // Кнопка «Домой» на главном: к первой плитке
+    // Кнопка «Домой» на главном: к первой плитке. «Сторож» шлёт сюда простой (idle): от него экран блокировки.
+    // now: ТВ выключили, переход не нужен, при включении сразу чистый кадр
     @Override protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
+        if (i.getBooleanExtra("idle", false)) {
+            keepIdle = true;
+            if (i.getBooleanExtra("now", false) || !resumed) {
+                idleNow();
+                // ТВ включат уже на первой плитке, как после кнопки «Домой»
+                if (!dockTiles.isEmpty()) lastDock = dockTiles.get(0);
+                rowScrollTo(0);
+            } else {
+                toIdle();
+            }
+            return;
+        }
+        saverOff();
         restartIdle();
         if (state == IDLE) { toActive(true); return; }
         if (state == GRID) {
@@ -610,8 +677,11 @@ public class HomeActivity extends Activity {
         rowScrollTo(0);
     }
 
+    boolean resumed, keepIdle;
+
     @Override protected void onResume() {
         super.onResume();
+        resumed = true;
         amb.start();
         loadApps();
         updateSuggest();
@@ -619,11 +689,15 @@ public class HomeActivity extends Activity {
         Usage.refresh(this, () -> h.post(() -> { if (!isDestroyed()) updateSuggest(); }));
         // Вернулись из приложения: сразу плитки. После долгого перерыва (или первого запуска) экран блокировки
         boolean longAway = pausedAt == 0 || SystemClock.elapsedRealtime() - pausedAt > 5 * 60_000;
-        if (!longAway && state == IDLE) toActive(false);
+        if (!longAway && !keepIdle && state == IDLE) toActive(false);
+        keepIdle = false;
         restartIdle();
+        if (state == IDLE) h.postDelayed(saverOn, SAVER_MS);
     }
 
     @Override protected void onPause() {
+        resumed = false;
+        saverOff();
         amb.stop();
         h.removeCallbacksAndMessages(null);
         pausedAt = SystemClock.elapsedRealtime();

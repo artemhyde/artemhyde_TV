@@ -187,23 +187,16 @@ public class Cmd extends BroadcastReceiver {
             else Log.i("guard", "команда home: служба не запущена");
             return;
         }
-        // Заставка «Дома»: через 15 минут простоя подсветка вдвое (--es do saver --ez on true|false)
+        // Экран блокировки «Дома»: через 15 минут простоя подсветка вдвое (--es do saver --ez on true|false)
         if ("saver".equals(i.getStringExtra("do"))) {
             GuardService g = GuardService.running;
             if (g != null) g.setSaver(i.getBooleanExtra("on", false));
             return;
         }
-        // Мягкое включение ТВ вкл/выкл: --es do softwake --ez on true|false; без on: показать включение как после сна
-        if ("softwake".equals(i.getStringExtra("do"))) {
-            GuardService g = GuardService.running;
-            if (i.hasExtra("on")) c.getSharedPreferences("guard", Context.MODE_PRIVATE).edit().putBoolean("softWake", i.getBooleanExtra("on", true)).apply();
-            else if (g != null) { g.showWakeVeil(); g.h.postDelayed(g::softWake, 300); }
-            return;
-        }
-        // Ночная подсветка для проверки: --es do night --ez on true|false (быстро, за 3 секунды)
+        // Граница для проверки, как в 22:00 и 7:00: --es do night --ez on true|false
         if ("night".equals(i.getStringExtra("do"))) {
             GuardService g = GuardService.running;
-            if (g != null) { if (i.getBooleanExtra("on", true)) g.startNight(3_000); else g.endNight(3_000); }
+            if (g != null) g.onBoundary(i.getBooleanExtra("on", true));
             Log.i("guard", "ночь: подсветка=" + Backlight.get() + " датчик=" + Backlight.lightSensor());
             return;
         }

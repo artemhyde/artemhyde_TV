@@ -3,3 +3,5 @@
 # Скрипты bash с окончаниями CRLF не запускаются, поэтому всегда LF.
 *.sh text eol=lf
 *.py text eol=lf
+# PowerShell 5.1 читает файл без BOM как ANSI: BOM уже в файлах, окончания строк как принято в Windows.
+*.ps1 text eol=crlf

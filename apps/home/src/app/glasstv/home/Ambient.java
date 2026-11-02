@@ -33,7 +33,6 @@ final class Ambient implements Data.Listener {
 
     final Context c;
     final float dp;
-    final boolean dream;
     final FrameLayout root;
     private final FrameLayout[] frame = new FrameLayout[2];
     private final ImageView[] sharp = new ImageView[2], soft = new ImageView[2];
@@ -53,9 +52,8 @@ final class Ambient implements Data.Listener {
     private float blurLevel;
     boolean active;
 
-    Ambient(Context c, boolean dream) {
+    Ambient(Context c) {
         this.c = c;
-        this.dream = dream;
         dp = c.getResources().getDisplayMetrics().density;
         Fonts.init(c);
         data = Data.get(c);
@@ -86,26 +84,25 @@ final class Ambient implements Data.Listener {
         GradientDrawable topShade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0x4D000000, 0x00000000});
         if (android.os.Build.VERSION.SDK_INT >= 29) topShade.setColors(new int[]{0x66000000, 0x4D000000, 0x00000000}, new float[]{0f, 0.62f, 1f});
         top.setBackground(topShade);
-        root.addView(top, new FrameLayout.LayoutParams(-1, px(dream ? 0 : 190)));
+        root.addView(top, new FrameLayout.LayoutParams(-1, px(190)));
         bottom = new View(c);
         bottom.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x00000000, 0x33000000, 0x8C000000}));
-        root.addView(bottom, new FrameLayout.LayoutParams(-1, px(dream ? 300 : 240), Gravity.BOTTOM));
+        root.addView(bottom, new FrameLayout.LayoutParams(-1, px(240), Gravity.BOTTOM));
         dim = new View(c);
         dim.setBackgroundColor(0xFF000000);
         dim.setAlpha(0f);
         root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
-        // Частицы как на PS5: над фоном, под текстом и плитками; в заставке их нет
-        particles = dream ? null : new Particles(c);
-        if (particles != null) root.addView(particles, new FrameLayout.LayoutParams(-1, -1));
+        // Частицы как на PS5: над фоном, под текстом и плитками
+        particles = new Particles(c);
+        root.addView(particles, new FrameLayout.LayoutParams(-1, -1));
 
-        int clockBase = dream ? 468 : 92, dateBase = dream ? Grid.BOTTOM : 124;
-        // В заставке часы мельче и чуть прозрачнее: главное там фото
-        clock = Fonts.text(c, dream ? 48 : 64, Fonts.light28, dream ? 0xD9FFFFFF : Fonts.WHITE);
+        int clockBase = 92, dateBase = 124;
+        clock = Fonts.text(c, 64, Fonts.light28, Fonts.WHITE);
         clock.setLetterSpacing(-0.02f);
         clock.setTranslationX(-px(4));   // у цифр свой боковой зазор: видимый край на линии 56 dp
         root.addView(clock, Grid.at(clock, dp, Grid.MARGIN, clockBase, false, 0));
-        date = Fonts.text(c, Fonts.BODY, Fonts.reg18, dream ? Fonts.WHITE_60 : Fonts.WHITE_72);
+        date = Fonts.text(c, Fonts.BODY, Fonts.reg18, Fonts.WHITE_72);
         root.addView(date, Grid.at(date, dp, Grid.MARGIN, dateBase, false, 0));
 
         // Погода справа: значок и температура на линии часов, место на линии даты, курс ниже
@@ -144,17 +141,13 @@ final class Ambient implements Data.Listener {
         ref.setLetterSpacing(0.02f);
         root.addView(ref, Grid.at(ref, dp, Grid.MARGIN, Grid.BOTTOM, false, 0));
 
-        caption = Fonts.text(c, Fonts.CAPTION, Fonts.reg18, dream ? 0x73FFFFFF : Fonts.WHITE_60);
+        caption = Fonts.text(c, Fonts.CAPTION, Fonts.reg18, Fonts.WHITE_60);
         caption.setGravity(Gravity.END);
         caption.setSingleLine(true);
         caption.setEllipsize(TextUtils.TruncateAt.END);
         root.addView(caption, Grid.at(caption, dp, Grid.RIGHT, Grid.BOTTOM, true, Grid.span(7)));
 
         // Тени у текста нет: читаемость дают подложки сверху и снизу
-        if (dream) {
-            // В заставке нет погоды, курса и стиха: только время и место на фото
-            for (View v : new View[]{tempRow, place, rates, verse[0], verse[1], ref}) v.setVisibility(View.GONE);
-        }
         // Настройки сборки (Config): чего нет, того на экране нет совсем, остальное стоит на своих местах
         if (!Data.WEATHER_ON) for (View v : new View[]{tempRow, place}) v.setVisibility(View.GONE);
         if (!Data.RATES_ON) rates.setVisibility(View.GONE);
@@ -169,9 +162,8 @@ final class Ambient implements Data.Listener {
         Now.attach(c, nowChanged);
         data.addListener(this);
         data.refresh();
-        // Заставка это тот же экран блокировки, поэтому и фото то же самое (27.10), а не следующее в очереди
         Data.Photo first = data.currentPhoto();
-        if (shown == null || dream) showPhoto(first, false);
+        if (shown == null) showPhoto(first, false);
         else {
             drift(frame[front]);   // вернулись на экран: наплыв продолжается с текущего кадра
             if (first != null && shownPhoto != null && !first.id.equals(shownPhoto.id)) showPhoto(first, true);   // пока нас не было, началось новое время суток
@@ -179,14 +171,7 @@ final class Ambient implements Data.Listener {
         onData();
         h.post(tick);
         h.postDelayed(rotate, CHECK_MS);
-        if (particles != null) particles.level(active ? 1f : Particles.LOCK, 0);
-        if (dream) {
-            // Экран гаснет мягко: общее затемнение лёгкое, низ под часами темнее (подложка снизу)
-            dim.animate().alpha(0.22f).setDuration(M.t(6000)).setInterpolator(new AccelerateDecelerateInterpolator()).start();
-            h.postDelayed(shift, 5 * 60_000);
-            // Через 15 минут простоя картинка вдвое темнее, как в энергосбережении; любая кнопка вернёт всё сразу
-            h.postDelayed(() -> dim.animate().alpha(0.5f).setDuration(M.t(8000)).start(), Dream.SAVER_MS);
-        }
+        particles.level(active ? 1f : Particles.LOCK, 0);
     }
 
     void stop() {
@@ -194,7 +179,7 @@ final class Ambient implements Data.Listener {
         data.removeListener(this);
         h.removeCallbacksAndMessages(null);
         if (kenBurns != null) kenBurns.cancel();
-        if (particles != null) particles.stop();
+        particles.stop();
     }
 
     Runnable onNow;   // главный экран обновляет карточку «Играет», когда «Волна» сообщает о треке
@@ -219,21 +204,9 @@ final class Ambient implements Data.Listener {
                 data.prefetch();
                 Data.Photo next = data.currentPhoto();
                 if (next != null && (shownPhoto == null || !next.id.equals(shownPhoto.id))) showPhoto(next, true);
-                if (!dream && data.nextVerse()) swapVerse(true);
+                if (data.nextVerse()) swapVerse(true);
             }
             h.postDelayed(this, CHECK_MS);
-        }
-    };
-
-    // Заставка: раз в 5 минут часы чуть смещаются, чтобы панель не запоминала картинку
-    private int shiftStep;
-    private final Runnable shift = new Runnable() {
-        @Override public void run() {
-            int[][] spots = {{0, 0}, {24, -16}, {-12, -8}, {16, 8}, {-20, 12}};
-            int[] s = spots[++shiftStep % spots.length];
-            for (View v : new View[]{clock, date}) v.animate().translationX(px(s[0]) - (v == clock ? px(4) : 0))
-                    .translationY(px(s[1])).setDuration(M.t(3000)).setInterpolator(new AccelerateDecelerateInterpolator()).start();
-            h.postDelayed(this, 5 * 60_000);
         }
     };
 
@@ -280,11 +253,11 @@ final class Ambient implements Data.Listener {
             bottom.setVisibility(View.VISIBLE);
         }
         animateBlur(on ? 1f : 0f, on ? 700 : 900);
-        if (particles != null) particles.show(on);
+        particles.show(on);
         for (View g : new View[]{top, bottom})
             g.animate().alpha(on ? 0f : 1f).setStartDelay(0).setDuration(M.t(on ? 500 : 900)).setInterpolator(EASE).start();
         TextView shownVerse = verse[vis];
-        if (on && !dream) h.postDelayed(() -> {
+        if (on) h.postDelayed(() -> {
             // Пока стих не виден, готовим следующий: при возвращении в простой выедет уже новый
             if (!active) return;
             data.nextVerse();
@@ -303,6 +276,33 @@ final class Ambient implements Data.Listener {
         caption.animate().alpha(on ? 0f : 1f).setStartDelay(M.t(on ? 0 : 300)).setDuration(M.t(on ? 300 : 600)).start();
         rates.animate().alpha(on ? 1f : 0f).setStartDelay(M.t(on ? 200 : 0)).setDuration(M.t(400)).setInterpolator(EASE).start();
         if (kenBurns != null) { if (on) kenBurns.pause(); else kenBurns.resume(); }
+    }
+
+    // Сразу на экран блокировки, без переходов: ТВ выключили или он выключен. При включении первый же кадр чистый,
+    // без вспышки размытого фона и выезда стиха
+    void setIdleNow() {
+        if (!active) return;
+        active = false;
+        if (blurAnim != null) blurAnim.cancel();
+        blurLevel = 0f;
+        soft[front].setAlpha(0f);
+        sharp[front].setVisibility(View.VISIBLE);
+        for (View g : new View[]{top, bottom}) {
+            g.animate().cancel();
+            g.setVisibility(View.VISIBLE);
+            g.setAlpha(1f);
+        }
+        for (View t : new View[]{verse[vis], ref}) {
+            t.animate().cancel();
+            t.setTranslationY(0);
+            t.setAlpha(1f);
+        }
+        caption.animate().cancel();
+        caption.setAlpha(1f);
+        rates.animate().cancel();
+        rates.setAlpha(0f);
+        particles.level(Particles.LOCK, 0);
+        if (kenBurns != null) kenBurns.resume();
     }
 
     // Сетка «Все приложения»: фон ещё темнее, часы и погода гаснут.
@@ -324,7 +324,7 @@ final class Ambient implements Data.Listener {
         for (View t : new View[]{clock, date, tempRow, place, rates})
             t.animate().alpha(on ? 0f : (t == rates && !active ? 0f : 1f)).setStartDelay(M.t(0)).setDuration(M.t(260)).start();
         // Под сеткой частицы тише, чтобы не спорить со значками
-        if (particles != null && active) {
+        if (active) {
             particles.animate().alpha(on ? 0.55f : 1f).setStartDelay(0).setDuration(M.t(320)).start();
         }
     }
@@ -337,8 +337,12 @@ final class Ambient implements Data.Listener {
         }
     }
 
+    private android.animation.ValueAnimator blurAnim;
+
     private void animateBlur(float to, long ms) {
+        if (blurAnim != null) blurAnim.cancel();
         android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(blurLevel, to);
+        blurAnim = a;
         a.setDuration(M.t(ms));
         a.setInterpolator(EASE);
         a.addUpdateListener(an -> {
@@ -373,7 +377,7 @@ final class Ambient implements Data.Listener {
             rates.setText("$\u2009" + Data.rate2(data.usd) + "  ·  €\u2009" + Data.rate2(data.eur)
                     + "  ·  ₽\u2009" + Data.rate2(data.rub) + " за\u00A0100");
         }
-        if (Data.VERSES_ON && !dream && verse[0].getText().length() == 0 && verse[1].getText().length() == 0) {
+        if (Data.VERSES_ON && verse[0].getText().length() == 0 && verse[1].getText().length() == 0) {
             verse[vis].setText(Typo.fix(data.verse));
             ref.setText(Typo.ref(data.verseRef));
         }
@@ -438,11 +442,11 @@ final class Ambient implements Data.Listener {
         SpannableString t = new SpannableString(ph.caption + "  ·  " + ph.credit);
         int from = ph.caption.length();
         t.setSpan(new RelativeSizeSpan(0.85f), from, t.length(), 0);
-        t.setSpan(new ForegroundColorSpan(dream ? 0x4DFFFFFF : 0x66FFFFFF), from, t.length(), 0);
+        t.setSpan(new ForegroundColorSpan(0x66FFFFFF), from, t.length(), 0);
         return t;
     }
 
-    // Медленный наплыв фото от текущего масштаба до 1,05 (в заставке до 1,06)
+    // Медленный наплыв фото от текущего масштаба до 1,06
     // Очень медленный наплыв без остановки: 1,0 ↔ 1,06 туда и обратно по 10 минут (фото теперь висит часами,
     // а прошлый наплыв за 2 минуты останавливался, и экран выглядел застывшим). На главном экране с плитками стоит
     static final long DRIFT_MS = 10 * 60_000;

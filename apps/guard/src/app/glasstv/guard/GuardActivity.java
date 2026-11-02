@@ -127,10 +127,9 @@ public class GuardActivity extends Activity {
         String how = sp.getString("nightHow", "");
         int day = sp.getInt("blDay", -1), lvl = sp.getInt("nightLevel", GuardService.NIGHT_LEVEL);
         night.setText(!nightEnabled ? "выключено"
-                : sp.getBoolean("nightManual", false) ? "сегодня яркость выбрана с пульта, до утра не трогаю"
                 : "вуаль".equals(how) ? "сейчас темнее вуалью: подсветку ведёт датчик света"
-                : "подсветка".equals(how) ? "подсветка " + (day > 0 ? day + " → " : "") + lvl + " до 7:00"
-                : "с 22:00 до 7:00 подсветка " + lvl + " из 100");
+                : day > 0 ? "подсветка " + day + " → " + lvl + " до 7:00"
+                : "в 22:00 станет " + lvl + " из 100, если яркость за день не меняли");
         night.setTextColor(0xFFF5F5F7);
         refreshSound(g);
         log.setText(getSharedPreferences("guard", MODE_PRIVATE).getString("log", ""));

@@ -39,11 +39,10 @@ import java.util.Set;
 //
 // ПРАВИЛО ПРИОРИТЕТА (чтобы выбор не дрался с автоматикой «Вечер» 22:00 и «День» 7:00 и ночной подсветкой)
 //   1. Выбор держится до ближайшей границы 22:00 или 7:00 (те же, что у Pq.tick и у ночной подсветки). После неё он снимается сам.
-//   2. Пока он держится: Pq.tick («Вечер» и «День») молчит, ночная подсветка не стартует и не возвращает подсветку (GuardService.startNight,
-//      endNight, ход rampTo), мягкое включение после сна поднимает подсветку до выбранной.
+//   2. Пока он держится: Pq.tick («Вечер» и «День») молчит, ход подсветки в GuardService (moveBacklight) не идёт.
 //   3. На границе первый же вызов expireDue() снимает выбор и возвращает то, что стояло ДО него (снимок, взят до первой записи, на диске).
 //      Только после этого работает автоматика. Поэтому после снятия всё выглядит так, будто «Картинку» не трогали: вечером ночной ход
-//      Сторожа заново опустит подсветку, утром «День» вернёт дневное. Подсветка возвращается сразу, без плавного хода.
+//      Сторожа опустит подсветку, утром «День» вернёт дневное. Подсветка возвращается сразу, без плавного хода.
 //   4. Выбор повторяется после пробуждения ТВ (TCL сама возвращает сохранённую картинку: проходы через 3, 6,5 и 12 секунд) и после перезагрузки.
 //   5. Если «Ночной режим» (do=nm) ведёт подсветку, подсветку выбора не пишем, остальное применяем; когда он выключился, догоняем.
 //   6. Тип сигнала при смене (SDR на HDR) не отслеживаем: ТВ сам подставляет сохранённое для нового режима. Открыть «Картинку» и нажать
@@ -195,10 +194,10 @@ final class Pic {
             }
             GuardService g = GuardService.running;
             if (g != null) g.h.post(g::stopRamp);   // ночной ход подсветки не должен принять нашу запись за пульт
-            String r = applyNow(c, p, "выбор в «Картинке»", false);
+            String r = applyNow(c, p, "выбор в «Картинке»");
             if (r != null && g != null) { final String line = "Картинка: " + r; g.h.post(() -> g.log(line)); }
         } else if (held(p)) {
-            applyNow(c, p, "повтор по запросу", false);
+            applyNow(c, p, "повтор по запросу");
         }
         return json(c, p);
     }
@@ -229,8 +228,7 @@ final class Pic {
     }
 
     // Применить выбор к панели: пишем только то, что отличается от живого значения. Возвращает строку для журнала или null, если менять нечего.
-    // skipBl: мягкое включение ещё идёт и ставит подсветку само
-    static String applyNow(Context c, SharedPreferences p, String why, boolean skipBl) {
+    static String applyNow(Context c, SharedPreferences p, String why) {
         if (!held(p)) return null;
         PowerManager pm = c.getSystemService(PowerManager.class);
         if (pm != null && !pm.isInteractive()) return null;   // экран спит: дождёмся включения
@@ -248,7 +246,7 @@ final class Pic {
         // (мы включили его в «Мягком» и после нас его не сдвигали). Если пользователь включил или выключил фильтр руками, это уже его (см. ours)
         Integer lbrWant = lbr == 1 ? Integer.valueOf(1) : snap.get("lowBlueRay");
         if (lbrWant != null) want.put("lowBlueRay", lbrWant);
-        if (!nm && !skipBl) want.put("backlight", clamp(0, p.getInt("pic.bl", BL_MIN)));
+        if (!nm) want.put("backlight", clamp(0, p.getInt("pic.bl", BL_MIN)));
         StringBuilder sb = new StringBuilder();
         for (String k : ORDER_APPLY) {
             Integer w = want.get(k);
@@ -308,10 +306,10 @@ final class Pic {
     }
 
     // Повтор выбора (пробуждение, запуск службы, конец «Ночного режима»): в очереди Pq, в журнал только если что-то записалось
-    static void reapply(final Context c, final SharedPreferences p, final String why, final boolean skipBl) {
+    static void reapply(final Context c, final SharedPreferences p, final String why) {
         if (!held(p)) return;
         Pq.async(() -> {
-            String r = applyNow(c, p, why, skipBl);
+            String r = applyNow(c, p, why);
             GuardService g = GuardService.running;
             if (r != null && g != null) { final String line = "Картинка: " + r; g.h.post(() -> g.log(line)); }
         });
