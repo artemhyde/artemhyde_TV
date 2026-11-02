@@ -4,7 +4,7 @@
 
 **Stock Google TV with ads ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
 ![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif)  
-Drag the curtain yourself: [open the comparison](https://rawcdn.githack.com/artemhyde/artemhyde_TV/25449814067ed627bdf7d273cd681ccbf81638a0/docs/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
+Drag the curtain yourself: [open the comparison](https://artemhyde.github.io/artemhyde_TV/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 A home screen, night mode, sound and picture controls for Google TV and TCL, set up for you by your own Claude Code. In packages and folders the project keeps its technical name, glasstv (`app.glasstv.*`).
 
@@ -40,16 +40,18 @@ Pills strip on the remote's gear button: Night, Sound, Picture, Volna, TCL panel
 "Kartinka" (Picture): the same kind of strip. Four modes (Cinema Evening, Daylight Sharp, Maximum HDR, Soft for the eyes), "Auto" and sliders: panel backlight, black depth, HDR peak, warm tint.  
 ![Picture](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/picture.png)
 
-"Night mode" in two stages. First press: a small plate at the bottom of the screen with one brightness slider. The slider shows the real panel backlight one to one: from zero, left goes straight into the minus, right goes 1, 2, 3. Left of zero is the red zone down to −100 %: a veil, and below −50 the contrast drops as well, so at −100 white on screen is about half as bright. Second press of the same button (or Down and OK on "Sleep timer"): the plate smoothly grows into the full menu with the sleep timer and an "Off" button.  
+"Night mode" in two stages. First press: a small plate at the bottom of the screen with one brightness slider. The slider shows the real panel backlight one to one: from zero, left goes straight into the minus, right goes 1, 2, 3. Left of zero is the red zone down to −100 %: a veil, and below −50 a second layer over it, so the difference is visible all the way. Second press of the same button (or Down and OK on "Sleep timer"): the plate smoothly grows into the full menu with the sleep timer and an "Off" button.  
 ![Night mode: the plate](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night.png)  
 ![Night mode: the full menu](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night-full.png)
 
 "Storozh" (Guard): a background service. It changes the backlight exactly twice a day, at 22:00 and at 7:00, and does not argue with you: touch the brightness yourself and it leaves it alone until the next morning. Optionally it levels the volume; it returns the TV to the home screen on power-off, keeps wireless debugging on and watches Key Mapper.  
 ![Guard](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/guard.png)
 
-"Volna" (optional): music through Aura Music, "My wave" and "New for you" selections, lyrics. If the music stalls for more than 7 seconds, Volna resets the Aura player and plays the next track. If you signed in to Aura Music yourself, a like on the first profile goes to your YouTube Music, and the second profile sends nothing to the account. The wizard does not install or look for Aura Music: Volna is only offered if you already have it.
+"Volna" (optional): music through a custom build of Aura Music (patches and the build script are in `aura/`, there is no APK in the repository), "My wave" and "New for you" selections, lyrics. A track starts by its exact id, and the close button shuts the music down for good: no button and no TV restart brings it back. If you signed in to the player yourself, the waves are built from your account, and a like or a "Not for me" goes there. The second taste has its own channel of the same account with the same name, and its likes never reach the main profile.
 
-TV Bro browser with our patches (optional, built on your computer): site players, input suggestions, a flat dark look without extra frames. The screenshot shows the start page with Russian sites; this build has a neutral set there (Bing, Reddit, Wikipedia, IMDb, BBC News, DuckDuckGo).  
+"Keyboard" for the remote: digits always in their own row, above them the signs the field needs (domains in one key for mail, password signs for passwords), capitals and erasing by holding a key, nothing resets by itself. No permissions and no internet, one command to go back.
+
+TV Bro browser with our patches (optional, built on your computer): site players, input suggestions, a separate panel for editing the address with a yellow caret and a "Cut the link" button, a flat dark look without extra frames. The screenshot shows the start page with Russian sites; this build has a neutral set there (Bing, Reddit, Wikipedia, IMDb, BBC News, DuckDuckGo).  
 ![Browser](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/browser.png)
 
 Remote buttons: mapped through Key Mapper, any special button can open the app you want.
@@ -79,7 +81,7 @@ More on what is tied to TCL: [docs/tcl.md](docs/tcl.md).
 - It relies on undocumented TCL and Dolby firmware interfaces. A firmware update may break it or bring back what was disabled (the wizard will go through the list again). We have no connection to TCL or Dolby.
 - The apps' interface is Russian only. The wizard in Claude Code speaks your language.
 - Button mapping is done in Key Mapper step by step on the live screen and is tested only on version 4.6.2 foss. The "Send intent" form may not open on your TV: then every action goes through "Launch app", and the long press of the gear stays without the TCL panel.
-- Volna reaches YouTube Music with undocumented requests without signing in. This is a grey area of YouTube's terms: optional and at your own risk. The sound is played by the third-party Aura Music. Aura's "do not record listening history" setting is one for the whole app: to keep the second profile's listening out of the account, you have to turn it on for both profiles.
+- Volna reaches YouTube Music with undocumented requests. This is a grey area of YouTube's terms: optional and at your own risk. The sound is played by a build of the third-party Aura Music player under GPL-3.0; our patches do not change how it gets the stream.
 - The light "Obyom" theme exists but is checked only on a home screen snapshot of one TV. The default is the dark "Graphite".
 - The browser is built from patches to the TV Bro sources. Do not pass the built APK to other people: that would break the TV Bro license.
 - Weather: Open-Meteo, free for non-commercial use only. National Bank of Belarus rates are enabled separately and are optional.
@@ -91,6 +93,7 @@ We do not copy or distribute other people's apps, only links. The full list with
 - SmartTube (MIT): YouTube client, github.com/yuliskov/SmartTube
 - Lampa: film catalogue, github.com/lampa-app/LAMPA (no license stated on the page, link only)
 - TV Bro (own license): browser, github.com/truefedex/tv-bro, our changes are kept as patches
+- Aura Music (GPL-3.0): the player for Volna, github.com/TeamAuraMusic/AuraMusic, our changes are patches in the `aura/` folder, which is under GPL-3.0
 - Inter (SIL OFL 1.1): font, github.com/rsms/inter
 - Wikimedia Commons: photos with author and license on screen (CC BY-SA, CC BY, CC0)
 - Open-Meteo (CC BY 4.0): weather, open-meteo.com  

@@ -1,0 +1,693 @@
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
+index 380c444..8aaed41 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/UxShell.kt
+@@ -63,10 +63,27 @@ class UxShell(
+         override val incognito: Boolean get() = AppContext.provideConfig().incognitoMode
+     })
+ 
++    /** The address of the page, apart from the search bar */
++    private val editor = AddressEditorView(activity, object : AddressEditorView.Host {
++        override fun submit(text: String) {
++            host.search(text)
++            callbacks.onAddressSent()
++        }
++        override fun openSearch() {
++            openQuickBar(force = true, blank = true)
++        }
++        override fun onClosed() {
++            callbacks.restoreFocus()
++            maybeShowChip()
++        }
++    })
++
+     private val chip = PageVideoChipView(activity)
+ 
+-    /** Back closes the address bar */
++    /** Back closes the search bar */
+     val backCallback get() = quickBar.backCallback
++    /** Back closes the address panel */
++    val editorBackCallback get() = editor.backCallback
+ 
+     private var pageScrollY = 0
+     private var covered = false
+@@ -82,12 +99,13 @@ class UxShell(
+ 
+     /**
+      * Something of this shell covers the page, so the hint of the shell about a playing video waits: the address
+-     * bar, the chip, and the pages the chip was shown for (one offer of the player per page is enough)
++     * panel, the search bar, the chip, and the pages the chip was shown for (one offer of the player per page is enough)
+      */
+-    val coversPage: Boolean get() = quickBar.isVisible || chipShown || (pageKey != null && pageKey in chipPages)
++    val coversPage: Boolean get() = quickBar.isVisible || editor.isVisible || chipShown || (pageKey != null && pageKey in chipPages)
+ 
+     fun attach() {
+         root.addView(quickBar, RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
++        root.addView(editor, RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+         root.addView(chip, RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UxGlass.dp(activity, 48f)).apply {
+             addRule(RelativeLayout.ALIGN_PARENT_TOP)
+             addRule(RelativeLayout.ALIGN_PARENT_END)
+@@ -95,7 +113,7 @@ class UxShell(
+             marginEnd = UxGlass.dp(activity, 16f)
+         })
+         UxHooks.isPageAtTop = { pageScrollY <= 0 }
+-        UxHooks.onUpAtTop = { openQuickBar() }
++        UxHooks.onUpAtTop = { openAddressEditor() }
+         UxHooks.openQuickBar = { openQuickBar() }
+         UxHooks.scrollPage = { down -> scrollPage(down) }
+         UxHooks.onScrollKey = { watchScroll() }
+@@ -118,23 +136,40 @@ class UxShell(
+         UxHooks.onScrollKey = null
+         handler.removeCallbacksAndMessages(null)
+         quickBar.close(restoreFocus = false)
++        editor.close(restoreFocus = false)
+     }
+ 
+     /** The activity stops: the bar goes with the keyboard, the page keeps the focus it had */
+-    fun onStop() = quickBar.close(restoreFocus = false)
++    fun onStop() {
++        quickBar.close(restoreFocus = false)
++        editor.close(restoreFocus = false)
++    }
+ 
+     /**
+-     * Opens the address bar over the page; false if something covers the page. The bar of the shell asks with
+-     * [force]: it is open under the new bar, and the address of the page is in the field, selected; with [blank]
+-     * (the search button of the bar) the field is empty, to type a query at once.
++     * Opens the search bar over the page, with an empty field; false if something covers the page. The bar of the
++     * shell asks with [force]: it is open under the new bar.
+      */
+-    fun openQuickBar(force: Boolean = false, blank: Boolean = false): Boolean {
+-        if (quickBar.isVisible || (!force && callbacks.isPageCovered())) return false
++    @Suppress("UNUSED_PARAMETER")
++    fun openQuickBar(force: Boolean = false, blank: Boolean = true): Boolean {
++        if (quickBar.isVisible || editor.isVisible || (!force && callbacks.isPageCovered())) return false
+         hideChip(fade = false)
+         //the cursor would float over the dimmed page
+         cursorDelegate?.hideCursor()
++        quickBar.open()
++        return true
++    }
++
++    /**
++     * Opens the panel with the address of the page; a page without an address (the home page) opens the search bar.
++     * False if something covers the page; the bar of the shell asks with [force]: it is open under the panel.
++     */
++    fun openAddressEditor(force: Boolean = false): Boolean {
++        if (quickBar.isVisible || editor.isVisible || (!force && callbacks.isPageCovered())) return false
+         val address = host.controller.currentTabState.value.url
+-        quickBar.open(prefill = if (force && !blank && address != Config.HOME_PAGE_URL) address else "")
++        if (address.isBlank() || address == Config.HOME_PAGE_URL) return openQuickBar(force)
++        hideChip(fade = false)
++        cursorDelegate?.hideCursor()
++        editor.open(address)
+         return true
+     }
+ 
+@@ -147,7 +182,7 @@ class UxShell(
+ 
+     /** The hotkeys of page up and down; nothing happens while something covers the page */
+     private fun scrollPage(down: Boolean) {
+-        if (callbacks.isPageCovered() || quickBar.isVisible) return
++        if (callbacks.isPageCovered() || quickBar.isVisible || editor.isVisible) return
+         cursorDelegate?.scrollPage(if (down) 1 else -1)
+     }
+ 
+@@ -199,12 +234,15 @@ class UxShell(
+         if ((chipShown || chipOkDown) && onChipKey(event)) return true
+         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
+             //the key belongs to the bar while it shows (it closes it) and to the page when nothing is free to open
+-            if (quickBar.isVisible) {
+-                if (event.action == KeyEvent.ACTION_UP) quickBar.close()
++            if (quickBar.isVisible || editor.isVisible) {
++                if (event.action == KeyEvent.ACTION_UP) {
++                    quickBar.close()
++                    editor.close()
++                }
+                 return true
+             }
+             if (!callbacks.isPageCovered()) {
+-                if (event.action == KeyEvent.ACTION_UP) openQuickBar()
++                if (event.action == KeyEvent.ACTION_UP) openAddressEditor()
+                 return true
+             }
+         }
+@@ -246,7 +284,7 @@ class UxShell(
+ 
+     private fun maybeShowChip() {
+         val key = pageKey ?: return
+-        if (chipShown || covered || quickBar.isVisible || videos.isEmpty() || key in chipPages) return
++        if (chipShown || covered || quickBar.isVisible || editor.isVisible || videos.isEmpty() || key in chipPages) return
+         if (!AppContext.provideConfig().pageVideoHint) return
+         //a video found while something covered the page is no news when the page is free again
+         if (SystemClock.elapsedRealtime() - videosFoundAt > FRESH_MS) return
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+index 3b15383..9769e42 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/QuickBarView.kt
+@@ -127,7 +127,8 @@ class QuickBarView(context: Context, private val host: Host) : FrameLayout(conte
+         input.hint = context.getString(R.string.ux_quick_field_hint)
+         input.isSingleLine = true
+         input.maxLines = 1
+-        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
++        //a search: any language; the address of the page is edited in AddressEditorView
++        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+         input.imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) input.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+         input.setPadding(UxGlass.dp(context, 12f), 0, 0, 0)
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+index 7f7fe2f..388cdbf 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+@@ -787,8 +787,8 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+         vb.vSyncScreen.attach(lifecycleScope, syncScreenCallback)
+         vb.vSettingsScreen.attach(lifecycleScope, vb.vPopupMenu, settingsCallback, ::onSettingsClosed)
+         ux.attach()
+-        //typing the address in the bar goes through the address bar with suggestions
+-        vb.vActionBar.onAddressClick = { focusSearchButton = false; ux.openQuickBar(force = true) }
++        //the address in the bar opens the panel of the address, whole and with the caret in it
++        vb.vActionBar.onAddressClick = { focusSearchButton = false; ux.openAddressEditor(force = true) }
+         //the search button opens it with an empty field, to type a query at once
+         vb.vActionBar.onSearchClick = { focusSearchButton = true; ux.openQuickBar(force = true, blank = true) }
+         activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+@@ -1068,6 +1068,7 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+         dispatcher.addCallback(activity, cursorModesBackCallback)
+         //the address bar over the page
+         dispatcher.addCallback(activity, ux.backCallback)
++        dispatcher.addCallback(activity, ux.editorBackCallback)
+         //the built-in player over everything: Back closes it, whatever the cursor of the page under it does
+         dispatcher.addCallback(activity, vb.vPlayerScreen.backCallback)
+         //the voice input of the bookmarks search: Back cancels it
+diff --git b/app/src/main/java/com/phlox/tvwebbrowser/ux/AddressEditorView.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/AddressEditorView.kt
+new file mode 100644
+index 0000000..fe786a0
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/AddressEditorView.kt
+@@ -0,0 +1,399 @@
++package com.phlox.tvwebbrowser.ux
++
++import android.content.Context
++import android.content.res.ColorStateList
++import android.graphics.Canvas
++import android.graphics.Paint
++import android.graphics.drawable.StateListDrawable
++import android.os.SystemClock
++import android.text.InputType
++import android.util.TypedValue
++import android.view.FocusFinder
++import android.view.Gravity
++import android.view.KeyEvent
++import android.view.View
++import android.view.ViewGroup
++import android.view.animation.DecelerateInterpolator
++import android.view.inputmethod.EditorInfo
++import android.view.inputmethod.InputMethodManager
++import android.widget.EditText
++import android.widget.FrameLayout
++import android.widget.LinearLayout
++import android.widget.TextView
++import androidx.activity.OnBackPressedCallback
++import androidx.core.view.isVisible
++import androidx.core.widget.doAfterTextChanged
++import com.phlox.tvwebbrowser.R
++
++/**
++ * The address of the page, apart from the search: a panel at the top with the whole address in up to four lines, the
++ * caret at its end and nothing selected, and two rows of buttons under it: what to do with the address, then the fine
++ * editing. The keyboard stays hidden until it is asked for, so Left and Right move the caret in the text at once; Down goes
++ * to the buttons, Up back; OK in the text shows the keyboard.
++ * Opened by Up at the top of the page, the Menu key and the address field of the bar. Back closes it (one more Back
++ * after a change, the edits are lost); the buttons that edit repeat while OK is held.
++ */
++class AddressEditorView(context: Context, private val host: Host) : FrameLayout(context) {
++    interface Host {
++        /** Opens the text as an address, or searches it */
++        fun submit(text: String)
++        /** The search bar opens in place of this panel */
++        fun openSearch()
++        /** The panel went away: the focus goes back */
++        fun onClosed()
++    }
++
++    private val panel = LinearLayout(context)
++    private val position = TextView(context)
++    private val hint = TextView(context)
++    private lateinit var openButton: View
++    private var original = ""
++    private var warned = false
++    private var keyboardUp = false
++    /** The focus is on the button that erases one character: the character is marked in the text */
++    private var markLeft = false
++
++    private val caretPaint = Paint().apply {
++        color = 0xFFFFD54A.toInt()
++    }
++    private val markPaint = Paint().apply {
++        color = 0x808FB8FF.toInt()
++    }
++
++    private val input = object : EditText(context) {
++        override fun onSelectionChanged(selStart: Int, selEnd: Int) {
++            super.onSelectionChanged(selStart, selEnd)
++            //the constructor of EditText calls it too: only what is set before the field is used here
++            position.text = context.getString(R.string.ux_addr_position, selEnd.coerceAtLeast(0), length())
++            invalidate()
++        }
++
++        override fun onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean {
++            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP && event.eventTime - event.downTime < HOLD_BACK_MS) {
++                setKeyboardUp(false)
++            }
++            return super.onKeyPreIme(keyCode, event)
++        }
++
++        //the caret of its own: the one of EditText blinks and goes away with the focus, and the buttons move it too
++        override fun onDraw(canvas: Canvas) {
++            super.onDraw(canvas)
++            val l = layout ?: return
++            val offset = selectionEnd.coerceIn(0, length())
++            val line = l.getLineForOffset(offset)
++            //between two characters, on neither of them, in a color no text has
++            val half = UxGlass.dp(context, 1.5f).toFloat()
++            val x = compoundPaddingLeft + l.getPrimaryHorizontal(offset)
++            val top = extendedPaddingTop.toFloat()
++            canvas.drawRect(x - half, top + l.getLineTop(line), x + half, top + l.getLineBottom(line), caretPaint)
++            if (markLeft && offset > 0) {
++                val left = offset - 1
++                val leftLine = l.getLineForOffset(left)
++                val from = compoundPaddingLeft + l.getPrimaryHorizontal(left)
++                val to = from + paint.measureText(text, left, offset)
++                canvas.drawRect(from, top + l.getLineTop(leftLine), to, top + l.getLineBottom(leftLine), markPaint)
++            }
++        }
++    }
++
++    /** Back closes the panel while it shows */
++    val backCallback = object : OnBackPressedCallback(false) {
++        override fun handleOnBackPressed() {
++            if (input.text.toString() != original && !warned) {
++                warned = true
++                hint.text = context.getString(R.string.ux_addr_back_again)
++                //not lost among the usual hints
++                hint.setTextColor(0xFFFFD54A.toInt())
++                return
++            }
++            close()
++        }
++    }
++
++    init {
++        visibility = GONE
++        //darker than the other panels: the text of the page right under the panel should not read as a part of it
++        setBackgroundColor(0xD9101014.toInt())
++        isFocusable = false
++        outlineProvider = null
++        elevation = UxGlass.dp(context, 7.9f).toFloat()
++
++        panel.orientation = LinearLayout.VERTICAL
++        panel.background = UxGlass.panel(context)
++        val pad = UxGlass.dp(context, 16f)
++        panel.setPadding(pad, UxGlass.dp(context, 12f), pad, UxGlass.dp(context, 12f))
++        val width = minOf(UxGlass.dp(context, PANEL_WIDTH_DP), context.resources.displayMetrics.widthPixels - 2 * UxGlass.dp(context, 24f))
++        addView(panel, LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
++            topMargin = UxGlass.dp(context, 20f)
++        })
++
++        panel.addView(buildHeader())
++        panel.addView(buildField())
++        buildButtons()
++
++        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
++        hint.setTextColor(UxGlass.TEXT_FAINT)
++        hint.gravity = Gravity.CENTER
++        panel.addView(hint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++            topMargin = UxGlass.dp(context, 8f)
++        })
++    }
++
++    private fun buildHeader(): View {
++        val row = LinearLayout(context)
++        row.orientation = LinearLayout.HORIZONTAL
++        val title = TextView(context)
++        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
++        title.setTextColor(UxGlass.TEXT_FAINT)
++        title.text = context.getString(R.string.ux_addr_title)
++        row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        position.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
++        position.setTextColor(UxGlass.TEXT_HINT)
++        row.addView(position)
++        return row
++    }
++
++    private fun buildField(): View {
++        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
++        input.letterSpacing = 0.03f
++        input.setTextColor(UxGlass.TEXT)
++        input.highlightColor = 0x598FB8FF
++        val fieldRadius = UxGlass.dp(context, 12f).toFloat()
++        input.background = StateListDrawable().apply {
++            //with the keyboard up the focus is on its key: one white mark on the screen, not two
++            addState(intArrayOf(android.R.attr.state_activated), UxGlass.rounded(UxGlass.VEIL, fieldRadius))
++            addState(intArrayOf(android.R.attr.state_focused), UxGlass.rounded(UxGlass.VEIL, fieldRadius).apply {
++                setStroke(UxGlass.dp(context, 2f), 0xFFFFFFFF.toInt())
++            })
++            addState(intArrayOf(), UxGlass.rounded(UxGlass.VEIL, fieldRadius))
++        }
++        input.setPadding(UxGlass.dp(context, 14f), UxGlass.dp(context, 10f), UxGlass.dp(context, 14f), UxGlass.dp(context, 10f))
++        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
++        input.imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_EXTRACT_UI
++        input.setImeActionLabel(context.getString(R.string.ux_addr_open), EditorInfo.IME_ACTION_GO)
++        //the caret is in place already: the keyboard starts on its letters
++        input.privateImeOptions = "app.glasstv.keyboard.keys"
++        input.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
++        //the whole address is seen: it wraps on any character, not scrolled in one line
++        input.setHorizontallyScrolling(false)
++        input.maxLines = MAX_LINES
++        input.breakStrategy = android.graphics.text.LineBreaker.BREAK_STRATEGY_SIMPLE
++        input.showSoftInputOnFocus = false
++        input.isCursorVisible = false
++
++        input.setOnEditorActionListener { _, actionId, event ->
++            val enter = event != null && event.keyCode == KeyEvent.KEYCODE_ENTER
++            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE || enter) {
++                submit()
++                true
++            } else {
++                false
++            }
++        }
++        input.setOnKeyListener { _, keyCode, event ->
++            setKeyboardUp(false)
++            val down = event.action == KeyEvent.ACTION_DOWN
++            when (keyCode) {
++                KeyEvent.KEYCODE_DPAD_DOWN -> {
++                    if (down) openButton.requestFocus()
++                    true
++                }
++                KeyEvent.KEYCODE_DPAD_UP -> true
++                //the caret stops at the ends of the text, the focus does not leave it
++                KeyEvent.KEYCODE_DPAD_LEFT -> input.selectionStart == 0 && input.selectionEnd == 0
++                KeyEvent.KEYCODE_DPAD_RIGHT -> input.selectionEnd == input.length() && input.selectionStart == input.selectionEnd
++                KeyEvent.KEYCODE_DPAD_CENTER -> {
++                    if (event.action == KeyEvent.ACTION_UP) showKeyboard()
++                    true
++                }
++                KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
++                    if (event.action == KeyEvent.ACTION_UP) submit()
++                    true
++                }
++                else -> false
++            }
++        }
++        input.setOnFocusChangeListener { _, focused -> if (focused) showFieldHint() }
++        input.doAfterTextChanged { warned = false }
++        return input.also {
++            it.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++                topMargin = UxGlass.dp(context, 6f)
++            }
++        }
++    }
++
++    private fun buildButtons() {
++        val actions = addRow()
++        openButton = addButton(actions, R.string.ux_addr_open, R.string.ux_addr_hint_open, accent = true) { submit() }
++        addButton(actions, R.string.ux_addr_clear, R.string.ux_addr_hint_clear) {
++            input.setText("")
++            input.requestFocus()
++            showKeyboard()
++        }
++        addButton(actions, R.string.ux_addr_no_query, R.string.ux_addr_hint_no_query) {
++            val cut = AddressParts.withoutQuery(input.text.toString())
++            input.setText(cut)
++            input.setSelection(cut.length)
++            openButton.requestFocus()
++        }
++        addButton(actions, R.string.ux_addr_keyboard, R.string.ux_addr_hint_keyboard) { input.requestFocus(); showKeyboard() }
++        addButton(actions, R.string.ux_addr_search, R.string.ux_addr_hint_search) { close(restoreFocus = false); host.openSearch() }
++        val editing = addRow()
++        addButton(editing, R.string.ux_addr_prev, R.string.ux_addr_hint_prev, repeat = true) { input.setSelection(AddressParts.prevStop(input.text, input.selectionStart)) }
++        addButton(editing, R.string.ux_addr_next, R.string.ux_addr_hint_next, repeat = true) { input.setSelection(AddressParts.nextStop(input.text, input.selectionEnd)) }
++        val delete = addButton(editing, R.string.ux_addr_delete, R.string.ux_addr_hint_delete, repeat = true) { deleteBefore() }
++        delete.setOnFocusChangeListener { _, focused ->
++            if (focused) showHint(R.string.ux_addr_hint_delete)
++            markLeft = focused
++            input.invalidate()
++        }
++        addButton(editing, R.string.ux_addr_cut_right, R.string.ux_addr_hint_cut_right) { input.text.delete(input.selectionStart, input.length()) }
++    }
++
++    private fun addRow(): LinearLayout {
++        val row = LinearLayout(context)
++        row.orientation = LinearLayout.HORIZONTAL
++        row.gravity = Gravity.CENTER_HORIZONTAL
++        panel.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++            topMargin = UxGlass.dp(context, 10f)
++        })
++        return row
++    }
++
++    private fun addButton(row: LinearLayout, textRes: Int, hintRes: Int, repeat: Boolean = false, accent: Boolean = false, action: () -> Unit): View {
++        val height = UxGlass.dp(context, BUTTON_HEIGHT_DP)
++        val radius = height / 2f
++        val b = TextView(context)
++        b.text = context.getString(textRes)
++        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
++        b.gravity = Gravity.CENTER
++        b.setPadding(UxGlass.dp(context, 12f), 0, UxGlass.dp(context, 12f), 0)
++        b.isFocusable = true
++        b.isClickable = true
++        b.setTextColor(ColorStateList(arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()), intArrayOf(0xFF16161C.toInt(), UxGlass.TEXT)))
++        b.background = StateListDrawable().apply {
++            addState(intArrayOf(android.R.attr.state_focused), UxGlass.rounded(0xFFFFFFFF.toInt(), radius))
++            addState(intArrayOf(), UxGlass.rounded(if (accent) 0x598FB8FF else UxGlass.VEIL, radius))
++        }
++        b.setOnClickListener { action() }
++        b.setOnFocusChangeListener { _, focused -> if (focused) showHint(hintRes) }
++        b.setOnKeyListener { _, keyCode, event ->
++            when (keyCode) {
++                //along its row only: a press at the end goes to the other end, a hold stops there
++                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
++                    if (event.action == KeyEvent.ACTION_DOWN) {
++                        val step = if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1
++                        val next = row.indexOfChild(b) + step
++                        val wrapped = if (event.repeatCount == 0) (next + row.childCount) % row.childCount else next
++                        row.getChildAt(wrapped)?.requestFocus()
++                    }
++                    true
++                }
++                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
++                    if (!repeat) return@setOnKeyListener false
++                    //held OK repeats it
++                    val now = SystemClock.uptimeMillis()
++                    if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || now - lastRepeat >= REPEAT_MS)) {
++                        lastRepeat = now
++                        action()
++                    }
++                    true
++                }
++                else -> false
++            }
++        }
++        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, height)
++        if (row.childCount > 0) lp.marginStart = UxGlass.dp(context, 6f)
++        row.addView(b, lp)
++        return b
++    }
++
++    private var lastRepeat = 0L
++
++    private fun showHint(res: Int) {
++        hint.setTextColor(UxGlass.TEXT_FAINT)
++        hint.text = context.getString(res)
++    }
++
++    private fun showFieldHint() = showHint(if (keyboardUp) R.string.ux_addr_hint_typing else R.string.ux_addr_hint_text)
++
++    /**
++     * The keyboard came or went. A keyboard over the page changes no layout and no insets the views get, so this is tracked
++     * here: it comes when asked for, a short Back takes it away, and any key that reaches the field means it is gone.
++     */
++    private fun setKeyboardUp(up: Boolean) {
++        if (up == keyboardUp) return
++        keyboardUp = up
++        input.isActivated = up
++        if (input.hasFocus()) showFieldHint()
++    }
++
++    private fun deleteBefore() {
++        val start = input.selectionStart
++        val end = input.selectionEnd
++        if (start != end) input.text.delete(start, end)
++        else if (start > 0) input.text.delete(start - 1, start)
++    }
++
++    /** The focus does not leave the panel for the bar under it */
++    override fun focusSearch(focused: View?, direction: Int): View? {
++        if (!isVisible || focused == null) return super.focusSearch(focused, direction)
++        return FocusFinder.getInstance().findNextFocus(panel, focused, direction) ?: focused
++    }
++
++    /** Shows the panel with the [address] in the field, no-op if it shows */
++    fun open(address: String) {
++        if (isVisible) return
++        original = address
++        warned = false
++        input.setText(address)
++        input.setSelection(address.length)
++        visibility = VISIBLE
++        backCallback.isEnabled = true
++        alpha = 0f
++        panel.translationY = -UxGlass.dp(context, 18f).toFloat()
++        animate().alpha(1f).setDuration(OPEN_MS).setInterpolator(DecelerateInterpolator()).start()
++        panel.animate().translationY(0f).setDuration(OPEN_MS).setInterpolator(DecelerateInterpolator()).start()
++        input.requestFocus()
++    }
++
++    /** Hides the panel; the focus goes back unless [restoreFocus] is false */
++    fun close(restoreFocus: Boolean = true) {
++        if (!isVisible) return
++        backCallback.isEnabled = false
++        hideKeyboard()
++        setKeyboardUp(false)
++        animate().cancel()
++        panel.animate().cancel()
++        visibility = GONE
++        if (restoreFocus) host.onClosed()
++    }
++
++    private fun showKeyboard() {
++        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
++        imm.showSoftInput(input, 0)
++        setKeyboardUp(true)
++    }
++
++    private fun hideKeyboard() {
++        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
++        imm.hideSoftInputFromWindow(input.windowToken, 0)
++    }
++
++    private fun submit() {
++        val text = input.text.toString().trim()
++        if (text.isEmpty()) return
++        close()
++        host.submit(text)
++    }
++
++    companion object {
++        private const val PANEL_WIDTH_DP = 860f
++        private const val BUTTON_HEIGHT_DP = 36f
++        private const val MAX_LINES = 4
++        private const val OPEN_MS = 160L
++        private const val REPEAT_MS = 110L
++        /** Held longer, Back erases on the keyboard and does not take it away */
++        private const val HOLD_BACK_MS = 500L
++    }
++}
+diff --git b/app/src/main/java/com/phlox/tvwebbrowser/ux/AddressParts.kt b/app/src/main/java/com/phlox/tvwebbrowser/ux/AddressParts.kt
+new file mode 100644
+index 0000000..b5c267d
+--- /dev/null
++++ b/app/src/main/java/com/phlox/tvwebbrowser/ux/AddressParts.kt
+@@ -0,0 +1,36 @@
++package com.phlox.tvwebbrowser.ux
++
++/** The parts of an address for the keys of [AddressEditorView]: jumps over the separators and cutting its tail */
++object AddressParts {
++    private const val SEPARATORS = "/?&=#.:"
++
++    private fun isSeparator(c: Char) = SEPARATORS.indexOf(c) >= 0
++
++    /** Where the caret goes from [pos] one part back: to the start of the part (a row of separators counts as one) */
++    fun prevStop(text: CharSequence, pos: Int): Int {
++        var i = pos.coerceIn(0, text.length)
++        while (i > 0 && isSeparator(text[i - 1])) i--
++        while (i > 0 && !isSeparator(text[i - 1])) i--
++        return i
++    }
++
++    /** Where the caret goes from [pos] one part forward: to the start of the next part */
++    fun nextStop(text: CharSequence, pos: Int): Int {
++        var i = pos.coerceIn(0, text.length)
++        while (i < text.length && !isSeparator(text[i])) i++
++        while (i < text.length && isSeparator(text[i])) i++
++        return i
++    }
++
++    /** The address without its parameters: all from the first ? or #; the same text if it has none */
++    fun withoutQuery(text: String): String {
++        val q = text.indexOf('?')
++        val f = text.indexOf('#')
++        val cut = when {
++            q < 0 -> f
++            f < 0 -> q
++            else -> minOf(q, f)
++        }
++        return if (cut < 0) text else text.substring(0, cut)
++    }
++}
+diff --git a/app/src/main/res/values/ux_strings.xml b/app/src/main/res/values/ux_strings.xml
+index 5a1139a..dad70b5 100644
+--- a/app/src/main/res/values/ux_strings.xml
++++ b/app/src/main/res/values/ux_strings.xml
+@@ -20,4 +20,28 @@
+     <string name="ux_setting_tap_scroll_summary">A short press of Up or Down scrolls the page by 40% of the screen, Up at the top opens the address bar; holding scrolls on while the cursor is hidden and moves the cursor while it shows</string>
+     <string name="ux_setting_suggestions">Search suggestions</string>
+     <string name="ux_setting_suggestions_summary">The words typed in the address bar are sent to the search engine to get suggestions. Never sent in the incognito mode</string>
++
++    <string name="ux_addr_title">Page address</string>
++    <string name="ux_addr_position">char %1$d of %2$d</string>
++    <string name="ux_addr_open">Open</string>
++    <string name="ux_addr_delete">⌫ char</string>
++    <string name="ux_addr_cut_right">Erase to the end</string>
++    <string name="ux_addr_keyboard">Keyboard</string>
++    <string name="ux_addr_search">Search</string>
++    <string name="ux_addr_hint_text">Left and Right: caret · Down: buttons · OK: keyboard · Back: close</string>
++    <string name="ux_addr_hint_open">Open this address</string>
++    <string name="ux_addr_hint_delete">Erase the character left of the caret, marked blue. Holding erases on</string>
++    <string name="ux_addr_hint_keyboard">Show the keyboard: a character goes in at the caret</string>
++    <string name="ux_addr_hint_search">Open the search with an empty field</string>
++    <string name="ux_addr_back_again">The address changed. Back again: leave without the changes</string>
++    <string name="ux_addr_prev">◀ word</string>
++    <string name="ux_addr_next">word ▶</string>
++    <string name="ux_addr_no_query">Cut the link</string>
++    <string name="ux_addr_clear">Erase all</string>
++    <string name="ux_addr_hint_prev">Caret one word back: to the nearest slash, dot or sign</string>
++    <string name="ux_addr_hint_next">Caret one word forward: to the nearest slash, dot or sign</string>
++    <string name="ux_addr_hint_cut_right">Erase from the caret to the end of the address</string>
++    <string name="ux_addr_hint_no_query">Remove the end of the link from the question mark on: ad marks and the like</string>
++    <string name="ux_addr_hint_clear">Erase the whole address and type a new one</string>
++    <string name="ux_addr_hint_typing">Typing on the keyboard below · Back: hide it</string>
+ </resources>
+diff --git a/app/src/main/res/values-ru/ux_strings.xml b/app/src/main/res/values-ru/ux_strings.xml
+index de801b1..8664287 100644
+--- a/app/src/main/res/values-ru/ux_strings.xml
++++ b/app/src/main/res/values-ru/ux_strings.xml
+@@ -20,4 +20,28 @@
+     <string name="ux_setting_tap_scroll_summary">Короткое нажатие вверх или вниз листает страницу на 40% экрана, вверх на самом верху открывает адресную строку. Удержание листает дальше, пока курсор скрыт, и двигает курсор, пока он на экране</string>
+     <string name="ux_setting_suggestions">Подсказки при вводе</string>
+     <string name="ux_setting_suggestions_summary">Слова из адресной строки уходят в поисковик, чтобы получить подсказки. В режиме инкогнито не отправляются никогда</string>
++
++    <string name="ux_addr_title">Адрес страницы</string>
++    <string name="ux_addr_position">символ %1$d из %2$d</string>
++    <string name="ux_addr_open">Открыть</string>
++    <string name="ux_addr_delete">⌫ символ</string>
++    <string name="ux_addr_cut_right">Стереть до конца</string>
++    <string name="ux_addr_keyboard">Клавиатура</string>
++    <string name="ux_addr_search">Поиск</string>
++    <string name="ux_addr_hint_text">Влево и вправо: курсор · Вниз: кнопки · OK: клавиатура · Назад: закрыть</string>
++    <string name="ux_addr_hint_open">Открыть этот адрес</string>
++    <string name="ux_addr_hint_delete">Стереть символ слева от курсора, он подсвечен синим. Удержание стирает дальше</string>
++    <string name="ux_addr_hint_keyboard">Показать клавиатуру: знак встанет на место курсора</string>
++    <string name="ux_addr_hint_search">Открыть поиск с пустой строкой</string>
++    <string name="ux_addr_back_again">Адрес изменён. Ещё раз «Назад»: выйти без изменений</string>
++    <string name="ux_addr_prev">◀ слово</string>
++    <string name="ux_addr_next">слово ▶</string>
++    <string name="ux_addr_no_query">Обрезать ссылку</string>
++    <string name="ux_addr_clear">Стереть всё</string>
++    <string name="ux_addr_hint_prev">Курсор на слово назад: до ближайшей черты, точки или знака</string>
++    <string name="ux_addr_hint_next">Курсор на слово вперёд: до ближайшей черты, точки или знака</string>
++    <string name="ux_addr_hint_cut_right">Стереть всё от курсора до конца адреса</string>
++    <string name="ux_addr_hint_no_query">Убрать конец ссылки, начиная со знака вопроса: метки рекламы и прочее</string>
++    <string name="ux_addr_hint_clear">Стереть весь адрес и сразу вписать новый</string>
++    <string name="ux_addr_hint_typing">Набор на клавиатуре внизу · Назад: спрятать её</string>
+ </resources>

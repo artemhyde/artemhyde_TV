@@ -173,9 +173,7 @@ final class Net {
     }
 
     static List<Track> playlist(String playlistId) throws Exception {
-        List<Track> out = listItems(call("browse", new JSONObject().put("browseId", "VL" + playlistId), "US"), "");
-        for (Track t : out) t.playlist = playlistId;
-        return out;
+        return listItems(call("browse", new JSONObject().put("browseId", "VL" + playlistId), "US"), "");
     }
 
     // Чарты отдаются каруселями плейлистов («Daily Top Music Videos» и подобные): берём первый и грузим его

@@ -71,6 +71,7 @@ public class GuardService extends Service {
         h.postDelayed(nightTick, 10_000);
         h.postDelayed(idleTick, 60_000);
         noDream();
+        new VolumeHold(this);
         // Умный звук: если пользователь включал, эффект встанет сам (после загрузки ТВ и после перезапуска службы)
         sound = new SmartSound(this, p, this::log);
         sound.start();
@@ -225,7 +226,7 @@ public class GuardService extends Service {
     }
 
     static final java.util.Set<String> BACKGROUND_AUDIO = new java.util.HashSet<>(java.util.Arrays.asList(
-            "com.auramusic.app", "app.glasstv.volna"));
+            "app.glasstv.aura", "app.glasstv.volna"));
 
     // Пакет, у которого медиасессия сейчас «играет» (кроме фоновой музыки), или null. Без включённого слушателя Listen
     // система список не даёт: тогда считаем, что ничего не играет, и уводим на главный экран, как раньше просили
@@ -348,8 +349,31 @@ public class GuardService extends Service {
 
     void setNightModeActive(boolean on) {
         nmActive = on;
-        if (on) stopRamp();
-        else h.postDelayed(() -> picWake("ночной режим выключен"), 2_500);   // подсветку выбора из «Картинки», если он держится
+        if (on) { stopRamp(); return; }
+        h.postDelayed(() -> picWake("ночной режим выключен"), 2_500);   // подсветку выбора из «Картинки», если он держится
+        // 7:00 прошли, пока подсветку вёл «Ночной режим»: дневную возвращаем сейчас
+        h.postDelayed(() -> {
+            int day = p.getInt("blDay", -1);
+            if (day < 0 || isNight() || nmActive) return;
+            p.edit().remove("blDay").apply();
+            int cur = Backlight.get();
+            if (cur >= 0 && cur != day) { log("Ночной режим выключен днём: подсветка снова " + day); moveBacklight(cur, day); }
+        }, 3_000);
+    }
+
+    // Дневная подсветка с ПК: днём сразу, ночью до 7:00
+    void setDayLevel(int v) {
+        if (isNight()) {
+            p.edit().putInt("blDay", v).apply();
+            log("Дневная подсветка " + v + ": вернётся в 7:00, ночная " + nightLevel());
+            return;
+        }
+        stopRamp();
+        p.edit().remove("blDay").apply();
+        if (nmActive) { p.edit().putInt("blDay", v).apply(); return; }
+        Backlight.set(v, true);
+        p.edit().putInt("blBase", v).apply();
+        log("Дневная подсветка " + v);
     }
 
     // «Картинке» нужно знать, ведёт ли «Ночной режим» подсветку

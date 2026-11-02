@@ -1,6 +1,6 @@
 # Чужие проекты и лицензии
 
-Мы не копируем и не раздаём чужие приложения и их исходники, только ссылки. Наши приложения общаются с чужими через intent, broadcast, MediaBrowser и командную строку, кода чужих проектов с лицензией GPL в них нет (по просмотру исходников, построчного сравнения не делали). Проект не связан с TCL, Google, Dolby и авторами перечисленных проектов. Товарные знаки принадлежат владельцам и используются только для обозначения приложения.
+Мы не копируем и не раздаём чужие приложения и их исходники, только ссылки. Наши приложения общаются с чужими через intent, broadcast, MediaBrowser и командную строку. Чужой код в репозитории только в виде патчей: tvbro/patches (лицензия TV Bro) и aura/patches (GPL-3.0).
 
 **Свой код**  
 MIT, см. [LICENSE](LICENSE). Строка авторства: «Copyright (c) 2026 GlassTV authors».
@@ -15,8 +15,8 @@ MIT, см. [LICENSE](LICENSE). Строка авторства: «Copyright (c) 
 | Just Player | com.brouken.player | GPL-3.0 (по памяти, перепроверить) | Видеоплеер, по желанию | github.com/moneytoo/Player |
 | Aurora Store | com.aurora.store | GPL-3.0 (по памяти, перепроверить); подпись F-Droid | Каталог Google Play без входа, по желанию | f-droid.org/packages/com.aurora.store |
 | Material Files | me.zhanghai.android.files | GPL-3.0 (по памяти, перепроверить) | Файловый менеджер, по желанию | github.com/zhanghai/MaterialFiles |
-| Aura Music | com.auramusic.app | GPL-3.0, форк Metrolist (по памяти, перепроверить) | Играет звук для «Волны», по желанию | адрес релизов автора не записан |
-| SmartTwitchTV | com.fgl27.twitch | не проверена | Клиент Twitch, по желанию | github.com/fgl27/SmartTwitchTV |
+| Aura Music | github.com/TeamAuraMusic/AuraMusic, тег v3.2.0 | GPL-3.0, форк Metrolist (проверено по LICENSE) | Играет звук для «Волны», по желанию. Своя сборка из исходников с патчами папки aura/ (пакет app.glasstv.aura), папка aura/ под GPL-3.0 | github.com/TeamAuraMusic/AuraMusic |
+| Twitch | tv.twitch.android.app | закрытое приложение, только из Google Play, копий нет | Официальный клиент, по желанию | play.google.com |
 | NewPipe | org.schabi.newpipe | GPL-3.0 (по памяти, перепроверить) | YouTube в окне поверх всего, по желанию | github.com/TeamNewPipe/NewPipe |
 
 **TV Bro (браузер)**  

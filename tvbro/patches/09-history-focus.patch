@@ -1,0 +1,48 @@
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/HistoryScreenView.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/HistoryScreenView.kt
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/HistoryScreenView.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/view/HistoryScreenView.kt
+@@ -152,6 +152,10 @@ class HistoryScreenView @JvmOverloads constructor(
+ 
+     private fun render(screen: Screen, focus: HistoryNavigator.Focus?) {
+         this.screen = screen
++        //the focused button goes with the mode it belonged to: Android would hand the focus to the first view of
++        //the window, the bar under this screen, until the rows are ready. Back stays in both modes and keeps it here
++        val focusLeaves = headerButtonLeaves(screen.selecting)
++        if (focusLeaves) vb.ibBack.requestFocus()
+         renderHeader(screen)
+         vb.tvEmpty.isVisible = screen.loaded && screen.items.isEmpty()
+         vb.tvEmpty.text = historyEmptyText(context, screen)
+@@ -161,13 +165,19 @@ class HistoryScreenView @JvmOverloads constructor(
+             if (!isOpen) return@submitItems
+             if (focus != null) {
+                 focusRow(focus.key, focus.index)
+-            } else if (findFocus() == null) {
+-                //the focused button went with the mode it belonged to
++            } else if (focusLeaves || findFocus() == null) {
+                 focusRow(null, 0)
+             }
+         }
+     }
+ 
++    /** The focused view is in the part of the header that the new mode hides */
++    private fun headerButtonLeaves(selecting: Boolean): Boolean {
++        val focused = findFocus() ?: return false
++        val leaving = if (selecting) listOf(vb.llSearch, vb.llClearAll) else listOf(vb.llSelectAll, vb.llDelete)
++        return leaving.any { it.isVisible && isInside(focused, it) }
++    }
++
+     private fun renderHeader(screen: Screen) {
+         val selecting = screen.selecting
+         vb.ibBack.setImageResource(if (selecting) R.drawable.ic_close else R.drawable.ic_back)
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/TvShell.kt
+@@ -391,6 +391,8 @@ class TvShell(private val host: BrowserShell.Host) : BrowserShell, ActionBar.Cal
+                 .setPositiveButton(R.string.delete) { _, _ -> action() }
+                 .setNegativeButton(R.string.cancel, null)
+                 .show()
++                //otherwise the panel of the buttons takes the focus and no button shows it
++                .getButton(AlertDialog.BUTTON_NEGATIVE).requestFocus()
+         }
+ 
+         override fun startVoiceSearch(onResult: (String) -> Unit) = bookmarksVoiceSearch.recognize(onResult)

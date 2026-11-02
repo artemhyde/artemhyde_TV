@@ -42,7 +42,7 @@ public class HomeActivity extends Activity {
     // Key Mapper виден: он чинит кнопки пульта
     static final Set<String> HIDDEN = new HashSet<>(Arrays.asList(
             "com.phlox.tvwebbrowser.foss", "com.vk.tv", "org.smarttube.stable", "top.rootu.lampa", "com.cxinventor.file.explorer",
-            "com.fgl27.twitch", "app.glasstv.home", "app.glasstv.clip", "app.glasstv.probe", "com.spocky.projengmenu",
+            "tv.twitch.android.app", "app.glasstv.home", "app.glasstv.clip", "app.glasstv.probe", "com.spocky.projengmenu",
             "com.brouken.player", "com.google.android.youtube.tv", "com.neilturner.aerialviews", "com.android.tv.settings",
             "com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx"));
     static final long IDLE_MS = 60_000;
@@ -349,7 +349,7 @@ public class HomeActivity extends Activity {
         CAPS.put("top.rootu.lampa", "lampa");
         CAPS.put("org.smarttube.stable", "youtube");
         CAPS.put("com.vk.tv", "vk");
-        CAPS.put("com.fgl27.twitch", "twitch");
+        CAPS.put("tv.twitch.android.app", "twitch");
         CAPS.put("com.brouken.player", "files");
         CAPS.put("app.glasstv.volna", "volna");
     }

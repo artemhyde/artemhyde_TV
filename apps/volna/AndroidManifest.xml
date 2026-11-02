@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.glasstv.volna"
-    android:versionCode="3"
-    android:versionName="2.1">
+    android:versionCode="5"
+    android:versionName="3.1">
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Звук играет Aura Music: «Волна» подключается к её музыкальной службе и ведёт очередь -->
     <queries>
-        <package android:name="com.auramusic.app" />
+        <package android:name="app.glasstv.aura" />
         <package android:name="com.android.tv.settings" />
         <package android:name="app.glasstv.home" />
         <intent><action android:name="android.media.browse.MediaBrowserService" /></intent>
@@ -56,6 +58,15 @@
 
         <!-- Команды без экрана (Key Mapper, проверка с ПК) -->
         <receiver android:name=".Cmd" android:exported="true" />
+
+        <!-- Пока музыка нужна: служба поднимает важность «Волны» и привязанной к ней Aura, иначе система её замораживает -->
+        <service
+            android:name=".Keeper"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Домашний музыкальный плеер: держит музыку, пока она играет" />
+        </service>
 
         <!-- Система держит слушателя уведомлений запущенным: «Волна» живёт в фоне и ведёт очередь -->
         <service

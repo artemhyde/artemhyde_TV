@@ -62,18 +62,7 @@ final class Backlight {
         }
     }
 
-    // Контраст картинки, главное окно (0), тот же параметр, что в меню TCL. Меньше нуля: служба недоступна или не поддерживает
-    static int getContrast() {
-        try {
-            Object m = Class.forName("com.tcl.tv.pq.TvPqManager").getMethod("getInstance").invoke(null);
-            return (Integer) m.getClass().getMethod("getContrast", int.class).invoke(m, 0);
-        } catch (Throwable e) {
-            Log.w("nightmode", "контраст TCL: чтение не удалось", e);
-            return -1;
-        }
-    }
-
-    // Только применить, без сохранения: при сбое после перезагрузки вернётся сохранённый
+    // Вернуть контраст, если прошлая версия его снижала: только применить, без сохранения
     @SuppressWarnings({"unchecked", "rawtypes"})
     static boolean setContrast(int v) {
         try {

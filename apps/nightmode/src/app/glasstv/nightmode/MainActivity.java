@@ -117,6 +117,13 @@ public class MainActivity extends Activity {
             close();
             return true;
         }
+        // Ремонт с ПК: вернуть контраст, если его оставила версия 1.8.0. Прочитать: am broadcast -n app.glasstv.guard/.Cmd --es do pq --es a dump
+        if (i != null && i.hasExtra("contrast")) {
+            quiet = true;
+            Backlight.setContrast(i.getIntExtra("contrast", 100));
+            close();
+            return true;
+        }
         int s = i == null ? -1 : i.getIntExtra("seconds", -1);
         if (s < 0) return false;
         quiet = true;

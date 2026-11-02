@@ -15,7 +15,6 @@ public class Cmd extends BroadcastReceiver {
         if (what == null) what = "state";
         // «Дом» открыт или закрыт: только плашка, к Aura не подключаемся
         if (what.equals("home_on") || what.equals("home_off")) { e.homeShown(what.equals("home_on")); return; }
-        e.connect();
         switch (what) {
             case "my": e.start(Brain.MY); break;
             case "new": e.start(Brain.NEW); break;
@@ -27,6 +26,8 @@ public class Cmd extends BroadcastReceiver {
             case "like": e.like(); break;
             case "dislike": e.dislike(); break;
             case "stop": e.stop(); break;
+            case "whoami": e.whoami(); break;
+            case "playid": e.play(new Track(i.getStringExtra("id"), "проверка", "", 0), true); break;   // конкретный трек по id
             case "seekend": e.seekNearEnd(); break;   // для проверки смены треков: за 6 с до конца
             case "fakestall": e.fakeStall = true; break;   // для проверки сторожа: как будто музыка встала, через 7 с он сработает
             case "restart": e.restartAura("проверка с ПК"); break;
@@ -49,6 +50,6 @@ public class Cmd extends BroadcastReceiver {
                 + " трек=" + e.curId + " «" + e.curTitle + "» — " + e.curArtist + " [" + e.badge + "]"
                 + " план=" + (e.planned == null ? null : e.planned.id) + " далее=" + (nx == null ? null : nx.title + " [" + nx.badge + "]")
                 + " статус=" + e.status + " лайк=" + e.liked() + " профиль=" + e.profileName(e.store.profile)
-                + " звук=" + e.audioActive() + " позиция=" + e.position() / 1000);
+                + " позиция=" + e.position() / 1000);
     }
 }

@@ -14,7 +14,6 @@ final class Track {
     int kind = FAMILIAR;
     int tags;
     String bucket = "";   // для «Нового»: из какой корзины жанров
-    String playlist = "";  // публичная подборка, где лежит трек: по ней Aura включает его точно
 
     Track(String id, String title, String artist, long durationMs) {
         this.id = id;
@@ -22,6 +21,15 @@ final class Track {
         this.artist = artist == null ? "" : artist;
         this.durationMs = durationMs;
         this.tags = Tags.of(this.title, this.artist);
+    }
+
+    Track copy() {
+        Track t = new Track(id, title, artist, durationMs);
+        t.badge = badge;
+        t.kind = kind;
+        t.tags = tags;
+        t.bucket = bucket;
+        return t;
     }
 
     // Исполнители по отдельности, в нижнем регистре: для фильтра «новые артисты»

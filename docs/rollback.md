@@ -33,7 +33,7 @@
 - Заставка: `settings put secure screensaver_enabled <прежнее значение>`, так же `screensaver_activate_on_sleep`, `screensaver_activate_on_dock` и `settings put system screen_off_timeout <прежнее значение>`; `screensaver_components` проект больше не меняет, но после старых версий там мог остаться «Дом": верните прежнее значение из снимка
 - Отключённые пакеты: `pm enable --user 0 <пакет>`; на TCL в первую очередь `com.google.android.apps.tv.launcherx` и `com.google.android.tungsten.setupwraith`, потом те, что записаны в ledger.tsv (список возможных пакетов: data/tcl-packages.tsv)
 - Если пропали входы или эфирное ТВ: `pm enable --user 0 com.tcl.ttvs` и перезагрузка
-- Свои приложения: `pm uninstall app.glasstv.home` и так же `guard`, `nightmode`, `sound`, `picture`, `volna`, `clip`, `tile.*` (после смены главного экрана на старый)
+- Свои приложения: `pm uninstall app.glasstv.home` и так же `guard`, `nightmode`, `sound`, `picture`, `volna`, `clip`, `keyboard` (сначала `ime set <прежняя клавиатура>`), `tile.*` (после смены главного экрана на старый)
 - Анимации, если мастер их менял: `settings put global window_animation_scale 1.0`, так же `transition_animation_scale` и `animator_duration_scale`
 - Яркость и тайм-ауты экрана: значения «до» лежат в снимке (`settings list system` и `secure`)
 

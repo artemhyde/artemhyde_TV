@@ -36,9 +36,11 @@ final class Store {
     final Map<String, long[]> played = new ConcurrentHashMap<>(); // id -> {когда последний раз, сколько раз}
     final Set<String> liked = ConcurrentHashMap.newKeySet();
     final Set<String> disliked = ConcurrentHashMap.newKeySet();
+    final Set<String> dead = ConcurrentHashMap.newKeySet();           // YouTube этот трек больше не отдаёт
     final Map<String, Float> artistScore = new ConcurrentHashMap<>();
     final float[] tagWeight = new float[Tags.COUNT];
     final Map<String, String[]> likedMeta = new ConcurrentHashMap<>(); // лайкнутые в «Волне»: id -> {название, исполнитель}
+    final Map<String, Integer> pending = new ConcurrentHashMap<>();    // оценки, которые ещё не дошли до аккаунта: id -> 1, 0, -1
     private boolean dirty;
 
     Store(Context c, String profile) {
@@ -54,6 +56,7 @@ final class Store {
             }
             readSet("liked", liked);
             readSet("disliked", disliked);
+            readSet("dead", dead);
             JSONObject as = new JSONObject(p.getString("artists", "{}"));
             for (Iterator<String> it = as.keys(); it.hasNext(); ) { String k = it.next(); artistScore.put(k, (float) as.getDouble(k)); }
             JSONArray tw = new JSONArray(p.getString("tags", "[]"));
@@ -66,7 +69,46 @@ final class Store {
             }
             JSONArray ka = new JSONArray(p.getString("knownArtists", "[]"));
             for (int i = 0; i < ka.length(); i++) knownArtists.add(ka.getString(i));
+            JSONObject pd = new JSONObject(p.getString("pending", "{}"));
+            for (Iterator<String> it = pd.keys(); it.hasNext(); ) { String k = it.next(); pending.put(k, pd.getInt(k)); }
         } catch (Exception ignored) { }
+    }
+
+    // Лайк в «Волне» как трек волны
+    Track likedTrack(String id, String[] meta) { return new Track(id, meta[0], meta[1], 0); }
+
+    void markDead(String id) {
+        dead.add(id);
+        dirty = true;
+        save();
+    }
+
+    // Оценка записана, но до аккаунта ещё не дошла
+    void pendRating(String id, int value) {
+        pending.put(id, value);
+        dirty = true;
+        save();
+    }
+
+    // Дошла. Новая оценка того же трека остаётся ждать
+    void ratingDone(String id, int value) {
+        Integer now = pending.get(id);
+        if (now == null || now != value) return;
+        pending.remove(id);
+        dirty = true;
+        save();
+    }
+
+    // Лайки из аккаунта этого профиля: становятся своими треками волны
+    void mergeAccountLikes(List<Track> tracks) {
+        for (Track t : tracks) {
+            liked.add(t.id);
+            disliked.remove(t.id);
+            if (!seedIds.contains(t.id)) likedMeta.put(t.id, new String[]{t.title, t.artist});
+            knownArtists.addAll(t.artists());
+        }
+        dirty = true;
+        save();
     }
 
     private void loadSeed(Context c) {
@@ -95,17 +137,17 @@ final class Store {
         List<Track> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (Map.Entry<String, String[]> e : likedMeta.entrySet()) {
-            Track t = new Track(e.getKey(), e.getValue()[0], e.getValue()[1], 0);
+            Track t = likedTrack(e.getKey(), e.getValue());
             t.badge = "❤ Лайк в «Волне»";
             if (seen.add(t.id)) out.add(t);
         }
         String[][] order = {{"liked", "★ Лайк"}, {"pl:", "★ Плейлист"}, {"library", "★ Библиотека"}, {"h", "↺ История"}};
         for (String[] o : order) {
             for (Seed sd : seed) {
-                if (seen.contains(sd.t.id) || disliked.contains(sd.t.id)) continue;
+                if (seen.contains(sd.t.id) || disliked.contains(sd.t.id) || dead.contains(sd.t.id)) continue;
                 for (String src : sd.sources.split(",")) {
                     if (!src.startsWith(o[0])) continue;
-                    Track t = new Track(sd.t.id, sd.t.title, sd.t.artist, sd.t.durationMs);
+                    Track t = sd.t.copy();
                     t.badge = o[0].equals("pl:") ? "★ «" + src.substring(3) + "»" : o[1];
                     out.add(t);
                     seen.add(t.id);
@@ -113,7 +155,7 @@ final class Store {
                 }
             }
         }
-        for (Seed sd : seed) if (seen.add(sd.t.id) && !disliked.contains(sd.t.id)) out.add(sd.t);
+        for (Seed sd : seed) if (seen.add(sd.t.id) && !disliked.contains(sd.t.id) && !dead.contains(sd.t.id)) out.add(sd.t);
         return out;
     }
 
@@ -207,9 +249,10 @@ final class Store {
             JSONArray ka = new JSONArray();
             for (String a : knownArtists) ka.put(a);
             p.edit().putString("played", pl.toString()).putString("liked", new JSONArray(liked).toString())
-                    .putString("disliked", new JSONArray(disliked).toString()).putString("artists", as.toString())
+                    .putString("disliked", new JSONArray(disliked).toString()).putString("dead", new JSONArray(dead).toString())
+                    .putString("artists", as.toString())
                     .putString("tags", tw.toString()).putString("likedMeta", lm.toString())
-                    .putString("knownArtists", ka.toString()).apply();
+                    .putString("knownArtists", ka.toString()).putString("pending", new JSONObject(pending).toString()).apply();
         } catch (Exception ignored) { }
     }
 

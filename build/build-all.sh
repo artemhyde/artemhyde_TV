@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-all.sh: собрать все приложения, которые вы выбрали (config/settings.local.json, раздел apps), и показать итог по каждому.
 # Запуск: bash build/build-all.sh [--all] [--keep-going] [имя ...]
-#   имена:        собрать только перечисленные (home guard nightmode sound picture volna tiles clip)
+#   имена:        собрать только перечисленные (home guard nightmode sound picture volna tiles clip keyboard)
 #   --all:        собрать все приложения из папки apps/, не глядя на выбор в настройках
 #   --keep-going: не останавливаться на первой ошибке (в конце всё равно будет код выхода 1)
 # Без имён: берутся приложения с true в разделе apps настроек; нет файла настроек: все. Порядок сборки фиксирован.
@@ -25,7 +25,7 @@ if [ ! -d "$ROOT/apps" ] || [ -z "$(ls -A "$ROOT/apps" 2>/dev/null)" ]; then
 fi
 
 if [ ${#names[@]} -eq 0 ]; then
-    order="guard nightmode home sound picture volna clip tiles"
+    order="guard nightmode home sound picture volna clip keyboard tiles"
     present=""
     for n in $order; do [ -d "$ROOT/apps/$n" ] && present="$present $n"; done
     # приложения, которых нет в порядке выше, но они лежат в apps/ (с манифестом)

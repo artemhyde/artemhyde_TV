@@ -70,28 +70,6 @@
       "note": "Файловый менеджер."
     },
     {
-      "name": "Aura Music",
-      "package": "com.auramusic.app",
-      "version_seen": "3.2.0",
-      "releases": "",
-      "license": "GPL-3.0 (форк Metrolist)",
-      "license_checked": false,
-      "cert_sha256": "d16c995f0cbc51ffba28310f3b0b4b7fd23b0b9ac7e05a48c0cab2279ee45442",
-      "cert_subject": "CN=AuraMusic",
-      "note": "Нужна для «Волны»: именно она играет звук. Адреса скачивания в проекте нет, и мастер её не ставит и не ищет: «Волна» предлагается, только если Aura Music уже стоит на ТВ (pm list packages | grep auramusic). Нет её: «Волну» не ставить и сказать человеку честно, что поставить Aura Music мастер не может."
-    },
-    {
-      "name": "SmartTwitchTV",
-      "package": "com.fgl27.twitch",
-      "version_seen": "3.0.379",
-      "releases": "https://github.com/fgl27/SmartTwitchTV/releases",
-      "license": "не проверена",
-      "license_checked": false,
-      "cert_sha256": "838d9d90b5bcaa89c7376948b0d8da141c2d0cbba3b983b02a0c443dd63744d9",
-      "cert_subject": "CN=Felipe Leon",
-      "note": "Клиент Twitch для ТВ."
-    },
-    {
       "name": "NewPipe",
       "package": "org.schabi.newpipe",
       "version_seen": "0.29.1",

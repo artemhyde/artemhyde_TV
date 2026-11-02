@@ -1,0 +1,758 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 11e657d7..153e453f 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -19,14 +19,13 @@ plugins {
+ android {
+     namespace = "com.auramusic.app"
+     compileSdk = 36
+-    ndkVersion = "27.0.12077973"
+ 
+     defaultConfig {
+-        applicationId = "com.auramusic.app"
++        applicationId = "app.glasstv.aura"
+         minSdk = 23
+         targetSdk = 36
+         versionCode = 29
+-        versionName = "3.2.0"
++        versionName = "3.2.0-volna"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         vectorDrawables.useSupportLibrary = true
+@@ -46,12 +45,6 @@ android {
+         buildConfigField("Long", "DISCORD_APP_ID", "1450052823617372160L")
+     }
+     
+-    externalNativeBuild {
+-        cmake {
+-            path("src/main/cpp/vibrafp/lib/CMakeLists.txt")
+-            version = "3.22.1"
+-        }
+-    }
+ 
+     flavorDimensions += listOf("variant", "ui", "abi")
+     productFlavors {
+@@ -177,33 +170,11 @@ android {
+                 "proguard-rules.pro"
+             )
+             signingConfig = signingConfigs.getByName("release")
+-            externalNativeBuild {
+-                cmake {
+-                    arguments += listOf(
+-                        "-DENABLE_LTO=ON",
+-                        "-DCMAKE_BUILD_TYPE=Release"
+-                    )
+-                }
+-            }
+-            ndk {
+-                debugSymbolLevel = "NONE"
+-            }
+         }
+         debug {
+             applicationIdSuffix = ".debug"
+             isDebuggable = true
+             signingConfig = signingConfigs.getByName("debug")
+-            externalNativeBuild {
+-                cmake {
+-                    arguments += listOf(
+-                        "-DENABLE_LTO=OFF",
+-                        "-DCMAKE_BUILD_TYPE=Debug"
+-                    )
+-                }
+-            }
+-            ndk {
+-                debugSymbolLevel = "FULL"
+-            }
+         }
+     }
+ 
+diff --git a/app/src/main/kotlin/com/auramusic/app/constants/MediaSessionConstants.kt b/app/src/main/kotlin/com/auramusic/app/constants/MediaSessionConstants.kt
+index ddb3aa34..cd53da37 100644
+--- a/app/src/main/kotlin/com/auramusic/app/constants/MediaSessionConstants.kt
++++ b/app/src/main/kotlin/com/auramusic/app/constants/MediaSessionConstants.kt
+@@ -14,6 +14,15 @@ object MediaSessionConstants {
+     const val ACTION_TOGGLE_LIKE = "TOGGLE_LIKE"
+     const val ACTION_TOGGLE_SHUFFLE = "TOGGLE_SHUFFLE"
+     const val ACTION_TOGGLE_REPEAT_MODE = "TOGGLE_REPEAT_MODE"
++    // Команды «Волны»: только для приложения с нашей подписью
++    const val ACTION_HARD_STOP = "ACTION_HARD_STOP"
++    const val ACTION_PRELOAD = "VOLNA_PRELOAD"
++    const val ACTION_PROFILE = "VOLNA_PROFILE"
++    const val ACTION_FEED = "VOLNA_FEED"
++    const val ACTION_LIKE = "VOLNA_LIKE"
++    const val ACTION_WHOAMI = "VOLNA_WHOAMI"
++    val VolnaCommands = listOf(ACTION_HARD_STOP, ACTION_PRELOAD, ACTION_PROFILE, ACTION_FEED, ACTION_LIKE, ACTION_WHOAMI)
++        .map { SessionCommand(it, Bundle.EMPTY) }
+     val CommandToggleLibrary = SessionCommand(ACTION_TOGGLE_LIBRARY, Bundle.EMPTY)
+     val CommandToggleLike = SessionCommand(ACTION_TOGGLE_LIKE, Bundle.EMPTY)
+     val CommandToggleStartRadio = SessionCommand(ACTION_TOGGLE_START_RADIO, Bundle.EMPTY)
+diff --git a/app/src/main/kotlin/com/auramusic/app/playback/MediaLibrarySessionCallback.kt b/app/src/main/kotlin/com/auramusic/app/playback/MediaLibrarySessionCallback.kt
+index 1b982f82..97335c2a 100644
+--- a/app/src/main/kotlin/com/auramusic/app/playback/MediaLibrarySessionCallback.kt
++++ b/app/src/main/kotlin/com/auramusic/app/playback/MediaLibrarySessionCallback.kt
+@@ -7,6 +7,7 @@ package com.auramusic.app.playback
+ 
+ import android.content.ContentResolver
+ import android.content.Context
++import android.content.Intent
+ import android.net.Uri
+ import android.os.Bundle
+ import androidx.annotation.DrawableRes
+@@ -58,7 +59,8 @@ import com.auramusic.app.utils.reportException
+ import dagger.hilt.android.qualifiers.ApplicationContext
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+-import kotlinx.coroutines.Job
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancelChildren
+ import kotlinx.coroutines.flow.first
+ import kotlinx.coroutines.flow.flowOn
+ import kotlinx.coroutines.flow.map
+@@ -73,28 +75,51 @@ constructor(
+     val database: MusicDatabase,
+     val downloadUtil: DownloadUtil,
+ ) : MediaLibrarySession.Callback {
+-    private val scope = CoroutineScope(Dispatchers.Main) + Job()
++    private val scope = CoroutineScope(Dispatchers.Main) + SupervisorJob()
++    private val bridgeScope = CoroutineScope(Dispatchers.Main) + SupervisorJob()
+     lateinit var service: MusicService
+     var toggleLike: () -> Unit = {}
+     var toggleStartRadio: () -> Unit = {}
+     var toggleLibrary: () -> Unit = {}
++    private val bridge by lazy { VolnaBridge() }
++
++    private fun MediaSession.ControllerInfo.isVolna(): Boolean =
++        packageName == VOLNA_PACKAGE && runCatching {
++            context.packageManager.checkSignatures(context.packageName, VOLNA_PACKAGE) == android.content.pm.PackageManager.SIGNATURE_MATCH
++        }.getOrDefault(false)
++
++    // Трек по точному videoId: id/<videoId>/<название>/<исполнитель>/<длительность, мс>. Ответ готов сразу, поиска и базы нет,
++    // поэтому и опоздавшего ответа быть не может. Остальные команды идут старым путём
++    private fun volnaItems(
++        mediaItems: List<MediaItem>,
++        controller: MediaSession.ControllerInfo,
++    ): ListenableFuture<MediaItemsWithStartPosition>? {
++        val path = mediaItems.firstOrNull()?.mediaId?.split("/") ?: return null
++        if (path.firstOrNull() != MusicService.ID || !controller.isVolna()) return null
++        val id = path.getOrNull(1).orEmpty()
++        if (id.isBlank()) return Futures.immediateFuture(MediaItemsWithStartPosition(emptyList(), 0, 0L))
++        val title = path.getOrNull(2)?.let(Uri::decode).orEmpty()
++        val artist = path.getOrNull(3)?.let(Uri::decode).orEmpty()
++        val durationMs = path.getOrNull(4)?.toLongOrNull() ?: 0L
++        return Futures.immediateFuture(
++            MediaItemsWithStartPosition(listOf(service.prepareForId(id, title, artist, durationMs)), 0, 0L),
++        )
++    }
+ 
+     override fun onConnect(
+         session: MediaSession,
+         controller: MediaSession.ControllerInfo,
+     ): MediaSession.ConnectionResult {
+         val connectionResult = super.onConnect(session, controller)
+-        return MediaSession.ConnectionResult.accept(
+-            connectionResult.availableSessionCommands
+-                .buildUpon()
+-                .add(MediaSessionConstants.CommandToggleLike)
+-                .add(MediaSessionConstants.CommandToggleStartRadio)
+-                .add(MediaSessionConstants.CommandToggleLibrary)
+-                .add(MediaSessionConstants.CommandToggleShuffle)
+-                .add(MediaSessionConstants.CommandToggleRepeatMode)
+-                .build(),
+-            connectionResult.availablePlayerCommands,
+-        )
++        val commands = connectionResult.availableSessionCommands
++            .buildUpon()
++            .add(MediaSessionConstants.CommandToggleLike)
++            .add(MediaSessionConstants.CommandToggleStartRadio)
++            .add(MediaSessionConstants.CommandToggleLibrary)
++            .add(MediaSessionConstants.CommandToggleShuffle)
++            .add(MediaSessionConstants.CommandToggleRepeatMode)
++        if (controller.isVolna()) MediaSessionConstants.VolnaCommands.forEach { commands.add(it) }
++        return MediaSession.ConnectionResult.accept(commands.build(), connectionResult.availablePlayerCommands)
+     }
+ 
+     override fun onCustomCommand(
+@@ -104,6 +129,24 @@ constructor(
+         args: Bundle,
+     ): ListenableFuture<SessionResult> {
+         when (customCommand.customAction) {
++            MediaSessionConstants.ACTION_HARD_STOP -> {
++                // Старые команды, ещё идущие в этом объекте, не должны успеть включить музыку
++                scope.coroutineContext.cancelChildren()
++                service.hardStop(args.getString("why") ?: "команда")
++            }
++
++            MediaSessionConstants.ACTION_PRELOAD -> service.preloadStream(args.getString("id").orEmpty())
++
++            MediaSessionConstants.ACTION_PROFILE,
++            MediaSessionConstants.ACTION_FEED,
++            MediaSessionConstants.ACTION_LIKE,
++            MediaSessionConstants.ACTION_WHOAMI ->
++                return bridgeScope.future {
++                    SessionResult(SessionResult.RESULT_SUCCESS, Bundle().apply {
++                        putString("json", bridge.handle(customCommand.customAction, args))
++                    })
++                }
++
+             MediaSessionConstants.ACTION_TOGGLE_LIKE -> toggleLike()
+             MediaSessionConstants.ACTION_TOGGLE_START_RADIO -> toggleStartRadio()
+             MediaSessionConstants.ACTION_TOGGLE_LIBRARY -> toggleLibrary()
+@@ -115,6 +158,13 @@ constructor(
+         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+     }
+ 
++    // Медиакнопка на остановленной Aura ничего не включает. Пока трек идёт, пауза с пульта работает как обычно
++    override fun onMediaButtonEvent(
++        session: MediaSession,
++        controllerInfo: MediaSession.ControllerInfo,
++        intent: Intent,
++    ): Boolean = service.hardStopped || session.player.mediaItemCount == 0
++
+     @Deprecated("Deprecated in MediaLibrarySession.Callback")
+     override fun onPlaybackResumption(
+         mediaSession: MediaSession,
+@@ -521,7 +571,7 @@ constructor(
+         startIndex: Int,
+         startPositionMs: Long,
+     ): ListenableFuture<MediaItemsWithStartPosition> =
+-        scope.future {
++        volnaItems(mediaItems, controller) ?: scope.future {
+             val defaultResult = MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
+             val path = mediaItems.firstOrNull()?.mediaId?.split("/")
+                 ?: return@future defaultResult
+diff --git a/app/src/main/kotlin/com/auramusic/app/playback/MusicService.kt b/app/src/main/kotlin/com/auramusic/app/playback/MusicService.kt
+index a86da9f3..d8666da1 100644
+--- a/app/src/main/kotlin/com/auramusic/app/playback/MusicService.kt
++++ b/app/src/main/kotlin/com/auramusic/app/playback/MusicService.kt
+@@ -389,6 +389,85 @@ class MusicService :
+     private lateinit var audioQuality: com.auramusic.app.constants.AudioQuality
+ 
+     private var currentQueue: Queue = EmptyQueue
++
++    // Пока true, плеер не может заиграть. Снимают только явные команды: трек от «Волны» или запуск с экрана Aura
++    @Volatile
++    var hardStopped = true
++        private set
++
++    private var volnaTrack = false
++
++    /** Подготовка к треку по точному id: один трек, ничего своего дальше. Вызывается на главном потоке */
++    fun prepareForId(id: String, title: String, artist: String, durationMs: Long): MediaItem {
++        hardStopped = false
++        volnaTrack = true
++        currentQueueGeneration++
++        currentQueue = EmptyQueue
++        queueTitle = null
++        originalQueueSize = 0
++        automixItems.value = emptyList()
++        retryJob?.cancel()
++        waitingForNetworkConnection.value = false
++        retryCount = 0
++        consecutivePlaybackErr = 0
++        wasPlayingBeforeAudioFocusLoss = false
++        if (guestVideoActive.value) endGuestVideo(restoreQueue = false)
++        player.repeatMode = REPEAT_MODE_OFF
++        player.shuffleModeEnabled = false
++        android.util.Log.i("volna-aura", "трек по id: $id")
++        return MediaMetadata(
++            id = id,
++            title = title.ifBlank { id },
++            artists = if (artist.isBlank()) emptyList() else listOf(MediaMetadata.Artist(null, artist)),
++            duration = if (durationMs > 0) (durationMs / 1000).toInt() else -1,
++            thumbnailUrl = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
++        ).toMediaItem()
++    }
++
++    /** Жёсткий стоп: пустой плеер, снятые ожидания, пустые файлы. После него ни разморозка, ни кнопки ничего не включат */
++    fun hardStop(why: String) {
++        android.util.Log.i("volna-aura", "жёсткий стоп: $why")
++        hardStopped = true
++        currentQueueGeneration++
++        currentQueue = EmptyQueue
++        queueTitle = null
++        originalQueueSize = 0
++        automixItems.value = emptyList()
++        retryJob?.cancel()
++        failedSongsClearJob?.cancel()
++        waitingForNetworkConnection.value = false
++        retryCount = 0
++        consecutivePlaybackErr = 0
++        wasPlayingBeforeAudioFocusLoss = false
++        wasPlayingBeforeVolumeMute = false
++        isPausedByVolumeMute = false
++        player.playWhenReady = false
++        player.stop()
++        player.clearMediaItems()
++        abandonAudioFocus()
++        clearPersistedQueueFiles()
++    }
++
++    /** Адрес потока следующего трека заранее, тем же путём, что и при запуске: тогда переключение почти мгновенно */
++    fun preloadStream(id: String) {
++        if (id.isBlank() || songUrlCache[id]?.let { it.expiresAtMs > System.currentTimeMillis() } == true) return
++        scope.launch(Dispatchers.IO) {
++            val from = android.os.SystemClock.elapsedRealtime()
++            YTPlayerUtils.playerResponseForPlayback(
++                id,
++                audioQuality = audioQuality,
++                connectivityManager = connectivityManager,
++                poTokenProvider = poTokenProvider,
++            ).onSuccess { data ->
++                val expiresAt = minOf(
++                    data.streamUrl.toUri().getQueryParameter("expire")?.toLongOrNull()?.times(1000L) ?: Long.MAX_VALUE,
++                    System.currentTimeMillis() + data.streamExpiresInSeconds * 1000L,
++                ) - 5 * 60_000L
++                songUrlCache[id] = StreamUrlEntry(url = data.streamUrl, expiresAtMs = expiresAt, headers = data.streamHeaders)
++                android.util.Log.i("volna-aura", "адрес заранее: $id за ${android.os.SystemClock.elapsedRealtime() - from} мс")
++            }
++        }
++    }
+     private var currentQueueGeneration = 0L
+     var queueTitle: String? = null
+ 
+@@ -849,6 +928,7 @@ class MusicService :
+         setupAudioFocusRequest()
+ 
+         mediaLibrarySessionCallback.apply {
++            service = this@MusicService
+             toggleLike = ::toggleLike
+             toggleStartRadio = ::toggleStartRadio
+             toggleLibrary = ::toggleLibrary
+@@ -1202,13 +1282,9 @@ class MusicService :
+ 
+         // Load the persistence preference once, here where we are already blocking on DataStore,
+         // and then keep a mirror of it so playback callbacks never have to.
+-        queuePersistenceEnabled = dataStore.get(PersistentQueueKey, true)
+-        scope.launch(Dispatchers.IO) {
+-            dataStore.data
+-                .map { prefs -> prefs[PersistentQueueKey] ?: true }
+-                .distinctUntilChanged()
+-                .collect { queuePersistenceEnabled = it }
+-        }
++        // Очередь ведёт «Волна»: при старте службы восстанавливать нечего, иначе старый трек оказывается в плеере
++        queuePersistenceEnabled = false
++        clearPersistedQueueFiles()
+ 
+         if (queuePersistenceEnabled) {
+             val queueFile = filesDir.resolve(PERSISTENT_QUEUE_FILE)
+@@ -1473,20 +1549,8 @@ class MusicService :
+             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT -> {
+                 hasAudioFocus = true
+ 
+-                if (wasPlayingBeforeAudioFocusLoss && !player.isPlaying && !reentrantFocusGain) {
+-                    reentrantFocusGain = true
+-                    scope.launch {
+-                        delay(300)
+-                        if (hasAudioFocus && wasPlayingBeforeAudioFocusLoss && !player.isPlaying) {
+-                            // Don't start local playback if casting
+-                            if (castConnectionHandler?.isCasting?.value != true) {
+-                                player.play()
+-                            }
+-                            wasPlayingBeforeAudioFocusLoss = false
+-                        }
+-                        reentrantFocusGain = false
+-                    }
+-                }
++                // Звук вернулся: музыку сам не включаем, это решает «Волна» или человек
++                wasPlayingBeforeAudioFocusLoss = false
+ 
+                 player.volume = if (isMuted.value) 0f else playerVolume.value
+                 lastAudioFocusState = focusChange
+@@ -1742,7 +1806,8 @@ class MusicService :
+                 }
+             }
+         }
+-        if (!database.hasRelatedSongs(mediaId)) {
++        // Похожие для своего экрана Aura «Волне» не нужны: на каждый трек это два лишних запроса и память
++        if (!volnaTrack && !database.hasRelatedSongs(mediaId)) {
+             val relatedEndpoint =
+                 YouTube.next(WatchEndpoint(videoId = mediaId)).getOrNull()?.relatedEndpoint
+                     ?: return
+@@ -1766,6 +1831,8 @@ class MusicService :
+         queue: Queue,
+         playWhenReady: Boolean = true,
+     ) {
++        hardStopped = false   // очередь с экрана самой Aura: явное действие человека
++        volnaTrack = false
+         if (!scope.isActive) scope = CoroutineScope(Dispatchers.Main) + Job()
+         
+         // Safety Check : Ensuring player is initilized
+@@ -2759,6 +2826,12 @@ class MusicService :
+     }
+ 
+     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
++        // Остановлено жёстким стопом: ни один путь внутри Aura не имеет права включить звук
++        if (playWhenReady && hardStopped) {
++            android.util.Log.w("volna-aura", "play() после стопа отклонён, причина $reason")
++            player.playWhenReady = false
++            return
++        }
+         // Safety net: if local player tries to start while casting, immediately pause it
+         if (playWhenReady && castConnectionHandler?.isCasting?.value == true) {
+             player.pause()
+@@ -3533,7 +3606,8 @@ class MusicService :
+ 
+     override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) {
+         super.onDeviceVolumeChanged(volume, muted)
+-        val pauseOnMute = dataStore.get(PauseOnMute, false)
++        if (hardStopped) return
++        val pauseOnMute = false
+ 
+         if ((volume == 0 || muted) && pauseOnMute) {
+             if (player.isPlaying) {
+@@ -5710,6 +5784,7 @@ automixDeadlineJob?.cancel()
+         val desiredSubtitleLanguages = setOf("en", "sw", "es", "fr", "la")
+ 
+         /** Action used by AlarmReceiver to start music playback in the background. */
++        const val ID = "id"
+         const val ACTION_PLAY_ALARM = "com.auramusic.app.playback.ACTION_PLAY_ALARM"
+ 
+         /**
+diff --git a/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt b/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt
+new file mode 100644
+index 00000000..b7402032
+--- /dev/null
++++ b/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt
+@@ -0,0 +1,120 @@
++/**
++ * Auramusic Project (C) 2026
++ * Licensed under GPL-3.0 | See git history for contributors
++ */
++
++package com.auramusic.app.playback
++
++import android.os.Bundle
++import android.util.Log
++import com.auramusic.app.constants.MediaSessionConstants
++import com.auramusic.innertube.YouTube
++import com.auramusic.innertube.models.SongItem
++import com.auramusic.innertube.models.WatchEndpoint
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.sync.Mutex
++import kotlinx.coroutines.sync.withLock
++import kotlinx.coroutines.withContext
++import org.json.JSONArray
++import org.json.JSONObject
++
++const val VOLNA_PACKAGE = "app.glasstv.volna"
++
++/**
++ * Личное из аккаунта для «Волны»: профиль (канал аккаунта), подборки, лайки. Куки остаются здесь: наружу уходят только
++ * названия и id треков. Плеера этот класс не касается, поэтому его ответы не могут включить музыку.
++ * Лайк или подборка несут имя профиля: если канал не найден, команда отклоняется и в основной профиль не попадёт.
++ */
++class VolnaBridge {
++    private val lane = Mutex()
++    private var channels: List<YouTube.Channel>? = null
++
++    suspend fun handle(action: String, args: Bundle): String = withContext(Dispatchers.IO) {
++        lane.withLock {
++            val out = runCatching {
++                when (action) {
++                    MediaSessionConstants.ACTION_PROFILE -> profile(args)
++                    MediaSessionConstants.ACTION_FEED -> feed(args)
++                    MediaSessionConstants.ACTION_LIKE -> like(args)
++                    MediaSessionConstants.ACTION_WHOAMI -> whoami(args)
++                    else -> fail("BAD_COMMAND")
++                }
++            }.getOrElse {
++                Log.w("volna-aura", "$action: ${it.javaClass.simpleName} ${it.message}")
++                fail("IO")
++            }
++            out.toString()
++        }
++    }
++
++    private fun fail(why: String) = JSONObject().put("ok", false).put("err", why)
++
++    // Включить профиль. Пустое имя: основной. Вернёт причину, если его нельзя включить
++    private suspend fun use(name: String): String? {
++        if (!YouTube.isLoggedIn()) {
++            YouTube.pageId = null
++            return "NO_LOGIN"
++        }
++        if (name.isEmpty()) {
++            YouTube.pageId = null
++            return null
++        }
++        val list = channels ?: YouTube.channels().getOrNull()?.takeIf { it.isNotEmpty() }?.also { channels = it } ?: return "IO"
++        val pageId = list.firstOrNull { it.name.equals(name, ignoreCase = true) }?.pageId ?: run {
++            channels = null   // канал могли создать только что
++            return "BAD_PROFILE"
++        }
++        YouTube.pageId = pageId
++        return null
++    }
++
++    private suspend fun profile(args: Bundle): JSONObject {
++        val name = args.getString("profile").orEmpty()
++        val err = use(name)
++        Log.i("volna-aura", "профиль: «$name», ${err ?: "включён"}")
++        return if (err == null) JSONObject().put("ok", true) else fail(err)
++    }
++
++    private suspend fun whoami(args: Bundle): JSONObject {
++        use(args.getString("profile").orEmpty())?.let { return fail(it) }
++        val info = YouTube.accountInfo().getOrThrow()
++        return JSONObject().put("ok", true).put("name", info.name)
++    }
++
++    // like: 1 лайк, 0 снять оценку, -1 «не нравится»
++    private suspend fun like(args: Bundle): JSONObject {
++        use(args.getString("profile").orEmpty())?.let { return fail(it) }
++        val id = args.getString("id").orEmpty()
++        if (id.isBlank()) return fail("BAD_ID")
++        val state = args.getInt("like")
++        val done = if (state < 0) YouTube.dislikeVideo(id) else YouTube.likeVideo(id, state > 0)
++        done.getOrThrow()
++        return JSONObject().put("ok", true)
++    }
++
++    private suspend fun feed(args: Bundle): JSONObject {
++        use(args.getString("profile").orEmpty())?.let { return fail(it) }
++        val limit = args.getInt("limit", 100).coerceIn(1, 100)
++        val songs: List<SongItem> = when (args.getString("kind")) {
++            "home" -> YouTube.home().getOrThrow().sections.flatMap { it.items }.filterIsInstance<SongItem>()
++            "liked" -> YouTube.playlist("LM").getOrThrow().songs
++            "radio" -> {
++                val seed = args.getString("seed").orEmpty()
++                if (seed.isBlank()) return fail("BAD_ID")
++                YouTube.next(WatchEndpoint(videoId = seed, playlistId = "RDAMVM$seed")).getOrThrow().items
++            }
++            else -> return fail("BAD_KIND")
++        }
++        val items = JSONArray()
++        for (s in songs.distinctBy { it.id }.take(limit)) {
++            items.put(
++                JSONObject()
++                    .put("id", s.id)
++                    .put("t", s.title)
++                    .put("a", s.artists.joinToString(", ") { it.name })
++                    .put("d", s.duration ?: 0),
++            )
++        }
++        return JSONObject().put("ok", true).put("items", items)
++    }
++}
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index 67d01c31..94751eb7 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+     <string name="app_name">AuraMusic</string>
+-    <string name="app_name_tv">AuraMusic Tv</string>
++    <string name="app_name_tv">Aura (Волна)</string>
+     <string name="update_channel_desc">Уведомления об обновлениях приложения</string>
+     <string name="update_channel_name">Обновления</string>
+     <string name="new_releases_channel_desc">Уведомления о новых релизах у подписанных исполнителей</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 972207a0..aff54e47 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -2,7 +2,7 @@
+ <resources>
+     <!-- App name -->
+     <string name="app_name">AuraMusic</string>
+-    <string name="app_name_tv">AuraMusic Tv</string>
++    <string name="app_name_tv">Aura (Волна)</string>
+     <string name="update_channel_desc">App update notifications</string>
+     <string name="update_channel_name">Updates</string>
+     <string name="new_releases_channel_desc">New release notifications for subscribed artists</string>
+diff --git a/app/src/tv/AndroidManifest.xml b/app/src/tv/AndroidManifest.xml
+index cb2ab0e1..f9bad752 100644
+--- a/app/src/tv/AndroidManifest.xml
++++ b/app/src/tv/AndroidManifest.xml
+@@ -10,6 +10,10 @@
+         android:name="android.hardware.touchscreen"
+         android:required="false" />
+ 
++    <queries>
++        <package android:name="app.glasstv.volna" />
++    </queries>
++
+     <application
+         android:banner="@mipmap/tv_banner"
+         android:label="@string/app_name_tv"
+@@ -29,21 +33,18 @@
+             </intent-filter>
+         </activity>
+ 
+-        <!-- TV Recommendations: "Continue Listening" row on Google TV home screen -->
+-        <service
+-            android:name=".tv.TvRecommendationService"
+-            android:foregroundServiceType="mediaPlayback"
+-            android:exported="false" />
++        <!-- Медиакнопки и будильник не должны поднимать службу: музыку включает только «Волна» -->
++        <receiver
++            android:name="androidx.media3.session.MediaButtonReceiver"
++            tools:node="remove" />
+ 
+-        <!-- Refresh recommendations on device boot -->
+         <receiver
+-            android:name=".tv.TvBootReceiver"
+-            android:exported="true"
+-            android:enabled="true">
+-            <intent-filter>
+-                <action android:name="android.intent.action.BOOT_COMPLETED" />
+-            </intent-filter>
+-        </receiver>
++            android:name=".alarm.AlarmReceiver"
++            tools:node="remove" />
++
++        <receiver
++            android:name=".notifications.NewReleaseNotificationReceiver"
++            tools:node="remove" />
+ 
+         <!-- Hide the phone launcher aliases on TV. -->
+         <activity-alias
+diff --git a/innertube/src/main/kotlin/com/auramusic/innertube/InnerTube.kt b/innertube/src/main/kotlin/com/auramusic/innertube/InnerTube.kt
+index 5057a548..cd26e743 100644
+--- a/innertube/src/main/kotlin/com/auramusic/innertube/InnerTube.kt
++++ b/innertube/src/main/kotlin/com/auramusic/innertube/InnerTube.kt
+@@ -43,6 +43,13 @@ class InnerTube {
+     )
+     var visitorData: String? = null
+     var dataSyncId: String? = null
++        get() = pageId ?: field
++
++    // Канал внутри аккаунта (Brand Account): запросы со входом идут от его имени, своя библиотека, лайки и рекомендации.
++    // null: основной профиль
++    @Volatile
++    var pageId: String? = null
++
+     var cookie: String? = null
+         set(value) {
+             field = value
+@@ -166,6 +173,8 @@ class InnerTube {
+             append("Referer", referer)
+             visitorData?.let { append("X-Goog-Visitor-Id", it) }
+             if (setLogin && client.loginSupported) {
++                pageId?.let { append("X-Goog-PageId", it) }
++                append("X-Goog-AuthUser", "0")
+                 val token = oauthToken
+                 if (!token.isNullOrBlank()) {
+                     append("Authorization", "Bearer $token")
+@@ -320,7 +329,7 @@ class InnerTube {
+         client: YouTubeClient = YouTubeClient.WEB_REMIX,
+     ) = withRetry {
+         httpClient.get(url) {
+-            ytClient(client, false)
++            ytClient(client, true)
+             parameter("ver", "2")
+             parameter("ns", "yt")
+             parameter("c", client.clientName)
+@@ -530,6 +539,28 @@ class InnerTube {
+         }
+     }
+ 
++    suspend fun dislikeVideo(
++        client: YouTubeClient,
++        videoId: String,
++    ) = withRetry {
++        httpClient.post("like/dislike") {
++            ytClient(client, setLogin = true)
++            setBody(
++                LikeBody(
++                    context = client.toContext(locale, visitorData, dataSyncId),
++                    target = LikeBody.Target.VideoTarget(videoId)
++                )
++            )
++        }
++    }
++
++    suspend fun accountsList(client: YouTubeClient) = withRetry {
++        httpClient.post("account/accounts_list") {
++            ytClient(client, setLogin = true)
++            setBody(AccountMenuBody(client.toContext(locale, visitorData, dataSyncId)))
++        }
++    }
++
+     suspend fun unlikeVideo(
+         client: YouTubeClient,
+         videoId: String,
+diff --git a/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt b/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt
+index f2457377..88f97053 100644
+--- a/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt
++++ b/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt
+@@ -158,6 +158,49 @@ object YouTube {
+         set(value) {
+             innerTube.dataSyncId = value
+         }
++    var pageId: String?
++        get() = innerTube.pageId
++        set(value) {
++            innerTube.pageId = value
++        }
++
++    data class Channel(val name: String, val pageId: String?, val selected: Boolean)
++
++    /** Каналы аккаунта: основной и Brand Account. Основной без pageId, запросы от него идут без заголовка */
++    suspend fun channels(): Result<List<Channel>> = runCatching {
++        val out = mutableListOf<Channel>()
++        fun text(e: kotlinx.serialization.json.JsonElement?): String {
++            val o = e as? kotlinx.serialization.json.JsonObject ?: return ""
++            (o["simpleText"] as? kotlinx.serialization.json.JsonPrimitive)?.let { return it.content }
++            return (o["runs"] as? kotlinx.serialization.json.JsonArray).orEmpty()
++                .joinToString("") { ((it as? kotlinx.serialization.json.JsonObject)?.get("text") as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty() }
++        }
++        fun pageIdIn(e: kotlinx.serialization.json.JsonElement?): String? = when (e) {
++            is kotlinx.serialization.json.JsonObject -> (e["pageId"] as? kotlinx.serialization.json.JsonPrimitive)?.content
++                ?: e.values.firstNotNullOfOrNull { pageIdIn(it) }
++            is kotlinx.serialization.json.JsonArray -> e.firstNotNullOfOrNull { pageIdIn(it) }
++            else -> null
++        }
++        fun walk(e: kotlinx.serialization.json.JsonElement) {
++            when (e) {
++                is kotlinx.serialization.json.JsonObject -> {
++                    (e["accountItem"] as? kotlinx.serialization.json.JsonObject)?.let { a ->
++                        out += Channel(
++                            name = text(a["accountName"]),
++                            pageId = pageIdIn(a["serviceEndpoint"]),
++                            selected = (a["isSelected"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true",
++                        )
++                    }
++                    e.values.forEach { walk(it) }
++                }
++                is kotlinx.serialization.json.JsonArray -> e.forEach { walk(it) }
++                else -> Unit
++            }
++        }
++        walk(Json.parseToJsonElement(innerTube.accountsList(WEB_REMIX).bodyAsText()))
++        out
++    }
++
+     var cookie: String?
+         get() = innerTube.cookie
+         set(value) {
+@@ -807,7 +850,7 @@ object YouTube {
+             return@runCatching homeContinuation(continuation).getOrThrow()
+         }
+ 
+-        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_home", params = params).body<BrowseResponse>()
++        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_home", params = params, setLogin = true).body<BrowseResponse>()
+         val continuation = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+             ?.tabRenderer?.content?.sectionListRenderer?.continuations?.getContinuation()
+         val sectionListRender = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+@@ -1140,6 +1183,10 @@ object YouTube {
+         )
+     }
+ 
++    suspend fun dislikeVideo(videoId: String) = runCatching {
++        innerTube.dislikeVideo(WEB_REMIX, videoId)
++    }
++
+     suspend fun likeVideo(videoId: String, like: Boolean) = runCatching {
+         if (like)
+             innerTube.likeVideo(WEB_REMIX, videoId)
+@@ -1405,7 +1452,8 @@ object YouTube {
+             endpoint.playlistSetVideoId,
+             endpoint.index,
+             endpoint.params,
+-            continuation).body<NextResponse>()
++            continuation,
++            setLogin = true).body<NextResponse>()
+         val playlistPanelRenderer = response.continuationContents?.playlistPanelContinuation
+             ?: response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
+                 ?.watchNextTabbedResultsRenderer?.tabs?.get(0)?.tabRenderer?.content?.musicQueueRenderer

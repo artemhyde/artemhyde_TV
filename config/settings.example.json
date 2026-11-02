@@ -26,6 +26,7 @@
     "volna": false,
     "tiles": true,
     "clip": false,
+    "keyboard": true,
     "browser": "none",
     "lampa": false
   },

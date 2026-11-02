@@ -37,14 +37,16 @@ public class NightService extends Service {
     // Один сквозной ползунок «Яркость» (ноябрь), шаг 1 на всей шкале. Уровень это одно число со знаком, лежит в prefs "lvl".
     // 0..100: настоящая подсветка панели 1:1 (TvBacklightManager TCL, тот же ползунок «Яркость», что в меню картинки). Это обычная
     // яркость телевизора, служба для неё не нужна: меню пишет её само, а если служба шла, при закрытии меню отпускает её (RELEASE).
-    // -1..-100: красная зона, служба держит её, пока не выключат. Подсветка 0, вуаль растёт до предела (0,8) к -50,
-    // а от -50 до -100 темнее становится сама картинка: контраст без сохранения плавно вдвое вниз (TvPqManager, как в меню TCL).
+    // -1..-100: красная зона, служба держит её, пока не выключат. Подсветка 0, вуаль растёт до предела (0,8) к -50. Дальше одно окно
+    // темнее не станет (система режет его на 0,8), поэтому поверх кладётся второе такое же, от -50 до -100 его плотность растёт до
+    // 0,6: на -100 числа на экране ещё в 2,5 раза ниже. Первая попытка (02.11) снижала контраст TvPqManager: цифры менялись (100, 50),
+    // а глазами разницы не было: у панели работают динамический контраст и локальное затемнение
     // Подсветкой управлять нельзя (включена «Адаптивная регулировка яркости» TCL или нет службы): шкала только из затемнения,
     // уровень -100..0, вуаль до 0,8 к -100, всё положительное считается «без затемнения»
     static final int SCALE = 100;             // шагов в каждую сторону от нуля
     static final int MIN_LEVEL = -SCALE, MAX_LEVEL = 100;
-    static final int VEIL_FULL = -50;         // на этом уровне вуаль уже на пределе, дальше работает контраст
-    static final float CONTRAST_MIN = 0.5f;   // на -100 контраст вдвое ниже исходного
+    static final int VEIL_FULL = -50;         // на этом уровне вуаль уже на пределе, дальше растёт второй слой
+    static final float SECOND_MAX = 0.6f;     // плотность второго слоя на -100
     static final float WARM = 0.16f;          // «Тёплый свет»: янтарная добавка к вуали красной зоны (до 16 %)
     static final float WARM_RAMP = 0.4f;      // добавка нарастает, пока вуаль не дойдёт до 40 %: шаг через ноль не прыгает
     static final int MIN_BACKLIGHT = 0;       // ноль подсветки: самое тёмное, что разрешает меню TCL
@@ -62,7 +64,7 @@ public class NightService extends Service {
     static NightService self;                // меню и служба в одном процессе: вырез в вуали меняется напрямую
 
     WindowManager wm;
-    Veil shade;
+    Veil shade, shade2;
     LinearLayout badge;
     TextView badgeText;
     SharedPreferences prefs;
@@ -72,7 +74,6 @@ public class NightService extends Service {
     boolean badgeShown;
     boolean stuck;                           // таймер вышел, а усыпить нечем: держим экран тёмным
     int lastBacklight = -1;
-    int lastContrast = -1;
     boolean useBl;                           // подсветкой управляем мы (датчик света TCL выключен)
 
     static void send(Context c, String action, int seconds) {
@@ -111,7 +112,9 @@ public class NightService extends Service {
     // Вырез под меню поменялся (при разворачивании плашки это каждый кадр, поэтому без команды службе)
     static void refreshHole() {
         NightService s = self;
-        if (s != null && s.shade != null) s.shade.setHole(hole, holeR);
+        if (s == null || s.shade == null) return;
+        s.shade.setHole(hole, holeR);
+        if (s.shade2 != null) s.shade2.setHole(hole, holeR);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -199,6 +202,12 @@ public class NightService extends Service {
                     type, flags, PixelFormat.TRANSLUCENT);
             // Сразу полной плотности: меню уже показывало это затемнение, плавный разгон дал бы вспышку
             wm.addView(shade, full);
+            // Второй слой: отдельное окно, предел 0,8 у каждого свой
+            shade2 = new Veil(this);
+            WindowManager.LayoutParams full2 = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+                    type, flags, PixelFormat.TRANSLUCENT);
+            wm.addView(shade2, full2);
 
             float dp = getResources().getDisplayMetrics().density;
             badge = new LinearLayout(this);
@@ -237,8 +246,10 @@ public class NightService extends Service {
 
     void removeWindows() {
         try { if (shade != null) wm.removeView(shade); } catch (Exception ignored) { }
+        try { if (shade2 != null) wm.removeView(shade2); } catch (Exception ignored) { }
         try { if (badge != null) wm.removeView(badge); } catch (Exception ignored) { }
         shade = null;
+        shade2 = null;
         badge = null;
     }
 
@@ -293,6 +304,7 @@ public class NightService extends Service {
         prefs.edit().remove("bl0").apply();
     }
 
+    // Только для тех, у кого ночной режим шёл на прошлой версии: она снижала контраст и держала исходный в "ct0"
     static void restoreContrast(SharedPreferences prefs) {
         int c0 = prefs.getInt("ct0", -1);
         if (c0 < 0) return;
@@ -327,24 +339,10 @@ public class NightService extends Service {
         lastBacklight = target;
     }
 
-    // Ниже -50 вуаль уже на пределе, дальше темнее становится сама картинка. Исходный контраст лежит в "ct0" до выхода из зоны
-    void applyContrast(int lvl) {
-        if (!useBl || lvl >= VEIL_FULL) {
-            restoreContrast(prefs);
-            lastContrast = -1;
-            return;
-        }
-        int c0 = prefs.getInt("ct0", -1);
-        if (c0 < 0) {
-            c0 = Backlight.getContrast();
-            if (c0 < 0) return;
-            prefs.edit().putInt("ct0", c0).apply();
-        }
-        float pr = (VEIL_FULL - lvl) / (float) (VEIL_FULL - MIN_LEVEL);
-        int v = Math.round(c0 * (1f + (CONTRAST_MIN - 1f) * pr));
-        if (v == lastContrast) return;
-        Backlight.setContrast(v);
-        lastContrast = v;
+    // Плотность второго слоя: только с подсветкой и только ниже -50
+    static float second(int lvl, boolean bl) {
+        if (!bl || lvl >= VEIL_FULL) return 0f;
+        return SECOND_MAX * (VEIL_FULL - lvl) / (float) (VEIL_FULL - MIN_LEVEL);
     }
 
     void applyShade() {
@@ -354,7 +352,6 @@ public class NightService extends Service {
         if (useBl) base(prefs);
         // Подсветка: выбранная правее нуля, в красной зоне ноль; без управления ей не трогаем (-1)
         int bl = !useBl ? -1 : stuck || lvl < 0 ? MIN_BACKLIGHT : lvl;
-        applyContrast(lvl);
         if (endAt != 0) {
             long left = endAt - SystemClock.elapsedRealtime();
             if (left < FADE_MS) {
@@ -366,6 +363,10 @@ public class NightService extends Service {
         }
         shade.setColor(shadeColor(Math.min(1f, a / CAP), prefs.getBoolean("warm", true)));
         shade.setHole(hole, holeR);   // пока меню открыто, оно остаётся читаемым, вуаль только вокруг него
+        if (shade2 != null) {
+            shade2.setColor(Color.argb(Math.round(Math.min(1f, second(lvl, useBl) / CAP) * 255), 0, 0, 0));
+            shade2.setHole(hole, holeR);
+        }
         applyBacklight(bl);
     }
 
@@ -413,7 +414,6 @@ public class NightService extends Service {
         restoreBacklight(this, prefs);   // до сна, чтобы утром телевизор включился с обычной яркостью
         restoreContrast(prefs);
         lastBacklight = -1;
-        lastContrast = -1;
         notifyGuard(this, false);
         if (sleep) {
             try { getSystemService(DevicePolicyManager.class).lockNow(); } catch (SecurityException ignored) { }

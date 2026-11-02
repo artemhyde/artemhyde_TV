@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 // Мозг: собирает очередь для двух волн.
 // «Моя волна»: 60% своё (лайки, плейлисты, история), 40% похожее (радио YouTube Music от любимых треков).
 // «Новое для вас»: только незнакомые треки и незнакомые исполнители из смежных жанров, чартов и новинок, жанры чередуются.
+// Если в Aura выполнен вход, радио и домашняя лента идут от имени канала профиля, а его лайки становятся своими треками. Нет входа: открытые запросы.
 final class Brain {
     static final int MY = 0, NEW = 1;
     static final String[] MODE_NAMES = {"Моя волна", "Новое для вас"};
@@ -30,6 +31,8 @@ final class Brain {
     long maxLen() { return s.profile.isEmpty() ? MAX_LEN : 12 * 60_000; }
 
     interface Ready { void onReady(int mode); }
+
+    interface Personal { List<Track> feed(String kind, String seed); }   // подборка аккаунта профиля, null: нет входа или связи
 
     // Порядок «своё / похожее» на каждые 10 треков: 6 к 4
     private static final boolean[] PATTERN = {true, true, false, true, false, true, true, false, true, false};
@@ -65,6 +68,8 @@ final class Brain {
 
     final Store s;
     Ready ready;
+    Personal personal;
+    private long accountSyncAt;
     private final ExecutorService ex = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Random rnd = new Random();
@@ -127,7 +132,7 @@ final class Brain {
     }
 
     private boolean stillGood(Track t, int mode) {
-        if (s.disliked.contains(t.id) || s.artistScore(t) < -1) return false;
+        if (s.disliked.contains(t.id) || s.dead.contains(t.id) || s.artistScore(t) < -1) return false;
         if (mode == NEW) {
             if (s.known(t.id)) return false;
             for (String a : t.artists()) if (s.knownArtists.contains(a) || s.score(a) < 0) return false;
@@ -162,6 +167,7 @@ final class Brain {
         ex.execute(() -> {
             int got = 0;
             try {
+                syncAccount();
                 // Треки кладутся в очередь по одному: первый готовый сразу уходит в игру
                 List<Track> batch = mode == MY ? genMy(10) : genNew(10);
                 got = batch.size();
@@ -185,6 +191,37 @@ final class Brain {
 
     synchronized void onLike(Track t) {
         if (!t.bucket.isEmpty()) bucketWeight.put(t.bucket, Math.min(5f, bucketWeight.getOrDefault(t.bucket, 1f) + 0.5f));
+    }
+
+    // ===== Аккаунт профиля: лайки и домашняя лента, не чаще раза в полчаса =====
+
+    private void syncAccount() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (personal == null || (accountSyncAt != 0 && now - accountSyncAt < 30 * 60_000)) return;
+        List<Track> likes = personal.feed("liked", null);
+        if (likes == null) return;   // нет входа или связи: попробуем при следующем подборе
+        accountSyncAt = now;
+        s.mergeAccountLikes(likes);
+        List<Track> home = personal.feed("home", null);
+        if (home == null) return;
+        Collections.shuffle(home, rnd);
+        synchronized (this) {
+            int n = 0;
+            for (Track t : home) {
+                if (n >= 12 || s.disliked.contains(t.id) || queued.contains(t.id) || s.recentlyPlayed(t.id, 24 * 3600_000L)) continue;
+                if (t.durationMs > maxLen() || s.artistScore(t) < -1) continue;
+                t.kind = Track.SIMILAR;
+                t.badge = "⚡ Из вашей ленты";
+                similarPool.add(t);
+                n++;
+            }
+        }
+    }
+
+    // Радио от трека: от имени профиля, если есть вход
+    private List<Track> radioOf(String id) throws Exception {
+        List<Track> r = personal == null ? null : personal.feed("radio", id);
+        return r == null || r.isEmpty() ? Net.radio(id) : r;
     }
 
     private void purge(ArrayDeque<Track> q, List<String> arts) {
@@ -240,19 +277,17 @@ final class Brain {
             for (Store.Seed sd : s.seed) addFamiliar(cand, w, sd.t, sd.sources, fresh);
             for (Map.Entry<String, String[]> e : s.likedMeta.entrySet())
                 if (!s.seedIds.contains(e.getKey()))
-                    addFamiliar(cand, w, new Track(e.getKey(), e.getValue()[0], e.getValue()[1], 0), "volna", fresh);
+                    addFamiliar(cand, w, s.likedTrack(e.getKey(), e.getValue()), "volna", fresh);
             if (!cand.isEmpty()) break;
         }
         if (cand.isEmpty()) return null;
-        Track t = cand.get(pick(w));
-        Track copy = new Track(t.id, t.title, t.artist, t.durationMs);
+        Track copy = cand.get(pick(w)).copy();
         copy.kind = Track.FAMILIAR;
-        copy.badge = t.badge;
         return copy;
     }
 
     private void addFamiliar(List<Track> cand, List<Double> w, Track t, String sources, long freshMs) {
-        if (s.disliked.contains(t.id) || queued.contains(t.id) || t.durationMs > maxLen()) return;
+        if (s.disliked.contains(t.id) || s.dead.contains(t.id) || queued.contains(t.id) || t.durationMs > maxLen()) return;
         if (freshMs > 0 && s.recentlyPlayed(t.id, freshMs)) return;
         if (recentArtist(t, 3)) return;
         double base = 0;
@@ -292,6 +327,10 @@ final class Brain {
     // Похожее: радио YouTube Music от любимых треков, без отвергнутого и недавно игравшего
     private Track similar() {
         if (similarPool.size() < 4) fillSimilar();
+        return pickSimilar();
+    }
+
+    private Track pickSimilar() {
         Track best = null;
         double bestScore = -1e9;
         int looked = 0;
@@ -315,7 +354,7 @@ final class Brain {
             synchronized (this) { seedT = familiar(); }
             if (seedT == null) return;
             try {
-                List<Track> r = Net.radio(seedT.id);
+                List<Track> r = radioOf(seedT.id);
                 List<Track> add = new ArrayList<>();
                 for (int i = 1; i < r.size(); i++) {
                     Track t = r.get(i);
@@ -386,20 +425,22 @@ final class Brain {
         }
         if (pool.size() < 3) fillBucket(key, pool);
         Object[] b = bucket(key);
+        Track t = null;
         synchronized (this) {
             for (Iterator<Track> it = pool.iterator(); it.hasNext(); ) {
-                Track t = it.next();
+                Track x = it.next();
                 it.remove();
-                if (!isFresh(t)) continue;
-                if (recentArtist(t, 6)) continue;
-                t.kind = Track.FRESH;
-                t.bucket = key;
-                t.badge = (String) b[1];
-                t.tags |= (Integer) b[2];
-                return t;
+                if (!isFresh(x) || recentArtist(x, 6)) continue;
+                t = x;
+                break;
             }
         }
-        return null;
+        if (t == null) return null;
+        t.kind = Track.FRESH;
+        t.bucket = key;
+        t.badge = (String) b[1];
+        t.tags |= (Integer) b[2];
+        return t;
     }
 
     // Жёсткий фильтр новизны: ни трека, ни исполнителя пользователь раньше не слышал
@@ -447,7 +488,7 @@ final class Brain {
                 for (int k = 0; k < 2; k++) {
                     Track seedT;
                     synchronized (this) { seedT = familiar(); }
-                    if (seedT != null) got.addAll(Net.radio(seedT.id));
+                    if (seedT != null) got.addAll(radioOf(seedT.id));
                 }
             }
         } catch (Exception e) {

@@ -29,11 +29,18 @@ import android.util.Log;
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do pic --es a set --ei backlight 30 --ei black 2 --ei peak 1 --ei warm 3   ползунки: подсветка 5..100, чёрный 0..2, пик 0..3, тепло -5..5
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do pic --es a reset                     снять выбор: вернуть как было, дальше картинку ведёт автоматика
 // Выбор держится до границы 22:00 или 7:00, пока он держится, «Вечер», «День» и ночной ход подсветки молчат (GuardService: applyPq, startNight, endNight)
+// Дневная подсветка: днём ставится сразу, ночью запоминается до 7:00, ночной уровень не меняется
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do daylevel --ei v 45
 // Главный экран, как при выключении ТВ (27.10, GuardService.homeStep): сразу, без ожидания 1,5 с, экран может быть и включён. Идёт видео (медиасессия «играет», кроме музыки «Волны»): ничего не делает, пишет об этом
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do home                                  итог: adb logcat -d -s guard:I ("команда home: на главный экран" или "...идёт видео...")
 
 public class Cmd extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
+        if ("daylevel".equals(i.getStringExtra("do"))) {
+            GuardService g = GuardService.running;
+            if (g != null) g.setDayLevel(i.getIntExtra("v", 45));
+            return;
+        }
         // Картинка TCL. Работа идёт в очереди Pq, не в главном потоке: вызовы службы TCL и плавный ход до 45 секунд
         if ("pq".equals(i.getStringExtra("do"))) {
             final Context app = c.getApplicationContext();

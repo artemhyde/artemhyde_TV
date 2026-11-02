@@ -6,5 +6,5 @@ youtube|app.glasstv.tile.youtube|org.smarttube.stable|YouTube
 lampa|app.glasstv.tile.lampa|top.rootu.lampa|Фильмы|{"component":"category","url":"movie","title":"Фильмы","source":"tmdb","page":1}
 serials|app.glasstv.tile.serials|top.rootu.lampa|Сериалы|{"component":"category","url":"tv","title":"Сериалы","source":"tmdb","page":1}
 files|app.glasstv.tile.files|com.cxinventor.file.explorer|Файлы
-twitch|app.glasstv.tile.twitch|com.fgl27.twitch|Twitch
+twitch|app.glasstv.tile.twitch|tv.twitch.android.app|Twitch
 settings|app.glasstv.tile.settings|com.android.tv.settings|Настройки

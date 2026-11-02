@@ -216,7 +216,7 @@ final class Usage {
             w.println("История: прочитана до " + date(scanned) + ", экран гас " + date(off));
             w.println("Lampa долго на экране до: " + date(endLocked()) + " (отрезок сейчас: с " + date(lampaStart)
                     + ", ушла " + date(lampaLeft) + ")");
-            for (String p : new String[]{Last.ST, Last.LAMPA, Last.VK, Last.JP, "com.cxinventor.file.explorer", "com.fgl27.twitch"})
+            for (String p : new String[]{Last.ST, Last.LAMPA, Last.VK, Last.JP, "com.cxinventor.file.explorer", "tv.twitch.android.app"})
                 w.println("  " + p + ": ушло с экрана " + date(paused(p)) + ", чистый запуск: " + (off != 0 && (paused(p) == 0 || off >= paused(p) - OFF_SLACK)));
         }
     }

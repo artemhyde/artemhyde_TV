@@ -1,0 +1,2 @@
+# Шрифты Inter из shared/fonts, которые build/build-app.sh кладёт в assets/fonts этого приложения (по одному имени в строке)
+Inter_18pt-Medium.ttf
