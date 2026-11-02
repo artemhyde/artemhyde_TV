@@ -3,17 +3,17 @@
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
 **Stock Google TV with ads ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
-![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen](docs/screenshots/before-after.gif)  
-Drag the curtain yourself: [open the comparison](https://raw.githack.com/artyomhide1/artemhyde_TV/main/docs/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
+![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/before-after.gif)  
+Drag the curtain yourself: [open the comparison](https://rawcdn.githack.com/artyomhide1/artemhyde_TV/c10faec203d65df66899831591c6e6fb234e71d5/docs/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 A home screen, night mode, sound and picture controls for Google TV and TCL, set up for you by your own Claude Code. In packages and folders the project keeps its technical name, glasstv (`app.glasstv.*`).
 
 The apps on the TV are in Russian. The setup wizard speaks your language: write to Claude in English and it answers in English.
 
-![HYDE TV home screen](docs/screenshots/home.png)
+![HYDE TV home screen](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/home.png)
 
 Light "Obyom" theme is available too (the wizard asks during setup):  
-![Light Obyom theme](docs/screenshots/theme-volume.png)
+![Light Obyom theme](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/theme-volume.png)
 
 **How to install**
 1. Install Claude Code (claude.com/claude-code).
@@ -29,28 +29,28 @@ You change your TV and its system at your own risk. This is an unofficial projec
 **What it does**
 
 "Dom" (Home): the home screen. A photo for the time of day, clock, weather, a verse, app tiles and an "All apps" screen. When nobody touches the TV it becomes a lock screen with the clock and the verse: the Android screensaver is switched off completely, so there is no second screen on top of it.  
-![All apps](docs/screenshots/apps.png)
+![All apps](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/apps.png)
 
 Pills strip on the remote's gear button: Night, Sound, Picture, Volna, TCL panel. It appears over any app or film. A long press on the gear can open the TCL panel: this does not work on every TV, and if it does not, the TCL panel stays in the strip.  
-![Pills strip](docs/screenshots/pills.png)
+![Pills strip](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/pills.png)
 
 "Zvuk" (Sound): a glass strip over the film. Four modes (Cinema, Music and concerts, Night, Clean) and sliders: speech clarity, levelling of explosions and whispers, bass depth, detail. You change it by ear, the film does not stop.  
-![Sound over a film](docs/screenshots/sound.png)
+![Sound over a film](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/sound.png)
 
 "Kartinka" (Picture): the same kind of strip. Four modes (Cinema Evening, Daylight Sharp, Maximum HDR, Soft for the eyes), "Auto" and sliders: panel backlight, black depth, HDR peak, warm tint.  
-![Picture](docs/screenshots/picture.png)
+![Picture](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/picture.png)
 
 "Night mode" in two stages. First press: a small plate at the bottom of the screen with one brightness slider. The slider shows the real panel backlight one to one: from zero, left goes straight into the minus, right goes 1, 2, 3. Left of zero is the red zone down to −100 %: a veil, and below −50 the contrast drops as well, so at −100 white on screen is about half as bright. Second press of the same button (or Down and OK on "Sleep timer"): the plate smoothly grows into the full menu with the sleep timer and an "Off" button.  
-![Night mode: the plate](docs/screenshots/night.png)  
-![Night mode: the full menu](docs/screenshots/night-full.png)
+![Night mode: the plate](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/night.png)  
+![Night mode: the full menu](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/night-full.png)
 
 "Storozh" (Guard): a background service. It changes the backlight exactly twice a day, at 22:00 and at 7:00, and does not argue with you: touch the brightness yourself and it leaves it alone until the next morning. Optionally it levels the volume; it returns the TV to the home screen on power-off, keeps wireless debugging on and watches Key Mapper.  
-![Guard](docs/screenshots/guard.png)
+![Guard](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/guard.png)
 
 "Volna" (optional): music through Aura Music, "My wave" and "New for you" selections, lyrics. If the music stalls for more than 7 seconds, Volna resets the Aura player and plays the next track. If you signed in to Aura Music yourself, a like on the first profile goes to your YouTube Music, and the second profile sends nothing to the account. The wizard does not install or look for Aura Music: Volna is only offered if you already have it.
 
 TV Bro browser with our patches (optional, built on your computer): site players, input suggestions, a flat dark look without extra frames. The screenshot shows the start page with Russian sites; this build has a neutral set there (Bing, Reddit, Wikipedia, IMDb, BBC News, DuckDuckGo).  
-![Browser](docs/screenshots/browser.png)
+![Browser](https://cdn.jsdelivr.net/gh/artyomhide1/artemhyde_TV@main/docs/screenshots/browser.png)
 
 Remote buttons: mapped through Key Mapper, any special button can open the app you want.
 
