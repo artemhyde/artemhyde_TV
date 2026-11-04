@@ -1,0 +1,46 @@
+diff --git a/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt b/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt
+index b7402032..92472309 100644
+--- a/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt
++++ b/app/src/main/kotlin/com/auramusic/app/playback/VolnaBridge.kt
+@@ -97,7 +97,7 @@ class VolnaBridge {
+         val limit = args.getInt("limit", 100).coerceIn(1, 100)
+         val songs: List<SongItem> = when (args.getString("kind")) {
+             "home" -> YouTube.home().getOrThrow().sections.flatMap { it.items }.filterIsInstance<SongItem>()
+-            "liked" -> YouTube.playlist("LM").getOrThrow().songs
++            "liked" -> YouTube.likedForVolna().getOrThrow()
+             "radio" -> {
+                 val seed = args.getString("seed").orEmpty()
+                 if (seed.isBlank()) return fail("BAD_ID")
+@@ -112,7 +112,8 @@ class VolnaBridge {
+                     .put("id", s.id)
+                     .put("t", s.title)
+                     .put("a", s.artists.joinToString(", ") { it.name })
+-                    .put("d", s.duration ?: 0),
++                    .put("d", s.duration ?: 0)
++                    .put("th", s.thumbnail),
+             )
+         }
+         return JSONObject().put("ok", true).put("items", items)
+diff --git a/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt b/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt
+index 88f97053..a350ee26 100644
+--- a/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt
++++ b/innertube/src/main/kotlin/com/auramusic/innertube/YouTube.kt
+@@ -749,6 +749,15 @@ object YouTube {
+     /** Browse id of the account's liked-songs playlist. */
+     const val LIKED_SONGS_ID = "LM"
+ 
++    /** Понравившиеся треки для «Волны»: VLLM, как у самого music.youtube.com (на LM ответ 400 Request contains an invalid argument) */
++    suspend fun likedForVolna(): Result<List<SongItem>> = runCatching {
++        val response = innerTube.browse(client = WEB_REMIX, browseId = "VLLM", setLogin = true).body<BrowseResponse>()
++        response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
++            ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
++                PlaylistPage.fromMusicResponsiveListItemRenderer(it)
++            } ?: emptyList()
++    }
++
+     suspend fun playlist(playlistId: String): Result<PlaylistPage> = runCatching {
+         val response = innerTube.browse(
+             client = WEB_REMIX,
+-- 
+2.55.0.windows.2
+

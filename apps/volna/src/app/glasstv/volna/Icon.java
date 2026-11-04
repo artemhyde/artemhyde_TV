@@ -59,13 +59,14 @@ final class Icon extends View {
         float w = getWidth(), h = getHeight(), cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2;
         int iconColor;
         if (primary) {
-            disc.setAlpha(255);
+            // Правило одно на весь плеер: в фокусе белое. Без фокуса главная кнопка стеклянная, иначе фокус на ней не виден
+            disc.setAlpha(Math.round(64 + 191 * focus));
             c.drawCircle(cx, cy, r - 3 * dp, disc);
             if (focus > 0.01f) {
-                ring.setAlpha(Math.round(153 * focus));
+                ring.setAlpha(Math.round(230 * focus));
                 c.drawCircle(cx, cy, r - 1.5f * dp, ring);
             }
-            iconColor = 0xFF111114;
+            iconColor = focus > 0.5f ? 0xFF111114 : 0xF2FFFFFF;
         } else {
             if (focus > 0.01f) {
                 disc.setAlpha(Math.round(255 * focus));

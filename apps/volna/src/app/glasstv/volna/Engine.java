@@ -160,7 +160,10 @@ final class Engine {
         final long from = SystemClock.elapsedRealtime();
         ask(PROFILE, new Bundle(), o -> {
             Log.i("volna", "канал «" + channel() + "»: " + (o == null ? "нет ответа" : o.toString()) + ", " + (SystemClock.elapsedRealtime() - from) + " мс");
-            if (o != null && o.optBoolean("ok") && of == store) flushRatings();
+            if (o != null && o.optBoolean("ok") && of == store) {
+                flushRatings();
+                brain.accountReady();
+            }
         });
     }
 
@@ -434,7 +437,9 @@ final class Engine {
         List<Track> out = new ArrayList<>();
         for (int i = 0; a != null && i < a.length(); i++) {
             JSONObject t = a.optJSONObject(i);
-            out.add(new Track(t.optString("id"), t.optString("t"), t.optString("a"), t.optLong("d") * 1000));
+            Track x = new Track(t.optString("id"), t.optString("t"), t.optString("a"), t.optLong("d") * 1000);
+            x.thumb = Track.bigThumb(t.optString("th"));
+            out.add(x);
         }
         Log.i("volna", "подборка " + kind + " канала «" + channel() + "»: " + out.size());
         return out;
@@ -556,11 +561,16 @@ final class Engine {
             errorsInRow++;
             Log.w("volna", "ошибка плеера на «" + curTitle + "»: " + st.getErrorMessage() + ", подряд " + errorsInRow);
             status = errorsInRow > 5 ? "Aura не может играть, проверь интернет" : "";
-            if (position() < 1000) suspect = curId;
             switching = false;
             h.removeCallbacks(switchTimeout);
             h.removeCallbacks(retry);
-            h.postDelayed(retry, errorsInRow > 5 ? 60_000 : 300L * errorsInRow);
+            // Трек не начался: та же песня другой загрузкой (студийная версия из YouTube Music), и только если её нет, следующий
+            if (position() < 1000 && planned != null && planned.id.equals(curId) && triedAlt.add(planned.id)) {
+                findAlternative(planned);
+            } else {
+                if (position() < 1000) suspect = curId;
+                h.postDelayed(retry, errorsInRow > 5 ? 60_000 : 300L * errorsInRow);
+            }
         }
         if (driving && !switching) {
             // Пульт или фильм, забравший звук, тоже меняют паузу: волна следует за Aura
@@ -588,6 +598,32 @@ final class Engine {
     }
 
     private final Runnable retry = () -> { if (driving) playNext(); };
+
+    private final java.util.Set<String> triedAlt = new java.util.HashSet<>();
+
+    // Поиск песни по названию и исполнителю в YouTube Music: первая подходящая загрузка с другим id. Не в потоке подбора: он бывает занят
+    private void findAlternative(final Track lost) {
+        final long from = SystemClock.elapsedRealtime();
+        new Thread(() -> {
+            Track alt = null;
+            try { alt = Net.alternative(lost); } catch (Exception ignored) { }
+            final Track found = alt;
+            h.post(() -> {
+                if (!driving || planned != lost) return;
+                if (found == null) {
+                    Log.i("volna", "замены для «" + lost.title + "» нет, следующий");
+                    suspect = lost.id;
+                    playNext();
+                    return;
+                }
+                Log.i("volna", "замена «" + lost.title + "»: " + found.id + " «" + found.title + "», " + (SystemClock.elapsedRealtime() - from) + " мс");
+                store.alias(lost.id, found.id);
+                errorsInRow = 0;
+                request(lost.withId(found.id));
+                notifyAll(true);
+            });
+        }, "alt").start();
+    }
 
     // ===== Важность Aura: служба работает, пока музыка нужна, и ещё немного после =====
 
@@ -711,6 +747,17 @@ final class Engine {
     void start(int m) {
         // Вкус профиля ещё не загружен (нет её плейлистов): «Моей волне» не из чего собираться
         if (m == Brain.MY && store.empty()) m = Brain.NEW;
+        // Другая волна: прошлый трек уходит сразу и из экрана, и из звука, история новой волны начинается с нуля
+        if (driving && m != mode) {
+            history.clear();
+            planned = null;   // иначе играющий трек прошлой волны сразу ляжет в историю новой
+            h.removeCallbacks(preloadAhead);
+            h.removeCallbacks(endOfTrack);
+            if (brain.peek(m) == null) {
+                silence("смена волны");
+                forgetTrack();
+            }
+        }
         mode = m;
         store.mode(m);
         driving = true;
@@ -755,6 +802,12 @@ final class Engine {
     String shownBadge() { return waiting() ? "" : pending() ? planned.badge : badge; }
 
     Bitmap shownArt() { return waiting() || pending() ? null : curArt; }
+
+    // Квадратная обложка YouTube Music для показанного трека, если подборка её дала
+    String shownThumb() {
+        String id = shownId();
+        return planned != null && id != null && id.equals(planned.id) ? planned.thumb : "";
+    }
 
     long shownDur() { return waiting() ? 0 : pending() ? planned.durationMs : curDur; }
 
@@ -816,6 +869,9 @@ final class Engine {
 
     // Хочу, чтобы играл этот трек. Первое нажатие уходит сразу, серия сводится к последнему
     private void request(Track t) {
+        // Эта загрузка не играет, но раньше нашлась замена: сразу она
+        String alt = store.alias.get(t.id);
+        if (alt != null && !alt.equals(t.id)) t = t.withId(alt);
         planned = t;
         switching = true;
         switchAt = SystemClock.elapsedRealtime();

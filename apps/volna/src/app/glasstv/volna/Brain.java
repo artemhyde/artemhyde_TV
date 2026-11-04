@@ -19,7 +19,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 // Мозг: собирает очередь для двух волн.
-// «Моя волна»: 60% своё (лайки, плейлисты, история), 40% похожее (радио YouTube Music от любимых треков).
+// «Моя волна»: 35% своё (лайки, плейлисты, история), 65% в том же духе: радио от любимых треков, ещё песни любимых исполнителей,
+// домашняя лента аккаунта. «Не моё» гасит не только исполнителя, но и всё направление (язык и жанр) до конца сеанса.
 // «Новое для вас»: только незнакомые треки и незнакомые исполнители из смежных жанров, чартов и новинок, жанры чередуются.
 // Если в Aura выполнен вход, радио и домашняя лента идут от имени канала профиля, а его лайки становятся своими треками. Нет входа: открытые запросы.
 final class Brain {
@@ -34,19 +35,20 @@ final class Brain {
 
     interface Personal { List<Track> feed(String kind, String seed); }   // подборка аккаунта профиля, null: нет входа или связи
 
-    // Порядок «своё / похожее» на каждые 10 треков: 6 к 4
-    private static final boolean[] PATTERN = {true, true, false, true, false, true, true, false, true, false};
+    // Порядок «своё / похожее» на каждые 20 треков: 7 к 13, своё не реже чем через два похожих
+    private static final boolean[] PATTERN = {true, false, false, true, false, false, true, false, false, true,
+            false, false, true, false, false, true, false, false, true, false};
 
     // Исполнители, которых YouTube и так подсовывает пользователю (миксы): в «Новом» их не будет. В этой копии список пуст, впишите своих строчными буквами
     private static final Set<String> BUBBLE = new HashSet<>();
 
     // Корзины «Нового»: ключ, бейдж, жанровая метка, источники
     private static final Object[][] BUCKETS = {
-            {"trend", "🔥 Новое: хип-хоп тренд", Tags.HIPHOP, new String[]{"genre:Hip-hop", "genre:Russian hip-hop"}},
+            {"trend", "🔥 Новое: хип-хоп тренд", Tags.HIPHOP, new String[]{"genre:Hip-hop"}},
             {"fresh", "🆕 Свежий релиз", 0, new String[]{"new"}},
             {"electro", "🧭 Открытие жанра: электроника", Tags.ELECTRONIC, new String[]{"genre:Dance & electronic"}},
             {"rnb", "🧭 Открытие жанра: R&B", Tags.RNB, new String[]{"genre:R&B & soul"}},
-            {"world", "🌍 Мировой хит", 0, new String[]{"chart:ZZ", "chart:US"}},
+            {"world", "🌍 Мировой хит", 0, new String[]{"chart:US", "chart:GB"}},
             {"indie", "🧭 Открытие жанра: альтернатива", Tags.ROCK, new String[]{"genre:Indie & alternative"}},
             {"handshake", "🧭 Новые артисты рядом с вашим вкусом", 0, new String[]{"radio"}},
             {"energy", "⚡ Новое с энергией", 0, new String[]{"genre:Energize", "genre:Workout"}},
@@ -88,20 +90,28 @@ final class Brain {
     private final ArrayDeque<String> recentArtists = new ArrayDeque<>();
     private final Set<String> queued = Collections.synchronizedSet(new HashSet<String>());
 
+    // Во вкусе почти нет русских песен: «Новое» их не предлагает вовсе, оно про западные хиты и новые направления
+    private final boolean westernNew;
+
     Brain(Store s) {
         this.s = s;
+        int ru = 0;
+        for (Store.Seed sd : s.seed) if ((sd.t.tags & Tags.RU) != 0) ru++;
+        westernNew = s.seed.size() > 20 && ru < s.seed.size() * 0.15;
         buckets = s.profile.isEmpty() ? BUCKETS : SOFT_BUCKETS;
         for (Object[] b : BUCKETS) bucketWeight.put((String) b[0], 1f);
         // Ближе к вкусу (рэп, свежие релизы, электроника, новые артисты рядом) чаще, далёкое реже
+        // «Новое» выводит из привычного: мировые хиты, свежие релизы, зарубежный хип-хоп и электроника чаще, радио от своих реже
         bucketWeight.put("trend", 1.6f);
-        bucketWeight.put("fresh", 1.3f);
+        bucketWeight.put("fresh", 1.4f);
+        bucketWeight.put("world", 1.4f);
         bucketWeight.put("electro", 1.3f);
-        bucketWeight.put("handshake", 1.4f);
-        bucketWeight.put("energy", 1.1f);
-        bucketWeight.put("rnb", 0.7f);
-        bucketWeight.put("indie", 0.7f);
-        bucketWeight.put("latin", 0.7f);
-        bucketWeight.put("ost", 0.6f);
+        bucketWeight.put("handshake", 0.9f);
+        bucketWeight.put("energy", 1.0f);
+        bucketWeight.put("rnb", 0.9f);
+        bucketWeight.put("indie", 1.0f);
+        bucketWeight.put("latin", 0.5f);
+        bucketWeight.put("ost", 0.4f);
         // Веса выше подобраны под первый вкус. У второго вкуса радио от своих песен в основе, остальное приправа
         if (!s.profile.isEmpty()) {
             bucketWeight.clear();
@@ -133,6 +143,7 @@ final class Brain {
 
     private boolean stillGood(Track t, int mode) {
         if (s.disliked.contains(t.id) || s.dead.contains(t.id) || s.artistScore(t) < -1) return false;
+        if (t.kind != Track.FAMILIAR && banned(t, mode)) return false;
         if (mode == NEW) {
             if (s.known(t.id)) return false;
             for (String a : t.artists()) if (s.knownArtists.contains(a) || s.score(a) < 0) return false;
@@ -181,19 +192,46 @@ final class Brain {
         });
     }
 
-    // Пользователь сказал «не моё»: выкидываем из ближайшей очереди того же исполнителя
+    // ===== Направления: язык (кириллица или нет) и главный жанр. «Не моё» гасит направление до конца сеанса =====
+
+    private final Map<String, Float> cluster = new HashMap<>();
+
+    static String lang(Track t) { return (t.tags & Tags.RU) != 0 ? "ru" : "lat"; }
+
+    private static String key(Track t) { return "c:" + lang(t) + ":" + Tags.mainBit(t.tags); }
+
+    // Язык целиком весит вполовину от направления
+    synchronized float penalty(Track t) {
+        return cluster.getOrDefault(key(t), 0f) + 0.5f * cluster.getOrDefault("l:" + lang(t), 0f);
+    }
+
+    // В «Новом» направление выключается с первого «не моё», в «Моей волне» со второго: там оно чаще всего своё, первый раз только реже
+    boolean banned(Track t, int mode) { return penalty(t) >= (mode == NEW ? 2 : 4); }
+
+    // Пользователь сказал «не моё»: из очередей уходит этот исполнитель и всё того же направления (например, русская попса целиком)
     synchronized void onDislike(Track t) {
         List<String> arts = t.artists();
-        for (ArrayDeque<Track> q : new ArrayDeque[]{buf[MY], buf[NEW], similarPool}) purge(q, arts);
-        for (ArrayDeque<Track> q : bucketPool.values()) purge(q, arts);
+        cluster.merge(key(t), 2f, Float::sum);
+        cluster.merge("l:" + lang(t), 1f, Float::sum);
+        purge(buf[MY], arts, MY);
+        purge(similarPool, arts, MY);
+        purge(buf[NEW], arts, NEW);
+        for (ArrayDeque<Track> q : bucketPool.values()) purge(q, arts, NEW);
         if (!t.bucket.isEmpty()) bucketWeight.put(t.bucket, Math.max(0.2f, bucketWeight.getOrDefault(t.bucket, 1f) - 0.4f));
+        Log.i("volna", "не моё: направление " + key(t) + " = " + cluster.get(key(t)) + ", язык " + lang(t) + " = " + cluster.get("l:" + lang(t)));
     }
 
     synchronized void onLike(Track t) {
         if (!t.bucket.isEmpty()) bucketWeight.put(t.bucket, Math.min(5f, bucketWeight.getOrDefault(t.bucket, 1f) + 0.5f));
+        // Лайк возвращает направлению вес, если раньше его гасили
+        cluster.computeIfPresent(key(t), (k, v) -> Math.max(0f, v - 1f));
+        cluster.computeIfPresent("l:" + lang(t), (k, v) -> Math.max(0f, v - 0.5f));
     }
 
     // ===== Аккаунт профиля: лайки и домашняя лента, не чаще раза в полчаса =====
+
+    // Связь с аккаунтом появилась (Aura подключилась и узнала профиль): подтянуть лайки и ленту сразу, не дожидаясь подбора
+    void accountReady() { ex.execute(this::syncAccount); }
 
     private void syncAccount() {
         long now = android.os.SystemClock.elapsedRealtime();
@@ -224,10 +262,12 @@ final class Brain {
         return r == null || r.isEmpty() ? Net.radio(id) : r;
     }
 
-    private void purge(ArrayDeque<Track> q, List<String> arts) {
+    private void purge(ArrayDeque<Track> q, List<String> arts, int mode) {
         for (Iterator<Track> it = q.iterator(); it.hasNext(); ) {
             Track x = it.next();
-            for (String a : x.artists()) if (arts.contains(a)) { it.remove(); queued.remove(x.id); break; }
+            boolean drop = x.kind != Track.FAMILIAR && banned(x, mode);
+            for (String a : x.artists()) if (arts.contains(a)) drop = true;
+            if (drop) { it.remove(); queued.remove(x.id); }
         }
     }
 
@@ -310,7 +350,7 @@ final class Brain {
             if (v > base) { base = v; badge = b; } else base += 0.3;
         }
         if (s.liked.contains(t.id) && base < 3) { base = 3; badge = "❤ Вы лайкнули в «Волне»"; }
-        double k = Math.max(0.15, 1 + 0.25 * s.artistScore(t) + 0.2 * s.tagScore(t.tags));
+        double k = Math.max(0.15, 1 + 0.25 * s.artistScore(t) + 0.2 * s.tagScore(t.tags)) * Math.max(0.25, 1 - 0.25 * penalty(t));
         t.badge = badge;
         cand.add(t);
         w.add(base * k);
@@ -340,7 +380,7 @@ final class Brain {
                 if (queued.contains(t.id) || s.disliked.contains(t.id) || s.recentlyPlayed(t.id, 24 * 3600_000L)) { it.remove(); continue; }
                 if (looked++ > 8) break;
                 if (recentArtist(t, 3)) continue;
-                double sc = s.artistScore(t) + s.tagScore(t.tags) + rnd.nextDouble();
+                double sc = s.artistScore(t) + s.tagScore(t.tags) + rnd.nextDouble() - 2 * penalty(t);
                 if (sc > bestScore) { bestScore = sc; best = t; }
             }
             if (best != null) similarPool.remove(best);
@@ -348,7 +388,11 @@ final class Brain {
         return best;
     }
 
+    private int fills;
+
     private void fillSimilar() {
+        // Через раз ещё песни любимого исполнителя, которых пользователь не знает: тот же человек, другая песня
+        if (fills++ % 2 == 1) moreFromArtist();
         for (int k = 0; k < 2; k++) {
             Track seedT;
             synchronized (this) { seedT = familiar(); }
@@ -375,6 +419,28 @@ final class Brain {
             } catch (Exception e) {
                 Log.w("volna", "радио не загрузилось", e);
             }
+        }
+    }
+
+    private void moreFromArtist() {
+        Track seedT;
+        synchronized (this) { seedT = familiar(); }
+        if (seedT == null || seedT.artists().isEmpty()) return;
+        String artist = seedT.artists().get(0);
+        try {
+            List<Track> got = Net.songsOf(artist);
+            List<Track> add = new ArrayList<>();
+            for (Track t : got) {
+                if (s.known(t.id) || queued.contains(t.id) || s.dead.contains(t.id) || t.durationMs > maxLen()) continue;
+                if (!t.artists().contains(artist)) continue;
+                t.kind = Track.SIMILAR;
+                t.badge = "★ Ещё у " + seedT.artist.split(",| & ")[0].trim();
+                add.add(t);
+            }
+            Collections.shuffle(add, rnd);
+            synchronized (this) { for (int i = 0; i < Math.min(3, add.size()); i++) similarPool.add(add.get(i)); }
+        } catch (Exception e) {
+            Log.w("volna", "песни исполнителя не загрузились: " + e.getMessage());
         }
     }
 
@@ -445,7 +511,8 @@ final class Brain {
 
     // Жёсткий фильтр новизны: ни трека, ни исполнителя пользователь раньше не слышал
     private boolean isFresh(Track t) {
-        if (s.known(t.id) || queued.contains(t.id)) return false;
+        if (s.known(t.id) || queued.contains(t.id) || s.dead.contains(t.id) || banned(t, NEW)) return false;
+        if (westernNew && (t.tags & Tags.RU) != 0) return false;
         if (t.durationMs > 0 && (t.durationMs > maxLen() || t.durationMs < MIN_LEN)) return false;
         for (String a : t.artists()) if (s.knownArtists.contains(a) || (s.profile.isEmpty() && BUBBLE.contains(a)) || s.score(a) < 0) return false;
         return !t.artists().isEmpty();

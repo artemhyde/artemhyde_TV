@@ -69,21 +69,21 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         root = new FrameLayout(this) {
             @Override public boolean hasOverlappingRendering() { return false; }
         };
+        // Фон один слой во весь экран: размытая обложка, цвет и затемнение запечены в маленькую картинку в фоновом потоке.
+        // Четыре полноэкранных слоя (цвет, картинка, оттенок, тень) видеоядро ТВ не тянуло: кадр выходил 19 мс и больше
+        getWindow().setBackgroundDrawable(null);
         root.setBackgroundColor(0xFF0B0B0E);
         bg = new ImageView(this);
         bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        bg.setScaleX(1.1f);
-        bg.setScaleY(1.1f);
         root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
-        tint = new View(this);
-        root.addView(tint, new FrameLayout.LayoutParams(-1, -1));
-        View shade = new View(this);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xA6000000, 0x8C000000, 0xB3000000}));
-        root.addView(shade, new FrameLayout.LayoutParams(-1, -1));
 
         buildLeft();
         buildRight();
         setContentView(root);
+        wireFocus();
+        // Обе волны подбираются заранее: смена режима сразу играет первый трек новой волны
+        e.brain.refillIfLow(Brain.MY);
+        e.brain.refillIfLow(Brain.NEW);
 
         // Вход: экран проявляется, обложка чуть подрастает
         root.setAlpha(0f);
@@ -111,7 +111,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         cover.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), 16 * dp); }
         });
-        cover.setElevation(px(24));
         root.addView(cover, at(56, 48, 184, 184));
 
         LinearLayout meta = new LinearLayout(this);
@@ -309,8 +308,13 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         library.set(items, accent);
     }
 
+    String queueSig = "";
+
+    // Очередь пересобирается, только когда в ней что-то поменялось: Aura сообщает о себе по нескольку раз в секунду,
+    // и пересборка списка на каждое сообщение давала подлагивания и прыжки прокрутки
     void fillQueue() {
         List<TrackList.Item> items = new ArrayList<>();
+        StringBuilder sig = new StringBuilder().append(accent).append('|');
         List<Track> past = e.history();
         for (int i = Math.max(0, past.size() - 3); i < past.size(); i++) items.add(new TrackList.Item(past.get(i), TrackList.PAST));
         if (e.shownId() != null) {
@@ -318,9 +322,59 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             items.add(new TrackList.Item(now, TrackList.NOW));
         }
         if (e.driving) for (Track t : e.brain.upcoming(e.mode, 10)) items.add(new TrackList.Item(t, TrackList.NEXT));
+        for (TrackList.Item it : items) sig.append(it.kind).append(it.t.id).append(it.t.title).append(';');
+        if (sig.toString().equals(queueSig)) return;
+        queueSig = sig.toString();
         queue.set(items, accent);
         int now = queue.indexOfNow();
         if (now >= 0 && !queue.hasFocus()) queue.setSelectionFromTop(now, px(64));
+    }
+
+    // ===== Пульт: зоны по прямой. Слева кнопки и режимы, справа вкладки и список.
+    // Из списка «Влево» сразу к кнопке, с которой пришли, «Назад» к вкладке; «Вправо» с края левой части в список =====
+
+    View lastLeft;
+
+    void wireFocus() {
+        lastLeft = play;
+        root.getViewTreeObserver().addOnGlobalFocusChangeListener((was, now) -> {
+            if (now != null && inLeft(now)) lastLeft = now;
+            // Вкладка открывается, когда на неё встал фокус, как на ТВ принято: OK для этого не нужен
+            final int t = now == tabQueue ? 0 : now == tabLib ? 1 : now == tabText ? 2 : -1;
+            if (t >= 0 && t != tab) h.postDelayed(() -> { if (tabPill() != now && now.isFocused()) showTab(t); }, 120);
+        });
+    }
+
+    boolean inLeft(View v) {
+        for (View p = v; p != null; p = p.getParent() instanceof View ? (View) p.getParent() : null)
+            if (p == like.getParent() || p == modesRow || p == extrasRow) return true;
+        return false;
+    }
+
+    TrackList list() { return tab == 1 ? library : queue; }
+
+    Pill tabPill() { return tab == 0 ? tabQueue : tab == 1 ? tabLib : tabText; }
+
+    boolean inList(View v) { return v != null && (v == queue || v == library); }
+
+    // В список: на играющий трек, а если его нет в списке, на первую строку
+    void enterList() {
+        if (tab == 2) { tabPill().requestFocus(); return; }
+        TrackList l = list();
+        if (l.getCount() == 0) { tabPill().requestFocus(); return; }
+        int now = l.indexOfNow();
+        int pos = l.getSelectedItemPosition();
+        if (pos < 0 || pos >= l.getCount()) pos = Math.max(0, now);
+        l.requestFocus();
+        l.setSelection(pos);
+    }
+
+    void backToLeft() { (lastLeft != null && lastLeft.isShown() ? lastLeft : play).requestFocus(); }
+
+    // Правый край левой части: последняя кнопка в ряду, где стоит фокус
+    boolean leftEdge(View v) {
+        if (v == dislike || v == more) return true;
+        return extrasRow.getVisibility() == View.VISIBLE && v == toastPill;
     }
 
     // У TCL экран Bluetooth живёт в «Пультах и аксессуарах»; на чужой прошивке открываем общий
@@ -361,49 +415,134 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         boolean second = !e.store.profile.isEmpty();
         Bitmap art = e.shownArt();
         String id = e.shownId() == null ? "" : e.shownId();
-        // Обложка приходит отдельным сообщением после названия: обновляем, как только она сменилась
-        if (newTrack || art != shownArt || second != shownSecond || !id.equals(shownFor)) {
+        // Обложку, фон и цвет «Волна» берёт сама в лучшем качестве (Thumbs.large): картинка Aura мелкая и приходит поздно.
+        // Она нужна, только если своей так и не нашлось
+        boolean changed = !id.equals(shownFor);
+        if (changed || second != shownSecond || (big == null && art != shownArt)) {
             shownArt = art;
             shownSecond = second;
             shownFor = id;
-            if (art == null && !id.isEmpty()) {
-                // Своей обложки у Aura ещё нет (или не будет): картинка ролика с YouTube
-                cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                Thumbs.load(cover, id);
-            } else {
-                cover.setTag(null);
-                Ui.setCover(cover, art);
-            }
-            Bitmap soft = art == null ? null : Blur.of(art, 6);
-            bg.setImageBitmap(soft);
-            accent = second ? SECOND_ACCENT : Ui.accent(art);
-            tint.setBackgroundColor(second ? 0x4DE58FB5 : (accent & 0x00FFFFFF) | 0x1F000000);
+            if (changed) showArt(id);
+            else paintArt(false);
             loadLyrics();
         }
+        Track nxt = e.driving ? e.brain.peek(e.mode) : null;
+        if (nxt != null) Thumbs.prefetch(this, nxt.id, nxt.thumb);
         modeLabel.setTextColor(Ui.light(accent));
-        modeLabel.setText(e.driving ? Brain.MODE_NAMES[e.mode].toUpperCase() : "AURA MUSIC");
+        set(modeLabel, e.driving ? Brain.MODE_NAMES[e.mode].toUpperCase() : "AURA MUSIC");
         String b = e.shownBadge();
-        badge.setText(b.isEmpty() ? (e.playing() ? "Играет" : "На паузе") : b.replace("Для видосов", "Для видео"));
-        title.setText(e.shownId() == null ? "Сейчас начнётся" : e.shownTitle());
-        artist.setText(!e.status.isEmpty() ? e.status : e.shownArtist());
+        set(badge, b.isEmpty() ? (e.playing() ? "Играет" : "На паузе") : b.replace("Для видосов", "Для видео"));
+        set(title, e.shownId() == null ? "Сейчас начнётся" : e.shownTitle());
+        set(artist, !e.status.isEmpty() ? e.status : e.shownArtist());
         Track nx = e.driving ? e.brain.peek(e.mode) : null;
-        upNext.setText(nx == null ? "" : "Далее: " + nx.title + " · " + nx.artist);
+        set(upNext, nx == null ? "" : "Далее: " + nx.title + " · " + nx.artist);
         play.setGlyph(e.playing() ? Icon.PAUSE : Icon.PLAY);
         boolean liked = e.liked();
         like.setGlyph(liked ? Icon.HEART_FILL : Icon.HEART);
         like.setTint(liked ? 0xFFFF6B81 : 0xF2FFFFFF);
         myPill.setOn(e.driving && e.mode == Brain.MY);
         newPill.setOn(e.driving && e.mode == Brain.NEW);
-        tastePill.setText("Вкус: " + e.profileName(e.store.profile));
+        set(tastePill, "Вкус: " + e.profileName(e.store.profile));
         tastePill.setOn(!e.store.profile.isEmpty());
         tastePill.setTint(e.store.profile.isEmpty() ? 0 : SECOND_ACCENT);
         boolean pin = TrackToast.always(e);
-        toastPill.setText(pin ? "Плашка: всегда" : "Плашка: при смене");
+        set(toastPill, pin ? "Плашка: всегда" : "Плашка: при смене");
         toastPill.setOn(pin);
-        tDur.setText(e.shownDur() > 0 ? Ui.time(e.shownDur()) : "");
+        set(tDur, e.shownDur() > 0 ? Ui.time(e.shownDur()) : "");
         fillQueue();
         tick.run();
     }
+
+    Thumbs.Art big;          // большая обложка показанного трека
+    static final java.util.concurrent.ExecutorService PAINT = java.util.concurrent.Executors.newSingleThreadExecutor();
+    int bgSeq;
+
+    void showArt(String id) {
+        big = null;
+        if (id.isEmpty()) { paintArt(true); return; }
+        Thumbs.Art ready = Thumbs.ready(id);
+        if (ready != null) { big = ready; paintArt(true); return; }
+        Thumbs.large(this, id, e.shownThumb(), a -> {
+            if (!id.equals(shownFor) || isFinishing()) return;
+            big = a;
+            paintArt(true);
+        });
+    }
+
+    // Обложка и фон меняются наплывом, цвет фона перетекает в цвет новой обложки. Размытие и цвет уже посчитаны в фоне
+    void paintArt(boolean fade) {
+        boolean second = !e.store.profile.isEmpty();
+        Bitmap coverBm = big != null ? big.cover : shownArt;
+        Bitmap blurBm = big != null ? big.blur : null;
+        int artColor = big != null ? big.accent : shownArt != null ? Ui.accent(shownArt) : Ui.MINT;
+        if (coverBm == null) {
+            cover.setTag(null);
+            Ui.setCover(cover, null);
+        } else {
+            cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            crossfade(cover, coverBm, fade);
+        }
+        accent = second ? SECOND_ACCENT : artColor;
+        final int tintC = second ? 0x4DE58FB5 : (accent & 0x00FFFFFF) | 0x33000000;
+        final int deepC = deep(second ? SECOND_ACCENT : artColor);
+        final int seq = ++bgSeq;
+        PAINT.execute(() -> {
+            Bitmap composed = compose(blurBm, deepC, tintC);
+            h.post(() -> { if (seq == bgSeq && !isFinishing()) crossfade(bg, composed, fade); });
+        });
+        queueSig = "";
+        fillQueue();
+    }
+
+    // Фон целиком в маленькой картинке: глубокий цвет обложки, сама обложка в размытии, её оттенок и затемнение к краям под текст
+    static Bitmap compose(Bitmap blur, int deepC, int tintC) {
+        Bitmap out = Bitmap.createBitmap(240, 135, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        c.drawColor(deepC);
+        if (blur != null) {
+            android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+            int w = blur.getWidth(), hh = blur.getHeight();
+            // Как CENTER_CROP с запасом 10 %: края размытия не видны
+            float k = Math.max(240f / w, 135f / hh) * 1.1f;
+            float dw = w * k, dh = hh * k;
+            c.drawBitmap(blur, null, new android.graphics.RectF((240 - dw) / 2, (135 - dh) / 2, (240 + dw) / 2, (135 + dh) / 2), p);
+        }
+        c.drawColor(tintC);
+        android.graphics.Paint g = new android.graphics.Paint();
+        g.setShader(new android.graphics.LinearGradient(0, 0, 240, 0, new int[]{0xA6000000, 0x8C000000, 0xB3000000}, null,
+                android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, 240, 135, g);
+        return out;
+    }
+
+    // Глубокий тёмный цвет обложки для самого дальнего слоя фона
+    static int deep(int c) {
+        float[] hsv = new float[3];
+        android.graphics.Color.colorToHSV(c, hsv);
+        hsv[2] = 0.16f;
+        hsv[1] = Math.min(0.85f, hsv[1]);
+        return android.graphics.Color.HSVToColor(hsv);
+    }
+
+    void crossfade(ImageView iv, Bitmap b, boolean fade) {
+        android.graphics.drawable.Drawable old = iv.getDrawable();
+        if (b == null) { iv.setImageDrawable(null); return; }
+        android.graphics.drawable.Drawable nu = new android.graphics.drawable.BitmapDrawable(getResources(), b);
+        if (old instanceof android.graphics.drawable.TransitionDrawable)
+            old = ((android.graphics.drawable.TransitionDrawable) old).getDrawable(1);
+        if (!fade || !(old instanceof android.graphics.drawable.BitmapDrawable)) {
+            iv.setImageDrawable(nu);
+            if (fade) { iv.setAlpha(0f); iv.animate().alpha(1f).setDuration(M.t(320)).setInterpolator(EASE).start(); }
+            return;
+        }
+        android.graphics.drawable.TransitionDrawable td = new android.graphics.drawable.TransitionDrawable(
+                new android.graphics.drawable.Drawable[]{old, nu});
+        td.setCrossFadeEnabled(true);
+        iv.setImageDrawable(td);
+        td.startTransition((int) M.t(360));
+    }
+
+    static void set(android.widget.TextView v, String s) { if (!s.contentEquals(v.getText())) v.setText(s); }
 
     void loadLyrics() {
         final String id = e.curId == null ? "" : e.curId;
@@ -460,7 +599,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             // Пока Aura ищет новый трек, полоса уже с начала, а не на месте прошлого
             long pos = e.pending() || e.waiting() ? 0 : e.position();
             bar.set(e.shownDur() > 0 ? pos / (float) e.shownDur() : 0, accent);
-            tPos.setText(Ui.time(pos));
+            set(tPos, Ui.time(pos));
             if (lyrics != null && lyrics != Lyrics.NOT_FOUND && lyrics.synced) {
                 int idx = lyrics.indexAt(pos);
                 if (idx != lyricIdx && idx < lyricViews.size()) {
@@ -511,8 +650,32 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent ev) {
+        View f = getCurrentFocus();
+        int code = ev.getKeyCode();
+        // «Назад» в списке не закрывает плеер, а поднимает к вкладке. Отпускание той же кнопки тоже наше
+        if (code == KeyEvent.KEYCODE_BACK && inList(f)) {
+            if (ev.getAction() == KeyEvent.ACTION_UP) tabPill().requestFocus();
+            return true;
+        }
         if (ev.getAction() == KeyEvent.ACTION_DOWN) {
-            switch (ev.getKeyCode()) {
+            switch (code) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (inList(f) || f == tabQueue) { backToLeft(); return true; }
+                    if (f == like || f == myPill || f == audioPill) return true;   // левее ничего нет
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (leftEdge(f)) { enterList(); return true; }
+                    break;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if (f == tabQueue || f == tabLib || f == tabText || (f != null && f.getParent() == root)) { enterList(); return true; }
+                    if (f != null && (f.getParent() == modesRow || f.getParent() == extrasRow)) return true;   // ниже ничего нет
+                    break;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    if (inList(f) && ((TrackList) f).getSelectedItemPosition() <= 0) { tabPill().requestFocus(); return true; }
+                    if (f != null && f.getParent() == like.getParent()) return true;   // над кнопками только обложка
+                    break;
+            }
+            switch (code) {
                 case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 case KeyEvent.KEYCODE_MEDIA_PLAY:
                 case KeyEvent.KEYCODE_MEDIA_PAUSE:

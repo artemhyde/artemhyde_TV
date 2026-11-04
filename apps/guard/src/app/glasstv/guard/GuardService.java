@@ -70,6 +70,7 @@ public class GuardService extends Service {
         h.postDelayed(periodic, 15 * 60_000);
         h.postDelayed(nightTick, 10_000);
         h.postDelayed(idleTick, 60_000);
+        h.postDelayed(svcTick, 90_000);
         noDream();
         new VolumeHold(this);
         // Умный звук: если пользователь включал, эффект встанет сам (после загрузки ТВ и после перезапуска службы)
@@ -128,6 +129,7 @@ public class GuardService extends Service {
                 h.removeCallbacks(checkKeys);
                 h.postDelayed(checkKeys, 4_000);
                 h.postDelayed(() -> keepAdb("включение экрана"), 4_000);
+                h.postDelayed(svcTick, 20_000);   // сеть после сна поднимается не сразу
                 // Звук выключили на время проверки, пока ТВ спал: вернуть, как только экран включился
                 if (p.getBoolean("unmuteOnWake", false)) h.postDelayed(() -> {
                     p.edit().remove("unmuteOnWake").apply();
@@ -630,6 +632,136 @@ public class GuardService extends Service {
             h.postDelayed(this, Math.max(60_000, next.getTimeInMillis() - c.getTimeInMillis()));
         }
     };
+
+    // ===== Присмотр за локальной службой (ноябрь) =====
+    // Домашний сервер в другом приложении (адрес вида http://127.0.0.1:порт/путь) иногда перестаёт отвечать. Раз в 3 минуты,
+    // пока экран горит и не идёт видео, «Сторож» спрашивает этот адрес. Два промаха подряд (один бывает, пока сеть просыпается):
+    //  - процесса приложения нет (его выгрузила система): «Сторож» открывает приложение, оно само поднимает свой сервер,
+    //    и через 10 секунд возвращает на экран то, что было открыто;
+    //  - процесс жив, а сервер молчит: остановить чужое приложение Android обычному приложению не даёт (это право системы),
+    //    поэтому приложение открывается с запиской «закройте его через меню». Дальше 5 минут проверка каждые 20 секунд: процесс
+    //    ушёл, и «Сторож» сразу запускает приложение заново (первая ветка). Записка не чаще раза в час.
+    // Что смотреть, задаётся командой с ПК (Cmd, do svc): в коде пакета нет, без настройки присмотр выключен
+    static final long SVC_EVERY = 3 * 60_000, SVC_NOTE_EVERY = 60 * 60_000;
+    private volatile int svcMiss;
+    private volatile long svcNoteAt;
+
+    final Runnable svcTick = new Runnable() {
+        @Override public void run() {
+            h.removeCallbacks(this);
+            PowerManager pm = getSystemService(PowerManager.class);
+            if (!p.getString("svcUrl", "").isEmpty() && pm != null && pm.isInteractive())
+                new Thread(() -> svcCheck(false), "guard-svc").start();
+            // После записки 5 минут проверяем каждые 20 секунд: человек закроет приложение, и оно сразу поднимется заново
+            h.postDelayed(this, System.currentTimeMillis() < svcFastUntil ? 20_000 : SVC_EVERY);
+        }
+    };
+    private volatile long svcFastUntil;
+
+    static boolean answers(String url) {
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            c.setConnectTimeout(3_000);
+            c.setReadTimeout(4_000);
+            try { return c.getResponseCode() < 500; } finally { c.disconnect(); }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // now: проверка с ПК, один промах уже считается вторым
+    synchronized String svcCheck(boolean now) {
+        String url = p.getString("svcUrl", ""), pkg = p.getString("svcPkg", ""), name = p.getString("svcName", "Служба");
+        if (url.isEmpty()) return "присмотр выключен";
+        if (answers(url)) {
+            if (svcMiss >= 2) h.post(() -> log(name + " снова отвечает"));
+            svcMiss = 0;
+            return "отвечает";
+        }
+        if (playingVideo() != null) return "не отвечает, но идёт видео: ждём";
+        svcMiss = now ? Math.max(2, svcMiss + 1) : svcMiss + 1;
+        if (svcMiss < 2) return "не отвечает, промах " + svcMiss;
+        boolean alive = processAlive(pkg);
+        long t = System.currentTimeMillis();
+        // Живой и молчащий процесс: приложение с запиской открываем не чаще раза в час, чтобы не мешать
+        if (alive && t - svcNoteAt < SVC_NOTE_EVERY) return "завис живым, записка уже была";
+        String back = topPackage();
+        Intent open = launchIntent(pkg);
+        if (open == null) {
+            h.post(() -> log(name + " не отвечает, а открыть приложение нечем (" + pkg + ")"));
+            return "не отвечает, открыть нечем";
+        }
+        h.post(() -> {
+            try { startActivity(open); } catch (Exception e) { log(name + ": приложение не открылось (" + e.getClass().getSimpleName() + ")"); }
+        });
+        if (alive) {
+            svcNoteAt = t;
+            svcFastUntil = t + 5 * 60_000;
+            h.postDelayed(svcTick, 20_000);
+            showNote(name + " не отвечает. Закройте приложение через его меню (Выход): «Сторож» сразу запустит его заново");
+            h.post(() -> log(name + " не отвечает, процесс жив: приложение открыто, ждём выхода из него"));
+            return "завис живым: открыто приложение и записка";
+        }
+        h.post(() -> log(name + " не отвечала, процесса не было: приложение открыто, сервер поднимается"));
+        boolean up = false;
+        for (int i = 0; i < 10 && !up; i++) {
+            try { Thread.sleep(1_000); } catch (InterruptedException ignored) { }
+            up = answers(url);
+        }
+        final boolean ok = up;
+        if (ok) svcMiss = 0;
+        // Поднялась: вернуть экран, который был открыт (главный экран без перехода на блокировку, приложение через его вход).
+        // Не поднялась: приложение остаётся открытым, пусть человек видит, что с ним
+        Intent ret = !ok || back == null || back.equals(pkg) ? null
+                : back.equals(homePackage()) ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                : launchIntent(back);
+        h.post(() -> {
+            if (ret != null) try { startActivity(ret); } catch (Exception ignored) { }
+            log(ok ? name + " поднялась" + (ret != null ? ", экран возвращён (" + back + ")" : "") : name + " так и не ответила за 10 с, приложение открыто");
+        });
+        return ok ? "поднята" : "не поднялась";
+    }
+
+    Intent launchIntent(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return null;
+        android.content.pm.PackageManager pm = getPackageManager();
+        Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
+        if (i == null) i = pm.getLaunchIntentForPackage(pkg);
+        return i == null ? null : i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    }
+
+    String homePackage() {
+        android.content.pm.ResolveInfo r = getPackageManager().resolveActivity(
+                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+        return r == null || r.activityInfo == null ? "" : r.activityInfo.packageName;
+    }
+
+    // Строки dumpsys целиком (право DUMP выдаётся с ПК)
+    static String dumpsys(String... args) {
+        String[] cmd = new String[args.length + 1];
+        cmd[0] = "dumpsys";
+        System.arraycopy(args, 0, cmd, 1, args.length);
+        StringBuilder b = new StringBuilder();
+        try {
+            Process pr = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(pr.getInputStream()))) {
+                for (String s; (s = r.readLine()) != null; ) b.append(s).append('\n');
+            }
+            pr.waitFor();
+        } catch (Exception ignored) { }
+        return b.toString();
+    }
+
+    static boolean processAlive(String pkg) {
+        return !pkg.isEmpty() && dumpsys("activity", "processes", pkg).contains(":" + pkg + "/u");
+    }
+
+    private static final java.util.regex.Pattern TOP = java.util.regex.Pattern.compile("topResumedActivity=ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/");
+
+    static String topPackage() {
+        java.util.regex.Matcher m = TOP.matcher(dumpsys("activity", "activities"));
+        return m.find() ? m.group(1) : null;
+    }
 
     // ===== Беспроводная отладка: Android выключает её после перезагрузки и смены сети =====
 

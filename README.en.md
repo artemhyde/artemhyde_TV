@@ -31,7 +31,10 @@ You change your TV and its system at your own risk. This is an unofficial projec
 "Dom" (Home): the home screen. A photo for the time of day, clock, weather, a verse, app tiles and an "All apps" screen. When nobody touches the TV it becomes a lock screen with the clock and the verse: the Android screensaver is switched off completely, so there is no second screen on top of it.  
 ![All apps](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/apps.png)
 
-Pills strip on the remote's gear button: Night, Sound, Picture, Volna, TCL panel. It appears over any app or film. A long press on the gear can open the TCL panel: this does not work on every TV, and if it does not, the TCL panel stays in the strip.  
+The row comes in two shapes, switched by the "Forma" pill in the gear strip: glass tiles or visionOS-style spheres. The focused sphere grows and fills with the colour of its icon, scrolling holds 60 frames per second.  
+![Home screen with spheres](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/home-orbs.png)
+
+Pills strip on the remote's gear button: Night, Sound, Picture, Volna, Shape, TCL panel. It appears over any app or film. A long press on the gear can open the TCL panel: this does not work on every TV, and if it does not, the TCL panel stays in the strip.  
 ![Pills strip](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/pills.png)
 
 "Zvuk" (Sound): a glass strip over the film. Four modes (Cinema, Music and concerts, Night, Clean) and sliders: speech clarity, levelling of explosions and whispers, bass depth, detail. You change it by ear, the film does not stop.  
@@ -44,10 +47,11 @@ Pills strip on the remote's gear button: Night, Sound, Picture, Volna, TCL panel
 ![Night mode: the plate](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night.png)  
 ![Night mode: the full menu](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night-full.png)
 
-"Storozh" (Guard): a background service. It changes the backlight exactly twice a day, at 22:00 and at 7:00, and does not argue with you: touch the brightness yourself and it leaves it alone until the next morning. Optionally it levels the volume; it returns the TV to the home screen on power-off, keeps wireless debugging on and watches Key Mapper.  
+"Storozh" (Guard): a background service. It changes the backlight exactly twice a day, at 22:00 and at 7:00, and does not argue with you: touch the brightness yourself and it leaves it alone until the next morning. Optionally it levels the volume; it returns the TV to the home screen on power-off, keeps wireless debugging on and watches Key Mapper. It can also look after a local server of another app (address and package are set by a command): if the server is gone, it starts the app again and brings back the screen you were on.  
 ![Guard](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/guard.png)
 
-"Volna" (optional): music through a custom build of Aura Music (patches and the build script are in `aura/`, there is no APK in the repository), "My wave" and "New for you" selections, lyrics. A track starts by its exact id, and the close button shuts the music down for good: no button and no TV restart brings it back. If you signed in to the player yourself, the waves are built from your account, and a like or a "Not for me" goes there. The second taste has its own channel of the same account with the same name, and its likes never reach the main profile.
+"Volna" (optional): music through a custom build of Aura Music (patches and the build script are in `aura/`, there is no APK in the repository), "My wave" and "New for you" selections, lyrics. A track starts by its exact id, and the close button shuts the music down for good: no button and no TV restart brings it back. If you signed in to the player yourself, the waves are built from your account, and a like or a "Not for me" goes there. The second taste has its own channel of the same account with the same name, and its likes never reach the main profile. High-resolution covers, a player background in the colour of the cover, and the remote moves in straight lines: Left from the list goes to the buttons, Back goes to the tabs. "My wave" is about one third your own tracks and the rest in the same mood; "Not for me" removes that whole direction for the rest of the evening. A removed video is replaced with the same song from YouTube Music.  
+![Volna](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/volna.png)
 
 "Keyboard" for the remote: digits always in their own row, above them the signs the field needs (domains in one key for mail, password signs for passwords), capitals and erasing by holding a key, nothing resets by itself. No permissions and no internet, one command to go back.
 

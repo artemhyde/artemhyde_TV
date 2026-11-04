@@ -198,6 +198,8 @@ public class HomeActivity extends Activity {
         // Путь к файлу приложения меняется при каждом обновлении, по нему видно новую картинку плитки
         StringBuilder sb = new StringBuilder();
         for (ResolveInfo r : apps.values()) sb.append(r.activityInfo.applicationInfo.sourceDir).append(';');
+        boolean round = Shape.round(this);
+        sb.append(round ? "сферы" : "плитки");   // сменили форму в полосе шестерёнки: ряд перестраивается
         String sig = sb.toString();
         if (sig.equals(appsSig)) return;
         appsSig = sig;
@@ -211,10 +213,23 @@ public class HomeActivity extends Activity {
                 if (r == null) continue;
                 t = tile(r, true);
             }
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(Grid.TILE_W), px(Grid.TILE_H));
-            if (dock.getChildCount() > 0) lp.leftMargin = px(Grid.GAP);
+            if (round) t.orb(px(Shape.D), px(Shape.W), px(Shape.H), dp);
+            LinearLayout.LayoutParams lp = round ? new LinearLayout.LayoutParams(px(Shape.W), px(Shape.H))
+                    : new LinearLayout.LayoutParams(px(Grid.TILE_W), px(Grid.TILE_H));
+            if (dock.getChildCount() > 0) lp.leftMargin = px(round ? Shape.GAP : Grid.GAP);
             dock.addView(t, lp);
             dockTiles.add(t);
+        }
+        // Высота ряда под форму: шар с подписью выше плитки, капсулы под рядом сдвигаются вниз вместе с ним
+        android.view.ViewGroup.LayoutParams rsl = rowScroll.getLayoutParams();
+        int rowH = px((round ? Shape.H : Grid.TILE_H) + 2 * PAD);
+        // Левый край первого шара на линии часов: ячейка шире шара, поле ряда меньше на эту разницу
+        int padL = px(round ? Grid.MARGIN - (Shape.W - Shape.D) / 2 : Grid.MARGIN);
+        if (dock.getPaddingLeft() != padL) dock.setPadding(padL, dock.getPaddingTop(), padL, dock.getPaddingBottom());
+        if (rsl != null && rsl.height != rowH) {
+            rsl.height = rowH;
+            rowScroll.setLayoutParams(rsl);
+            rowScroll.scrollTo(0, 0);
         }
         // Остальные приложения сеткой по 4 в ряд, по алфавиту
         List<ResolveInfo> rest = new ArrayList<>();

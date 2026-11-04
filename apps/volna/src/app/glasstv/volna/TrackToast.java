@@ -58,7 +58,7 @@ final class TrackToast {
 
     private static void fill(Engine e) {
         if (view == null) return;
-        Ui.setCover(cover, e.curArt);
+        Ui.setCover(cover, art(e));
         src.setText(e.badge.isEmpty() ? "Сейчас играет" : "Сейчас играет · " + e.badge);
         title.setText(e.curTitle);
         sub.setText(e.curArtist);
@@ -109,7 +109,7 @@ final class TrackToast {
 
     // Обложка приходит чуть позже названия: обновляем, пока плашка на экране
     static void refreshArt(Engine e) {
-        if (view != null && view.getVisibility() == View.VISIBLE) Ui.setCover(cover, e.curArt);
+        if (view != null && view.getVisibility() == View.VISIBLE) Ui.setCover(cover, art(e));
     }
 
     private static final Runnable hide = () -> {
@@ -128,5 +128,10 @@ final class TrackToast {
         try { if (view != null) c.getSystemService(WindowManager.class).removeView(view); } catch (Exception ignored) { }
         view = null;
         pinned = false;
+    }
+    // Плашка берёт чёткую обложку плеера, если она уже готова
+    private static android.graphics.Bitmap art(Engine e) {
+        Thumbs.Art a = e.curId == null ? null : Thumbs.ready(e.curId);
+        return a != null ? a.cover : e.curArt;
     }
 }

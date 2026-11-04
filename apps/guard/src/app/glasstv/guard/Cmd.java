@@ -33,9 +33,38 @@ import android.util.Log;
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do daylevel --ei v 45
 // Главный экран, как при выключении ТВ (27.10, GuardService.homeStep): сразу, без ожидания 1,5 с, экран может быть и включён. Идёт видео (медиасессия «играет», кроме музыки «Волны»): ничего не делает, пишет об этом
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do home                                  итог: adb logcat -d -s guard:I ("команда home: на главный экран" или "...идёт видео...")
+// Присмотр за локальной службой (GuardService.svcCheck): раз в 3 минуты спросить адрес, при молчании открыть приложение
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do svc --es pkg <пакет> --es url http://127.0.0.1:<порт>/<путь> --es name "Как назвать в журнале"
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do svc --es a check     проверить сейчас (один промах сразу считается вторым)
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do svc --es a off       выключить присмотр
 
 public class Cmd extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
+        if ("svc".equals(i.getStringExtra("do"))) {
+            final android.content.SharedPreferences sp = c.getApplicationContext().getSharedPreferences("guard", Context.MODE_PRIVATE);
+            final String a = i.getStringExtra("a");
+            if ("off".equals(a)) {
+                sp.edit().remove("svcUrl").remove("svcPkg").remove("svcName").apply();
+                Log.i("guard", "svc: присмотр выключен");
+                return;
+            }
+            if (i.getStringExtra("url") != null) {
+                sp.edit().putString("svcUrl", i.getStringExtra("url")).putString("svcPkg", String.valueOf(i.getStringExtra("pkg")))
+                        .putString("svcName", i.getStringExtra("name") == null ? "Служба" : i.getStringExtra("name")).apply();
+                Log.i("guard", "svc: смотрю " + i.getStringExtra("url"));
+            }
+            final GuardService g = GuardService.running;
+            if (g == null) { Log.i("guard", "svc: служба Сторожа не запущена"); return; }
+            final PendingResult pr = goAsync();
+            new Thread(() -> {
+                String out = "top".equals(a) ? "сверху " + GuardService.topPackage() + ", процесс жив: " + GuardService.processAlive(g.p.getString("svcPkg", ""))
+                        : "check".equals(a) ? g.svcCheck(true) : g.svcCheck(false);
+                Log.i("guard", "svc: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-svc-cmd").start();
+            return;
+        }
         if ("daylevel".equals(i.getStringExtra("do"))) {
             GuardService g = GuardService.running;
             if (g != null) g.setDayLevel(i.getIntExtra("v", 45));

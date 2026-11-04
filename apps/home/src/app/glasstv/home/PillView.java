@@ -27,12 +27,12 @@ final class PillView extends View {
     // Мягкое торможение без перелёта, как доезд ряда на главном экране
     static final PathInterpolator EASE = new PathInterpolator(0.25f, 0.46f, 0.3f, 1f);
     // Размеры в dp (экран 960x540 dp, плотность 2)
-    static final float HEIGHT = 64, PAD_X = 26, ICON = 26, GAP = 12, TEXT_SP = 19, GROW = 1.08f;
+    static final float HEIGHT = 64, PAD_X = 20, ICON = 26, GAP = 10, TEXT_SP = 18, GROW = 1.08f;   // ноябрь: шесть таблеток влезают в ширину экрана
     static final long FOCUS_MS = 220;
     // Запас картинки под тень, dp: по бокам, сверху, снизу. Тень уходит вниз, вверх и в стороны почти нет
     static final float SH_X = 14, SH_TOP = 6, SH_BOTTOM = 22;
     static final int ICON_ALPHA = 0xE6;   // значок белый на 90 %, в фокусе чистый белый
-    static final int MOON = 0, SOUND = 1, SUN = 2, WAVE = 3, GRID = 4;
+    static final int MOON = 0, SOUND = 1, SUN = 2, WAVE = 3, GRID = 4, SHAPE = 5;
 
     // Стекло на размер: основа с тенью и слой подсветки. Несколько таблеток на разные ширины, картинки живут
     // между открытиями полосы, чтобы второй раз их не рисовать
@@ -258,6 +258,10 @@ final class PillView extends View {
                 }
                 break;
             }
+            case SHAPE:   // форма ряда: круг и скруглённый квадрат рядом
+                p.addCircle(7f, 12f, 5f, Path.Direction.CW);
+                p.addRoundRect(new RectF(14f, 7f, 23f, 17f), 1.4f, 1.4f, Path.Direction.CW);
+                break;
             default:   // сетка из четырёх квадратиков
                 p.addRoundRect(new RectF(3, 3, 10, 10), 1.8f, 1.8f, Path.Direction.CW);
                 p.addRoundRect(new RectF(14, 3, 21, 10), 1.8f, 1.8f, Path.Direction.CW);

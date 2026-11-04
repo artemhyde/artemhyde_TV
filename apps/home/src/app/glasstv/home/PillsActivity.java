@@ -61,6 +61,7 @@ public class PillsActivity extends Activity {
         // «Картинки» может не быть на этом телевизоре: тогда таблетки нет вовсе
         if (getPackageManager().getLaunchIntentForPackage(PICTURE) != null) pills.add(new Pill("picture", "Картинка", PillView.SUN));
         pills.add(new Pill("volna", "Волна", PillView.WAVE));
+        pills.add(new Pill("shape", "Форма", PillView.SHAPE));   // ряд «Дома»: плитки или сферы, по кругу
         pills.add(new Pill("tcl", "Панель TCL", PillView.GRID));
 
         FrameLayout root = new FrameLayout(this);
@@ -94,7 +95,7 @@ public class PillsActivity extends Activity {
             Pill p = pills.get(i);
             PillView v = new PillView(this, p.icon, p.label);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            if (i > 0) lp.leftMargin = px(14);
+            if (i > 0) lp.leftMargin = px(10);
             row.addView(v, lp);
             views.add(v);
             if (p.id.equals(last)) sel = i;
@@ -152,6 +153,10 @@ public class PillsActivity extends Activity {
                     Intent i = getPackageManager().getLaunchIntentForPackage(PICTURE);
                     return i != null && open(i);
                 }
+                case "shape":
+                    // Форма ряда «Дома»: запоминается сразу, «Дом» перестроит ряд, как только покажется (он же под полосой)
+                    Shape.toggle(this);
+                    return true;
                 case "volna": return open(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.MenuActivity"));
                 case "tcl":
                     // Системная панель TCL: служба открыта без разрешения, Key Mapper запускал её так же

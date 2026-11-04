@@ -46,6 +46,13 @@ final class Tags {
         return t;
     }
 
+    // Главный жанр трека без языка и пометок slowed: по нему «не моё» гасит целое направление
+    static int mainBit(int tags) {
+        int[] order = {WORSHIP, PHONK, HOODTRAP, HIPHOP, ELECTRONIC, RNB, ROCK, LATIN, CHILL, POP};
+        for (int b : order) if ((tags & b) != 0) return b;
+        return 0;
+    }
+
     // Главная метка трека для бейджа «Похоже: фонк» и чередования
     static String main(int tags) {
         int[] order = {WORSHIP, PHONK, HOODTRAP, HIPHOP, ELECTRONIC, RNB, ROCK, LATIN, CHILL, POP, RU, SLOWED};

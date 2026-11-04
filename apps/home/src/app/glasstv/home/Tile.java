@@ -115,6 +115,105 @@ final class Tile extends View {
         return this;
     }
 
+    // ===== Форма «Сферы» (ноябрь, Shape) =====
+    // Та же плитка, но контур круглый: стекло тем же рецептом (glassShape с радиусом в половину стороны), значок внутри
+    // шара, подпись под ним. Подсветка покоя, значок и подпись запечены в одну картинку на всю ячейку: в кадре это
+    // два слоя стекла и одна картинка, как у прямоугольной плитки. Без наклона и бегущего блика: шар просто растёт
+    static final float ORB_GROW = 1.14f;
+    private boolean orb;
+    private int orbD;          // диаметр шара в точках экрана; шар стоит вверху ячейки, по центру
+    private float orbK;        // масштаб чисел стекла (тени, кромка) для шара
+    private Bitmap orbArt;
+    private int orbExt;        // подпись шире ячейки на столько с каждой стороны: длинные названия заходят в зазор
+    private RadialGradient orbGlow;
+
+    Tile orb(int d, int cellW, int cellH, float dp) {
+        orb = true;
+        orbD = d;
+        orbK = d / (W0 * 0.5f);
+        orbExt = Math.round(8 * dp);
+        orbArt = orbArt(cellW, cellH, dp);
+        return this;
+    }
+
+    private Bitmap orbArt(int cw, int ch, float dp) {
+        Bitmap b = Bitmap.createBitmap(cw + 2 * orbExt, ch, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        float cx = cw / 2f + orbExt, cy = orbD / 2f;
+        if (Theme.TILE_GLOW) {
+            // Подсветка цвета значка изнутри шара, у бесцветного значка слабее
+            float[] hsv = new float[3];
+            Color.colorToHSV(tint, hsv);
+            float a = hsv[1] < 0.25f ? 0.12f : 0.20f;
+            Paint g = new Paint(Paint.ANTI_ALIAS_FLAG);
+            g.setShader(new RadialGradient(cx, cy - orbD * 0.04f, orbD * 0.46f, new int[]{withAlpha(tint, a), tint & 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+            c.drawCircle(cx, cy, orbD * 0.47f, g);
+        }
+        if (raw != null) {
+            // Значок: часть картинки выше подписи (в картинках ряда подпись лежит ниже 137 из 224, у нарисованных кодом ниже 146)
+            int cut = Math.max(1, Math.min(raw.getHeight(), Math.round(fullH * 0.6f) - rawBox.top));
+            Bitmap icon = trim(Bitmap.createBitmap(raw, 0, 0, raw.getWidth(), cut));
+            // В квадрат 0,52 диаметра, но не крупнее, чем на плитке: растянутый значок мылится
+            float nat = Grid.TILE_W * dp / full, box = orbD * 0.52f;
+            float s = Math.min(nat, Math.min(box / icon.getWidth(), box / icon.getHeight()));
+            float iw = icon.getWidth() * s, ih = icon.getHeight() * s;
+            Paint ip = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+            c.drawBitmap(icon, null, new RectF(cx - iw / 2f, cy - ih / 2f, cx + iw / 2f, cy + ih / 2f), ip);
+        }
+        // Подпись под шаром: Inter Medium 16,5 dp, белая на 86 %, с мягкой тенью, как подписи плиток
+        TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        t.setTypeface(Fonts.med18);
+        t.setTextSize(16f * dp);
+        t.setColor(0xDBFFFFFF);
+        t.setTextAlign(Paint.Align.CENTER);
+        CharSequence s = TextUtils.ellipsize(label, t, cw + 2 * orbExt - 2 * dp, TextUtils.TruncateAt.END);
+        float base = orbD + 27 * dp;
+        t.setShadowLayer(cssBlur(12 * dp / 2f), 0, 2 * dp, 0x80000000);
+        c.drawText(s, 0, s.length(), cx, base, t);
+        return b;
+    }
+
+    // Обрезать прозрачные поля, не трогая размеров основной картинки
+    private static Bitmap trim(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        int[] px = new int[w * h];
+        b.getPixels(px, 0, w, 0, 0, w, h);
+        int l = w, t = h, r = -1, btm = -1;
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            if ((px[y * w + x] >>> 24) < 3) continue;
+            if (x < l) l = x;
+            if (x > r) r = x;
+            if (y < t) t = y;
+            if (y > btm) btm = y;
+        }
+        return r < 0 ? b : Bitmap.createBitmap(b, l, t, r - l + 1, btm - t + 1);
+    }
+
+    private void drawOrb(Canvas c) {
+        float f = quiet ? focus * 0.35f : focus;
+        int ox = (getWidth() - orbD) / 2;
+        if (chrome != null) {
+            if (f < 0.999f) {
+                paint.setAlpha(Math.round(255 * (1f - f)));
+                c.drawBitmap(chrome[0], ox - Math.round(PAD_X[0] * orbK), -Math.round(PAD_TOP[0] * orbK), paint);
+            }
+            if (f > 0.001f) {
+                paint.setAlpha(Math.round(255 * f));
+                c.drawBitmap(chrome[1], ox - Math.round(PAD_X[1] * orbK), -Math.round(PAD_TOP[1] * orbK), paint);
+            }
+            paint.setAlpha(255);
+        }
+        if (Theme.TILE_GLOW && f > 0.001f) {
+            // В фокусе шар чуть наполняется цветом своего значка: одна прибавка, только у шара в фокусе
+            if (orbGlow == null) orbGlow = new RadialGradient(getWidth() / 2f, orbD / 2f, orbD * 0.5f,
+                    new int[]{tint | 0xFF000000, tint & 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
+            glow.setShader(orbGlow);
+            glow.setAlpha(Math.round(255 * 0.12f * f));
+            c.drawCircle(getWidth() / 2f, orbD / 2f, orbD * 0.5f, glow);
+        }
+        if (orbArt != null) c.drawBitmap(orbArt, -orbExt, 0, paint);
+    }
+
     // Подсветка в покое запекается в картинку содержимого (27.10): отдельным слоем она проходила по каждой плитке
     // в каждом кадре, а видеоядро ТВ на пределе. Отдельно рисуется только прибавка в фокусе, у одной плитки
     private void compose() {
@@ -152,6 +251,17 @@ final class Tile extends View {
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
         if (w <= 0 || h <= 0) return;
+        if (orb) {
+            setPivotX(w / 2f);
+            setPivotY(orbD / 2f);
+            String key = "orb" + orbD;
+            chrome = CHROME.get(key);
+            if (chrome == null) {
+                chrome = new Bitmap[]{glassShape(orbD, orbD, orbK, orbD / 2f, false), glassShape(orbD, orbD, orbK, orbD / 2f, true)};
+                CHROME.put(key, chrome);
+            }
+            return;
+        }
         sheenW = 0.5f * w;
         sheenBmp = SHEEN.get(w + "x" + h);
         if (sheenBmp == null) {
@@ -167,6 +277,7 @@ final class Tile extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
+        if (orb) { drawOrb(c); return; }
         if (chrome != null) {
             float k = getWidth() / W0, f = quiet ? focus * 0.35f : focus;
             if (f < 0.999f) {
@@ -238,12 +349,17 @@ final class Tile extends View {
 
     private void focus(boolean f) {
         float k = getWidth() > 0 ? getWidth() / W0 : 1f;
-        animate().scaleX(f ? grow : 1f).scaleY(f ? grow : 1f).translationY(f ? -6 * k : 0)
-                .rotationX(f ? TILT_X : 0).rotationY(f ? TILT_Y : 0).translationZ(f ? 1 : 0)
-                .setStartDelay(0).setDuration(M.t(f ? 420 : 320)).setInterpolator(EASE).start();
+        if (orb) {
+            animate().scaleX(f ? ORB_GROW : 1f).scaleY(f ? ORB_GROW : 1f).translationY(f ? -4 * orbK : 0).translationZ(f ? 1 : 0)
+                    .setStartDelay(0).setDuration(M.t(f ? 420 : 320)).setInterpolator(EASE).start();
+        } else {
+            animate().scaleX(f ? grow : 1f).scaleY(f ? grow : 1f).translationY(f ? -6 * k : 0)
+                    .rotationX(f ? TILT_X : 0).rotationY(f ? TILT_Y : 0).translationZ(f ? 1 : 0)
+                    .setStartDelay(0).setDuration(M.t(f ? 420 : 320)).setInterpolator(EASE).start();
+        }
         if (sheenAnim != null) sheenAnim.cancel();
         sweep = -1f;
-        if (f) {
+        if (f && !orb) {
             sheenAnim = ValueAnimator.ofFloat(0f, 1f);
             sheenAnim.setStartDelay(M.t(SHEEN_DELAY_MS));
             sheenAnim.setDuration(M.t(SHEEN_MS));
@@ -402,15 +518,17 @@ final class Tile extends View {
     // Одно состояние стекла с тенями, в картинке с запасом PAD_* вокруг плитки. Слои и числа повторяют макет
     // «Графит» (демо/варианты-плиток/тёмные/graphite/graphite-home.html, правила .tile и .tile.focus): тени снаружи,
     // торец снизу, графитовая заливка, светлое свечение по краю изнутри, кромка-градиент, блик сверху слева
-    static Bitmap glass(int w, int h, boolean f) {
-        float k = w / W0;
+    static Bitmap glass(int w, int h, boolean f) { return glassShape(w, h, w / W0, 40 * (w / W0), f); }
+
+    // Стекло скруглённого контура w x h с радиусом r: плитка (радиус 40 из 400) или шар (радиус в половину стороны).
+    // k переводит числа теней и кромки из макета в точки экрана
+    static Bitmap glassShape(int w, int h, float k, float r, boolean f) {
         int s = f ? 1 : 0;
         int px = Math.round(PAD_X[s] * k), pt = Math.round(PAD_TOP[s] * k), pb = Math.round(PAD_BOTTOM[s] * k);
         Bitmap b = Bitmap.createBitmap(w + 2 * px, h + pt + pb, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
         c.translate(px, pt);
         RectF card = new RectF(0, 0, w, h);
-        float r = 40 * k;
         Path cardPath = new Path();
         cardPath.addRoundRect(card, r, r, Path.Direction.CW);
 

@@ -41,14 +41,20 @@ final class TrackList extends ListView {
         setDivider(null);
         setDividerHeight(px(4));
         setVerticalScrollBarEnabled(false);
-        setVerticalFadingEdgeEnabled(true);
-        setFadingEdgeLength(px(24));
+        // Без затухания краёв: на этом видеоядре оно стоит отдельного слоя на каждый кадр прокрутки
+        setVerticalFadingEdgeEnabled(false);
         setClipToPadding(false);
         setCacheColorHint(0);
+        // Строка в фокусе: светлая заливка и яркая кромка, видно боковым зрением. Пока фокус вне списка, подсветки нет совсем:
+        // иначе на экране два курсора
         GradientDrawable sel = new GradientDrawable();
         sel.setCornerRadius(px(12));
-        sel.setColor(0x24FFFFFF);
-        setSelector(sel);
+        sel.setColor(0x2EFFFFFF);
+        sel.setStroke(px(2), 0xE6FFFFFF);
+        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_focused}, sel);
+        states.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(0));
+        setSelector(states);
         setDrawSelectorOnTop(false);
         setAdapter(adapter);
         setOnItemClickListener((p, v, pos, id) -> { if (pos < items.size()) pick.on(items.get(pos)); });

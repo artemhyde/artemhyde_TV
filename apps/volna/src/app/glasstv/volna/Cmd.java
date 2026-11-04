@@ -27,7 +27,7 @@ public class Cmd extends BroadcastReceiver {
             case "dislike": e.dislike(); break;
             case "stop": e.stop(); break;
             case "whoami": e.whoami(); break;
-            case "playid": e.play(new Track(i.getStringExtra("id"), "проверка", "", 0), true); break;   // конкретный трек по id
+            case "playid": e.play(new Track(i.getStringExtra("id"), i.getStringExtra("t") == null ? "проверка" : i.getStringExtra("t"), i.getStringExtra("a"), 0), true); break;   // конкретный трек по id
             case "seekend": e.seekNearEnd(); break;   // для проверки смены треков: за 6 с до конца
             case "fakestall": e.fakeStall = true; break;   // для проверки сторожа: как будто музыка встала, через 7 с он сработает
             case "restart": e.restartAura("проверка с ПК"); break;

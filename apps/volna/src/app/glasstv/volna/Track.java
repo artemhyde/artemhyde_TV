@@ -14,6 +14,7 @@ final class Track {
     int kind = FAMILIAR;
     int tags;
     String bucket = "";   // для «Нового»: из какой корзины жанров
+    String thumb = "";    // квадратная обложка YouTube Music (lh3), если её дал список
 
     Track(String id, String title, String artist, long durationMs) {
         this.id = id;
@@ -23,12 +24,30 @@ final class Track {
         this.tags = Tags.of(this.title, this.artist);
     }
 
+    // Та же песня, другая загрузка: всё, кроме id, остаётся
+    Track withId(String other) {
+        Track t = new Track(other, title, artist, durationMs);
+        t.badge = badge;
+        t.kind = kind;
+        t.tags = tags;
+        t.bucket = bucket;
+        return t;
+    }
+
+    // Обложка из YouTube Music нужного размера: у lh3 размер задаётся в адресе
+    static String bigThumb(String url) {
+        if (url == null || !url.contains("googleusercontent.com")) return "";
+        int eq = url.lastIndexOf('=');
+        return (eq > 0 ? url.substring(0, eq) : url) + "=w544-h544-l90-rj";
+    }
+
     Track copy() {
         Track t = new Track(id, title, artist, durationMs);
         t.badge = badge;
         t.kind = kind;
         t.tags = tags;
         t.bucket = bucket;
+        t.thumb = thumb;
         return t;
     }
 

@@ -41,6 +41,7 @@ final class Store {
     final float[] tagWeight = new float[Tags.COUNT];
     final Map<String, String[]> likedMeta = new ConcurrentHashMap<>(); // лайкнутые в «Волне»: id -> {название, исполнитель}
     final Map<String, Integer> pending = new ConcurrentHashMap<>();    // оценки, которые ещё не дошли до аккаунта: id -> 1, 0, -1
+    final Map<String, String> alias = new ConcurrentHashMap<>();       // загрузка не играет -> та же песня, что играет
     private boolean dirty;
 
     Store(Context c, String profile) {
@@ -69,6 +70,8 @@ final class Store {
             }
             JSONArray ka = new JSONArray(p.getString("knownArtists", "[]"));
             for (int i = 0; i < ka.length(); i++) knownArtists.add(ka.getString(i));
+            JSONObject al = new JSONObject(p.getString("alias", "{}"));
+            for (Iterator<String> it = al.keys(); it.hasNext(); ) { String k = it.next(); alias.put(k, al.getString(k)); }
             JSONObject pd = new JSONObject(p.getString("pending", "{}"));
             for (Iterator<String> it = pd.keys(); it.hasNext(); ) { String k = it.next(); pending.put(k, pd.getInt(k)); }
         } catch (Exception ignored) { }
@@ -76,6 +79,12 @@ final class Store {
 
     // Лайк в «Волне» как трек волны
     Track likedTrack(String id, String[] meta) { return new Track(id, meta[0], meta[1], 0); }
+
+    void alias(String from, String to) {
+        alias.put(from, to);
+        dirty = true;
+        save();
+    }
 
     void markDead(String id) {
         dead.add(id);
@@ -252,7 +261,8 @@ final class Store {
                     .putString("disliked", new JSONArray(disliked).toString()).putString("dead", new JSONArray(dead).toString())
                     .putString("artists", as.toString())
                     .putString("tags", tw.toString()).putString("likedMeta", lm.toString())
-                    .putString("knownArtists", ka.toString()).putString("pending", new JSONObject(pending).toString()).apply();
+                    .putString("knownArtists", ka.toString()).putString("pending", new JSONObject(pending).toString())
+                    .putString("alias", new JSONObject(alias).toString()).apply();
         } catch (Exception ignored) { }
     }
 

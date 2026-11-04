@@ -243,20 +243,22 @@ public class MenuActivity extends Activity implements Engine.Listener {
         boolean second = !e.store.profile.isEmpty();
         Bitmap art = e.shownArt();
         String id = e.shownId() == null ? "" : e.shownId();
-        // Обложка приходит отдельным сообщением после названия: обновляем, как только она сменилась
+        // Чёткая обложка своя (Thumbs.large), картинка Aura только пока своей нет
         if (newTrack || art != shownArt || second != shownSecond || !id.equals(shownFor)) {
+            boolean changed = !id.equals(shownFor);
             shownArt = art;
             shownSecond = second;
             shownFor = id;
-            if (art == null && !id.isEmpty()) {
-                // Своей обложки у Aura ещё нет (или не будет): картинка ролика с YouTube
+            Thumbs.Art big = id.isEmpty() ? null : Thumbs.ready(id);
+            if (big != null) {
                 cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                Thumbs.load(cover, id);
+                cover.setImageBitmap(big.cover);
             } else {
                 cover.setTag(null);
                 Ui.setCover(cover, art);
+                if (changed && !id.isEmpty()) Thumbs.large(this, id, a -> { if (a != null && id.equals(shownFor)) refresh(false); });
             }
-            accent = second ? SECOND_ACCENT : Ui.accent(art);
+            accent = second ? SECOND_ACCENT : big != null ? big.accent : Ui.accent(art);
             // У второго вкуса и карточка с розовым отливом
             glass.setFill(second ? 0xF02A1A24 : 0xF017171C);
         }

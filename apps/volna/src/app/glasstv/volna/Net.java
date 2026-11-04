@@ -141,7 +141,19 @@ final class Net {
             JSONObject f = fixed.optJSONObject(0).optJSONObject("musicResponsiveListItemFixedColumnRenderer");
             if (f != null) dur = text(f.optJSONObject("text"));
         }
-        return new Track(vid[0], title, artists.toString(), Track.parseDuration(dur));
+        Track t = new Track(vid[0], title, artists.toString(), Track.parseDuration(dur));
+        t.thumb = Track.bigThumb(lastThumb(it));
+        return t;
+    }
+
+    // Самая большая картинка из thumbnails внутри объекта
+    static String lastThumb(JSONObject o) {
+        final String[] url = {""};
+        walk(o, "thumbnail", th -> {
+            JSONArray a = th.optJSONArray("thumbnails");
+            if (a != null && a.length() > 0 && url[0].isEmpty()) url[0] = a.optJSONObject(a.length() - 1).optString("url");
+        });
+        return url[0];
     }
 
     private static JSONObject col(JSONArray fc, int i) {
@@ -167,9 +179,50 @@ final class Net {
             if (id == null) return;
             String artist = text(o.optJSONObject("shortBylineText"));
             if (artist.isEmpty()) artist = text(o.optJSONObject("longBylineText")).split(" • ")[0];
-            out.add(new Track(id, text(o.optJSONObject("title")), artist, Track.parseDuration(text(o.optJSONObject("lengthText")))));
+            Track t = new Track(id, text(o.optJSONObject("title")), artist, Track.parseDuration(text(o.optJSONObject("lengthText"))));
+            t.thumb = Track.bigThumb(lastThumb(o));
+            out.add(t);
         });
         return out;
+    }
+
+    // Песни исполнителя по поиску YouTube Music (только песни)
+    static List<Track> songsOf(String artist) throws Exception {
+        return listItems(call("search", new JSONObject().put("query", artist).put("params", "EgWKAQIIAWoKEAkQBRAKEAMQBA=="), "US"), "");
+    }
+
+    // Та же песня другой загрузкой: поиск по песням YouTube Music (студийные версии, каналы «Topic»), первая подходящая с другим id
+    static Track alternative(Track t) throws Exception {
+        List<String> arts = t.artists();
+        String q = (t.title + " " + (arts.isEmpty() ? "" : arts.get(0))).replace('/', ' ').trim();
+        List<Track> found = listItems(call("search", new JSONObject().put("query", q).put("params", "EgWKAQIIAWoKEAkQBRAKEAMQBA=="), "US"), "");
+        for (int i = 0; i < Math.min(8, found.size()); i++) {
+            Track f = found.get(i);
+            if (!f.id.equals(t.id) && sameSong(t, f)) return f;
+        }
+        return null;
+    }
+
+    private static final java.util.Set<String> NOISE = new java.util.HashSet<>(java.util.Arrays.asList(
+            "official", "audio", "video", "music", "lyric", "lyrics", "visualizer", "visualiser", "feat", "ft", "prod", "the", "a", "and", "x", "by"));
+
+    private static java.util.Set<String> words(String s) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (String w : s.toLowerCase(java.util.Locale.ROOT).split("[^\\p{L}\\p{N}]+"))
+            if (!w.isEmpty() && !NOISE.contains(w)) out.add(w);
+        return out;
+    }
+
+    // Та же песня: большинство значимых слов названия совпадает, и исполнитель тот же (в исполнителях или в названии)
+    static boolean sameSong(Track want, Track got) {
+        java.util.Set<String> a = words(want.title), b = words(got.title);
+        if (a.isEmpty() || b.isEmpty()) return false;
+        int common = 0;
+        for (String w : a) if (b.contains(w)) common++;
+        if (common < Math.max(1, Math.round(0.6f * Math.min(a.size(), b.size())))) return false;
+        String in = (got.artist + " " + got.title).toLowerCase(java.util.Locale.ROOT);
+        for (String w : want.artists()) if (in.contains(w)) return true;
+        return false;
     }
 
     static List<Track> playlist(String playlistId) throws Exception {
