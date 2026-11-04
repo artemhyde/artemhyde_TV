@@ -37,7 +37,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     FrameLayout root;
     ImageView bg, cover;
     View tint;
-    TextView modeLabel, badge, upNext, title, artist, tPos, tDur, hint;
+    TextView modeLabel, badge, upNext, title, artist, tPos, tDur, hint, hintR;
     Bar bar;
     Icon like, prev, rew, play, fwd, next, dislike, more;
     Pill myPill, newPill, tastePill, audioPill, phonesPill, toastPill;
@@ -175,8 +175,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         hint = Fonts.text(this, Fonts.CAPTION, Fonts.reg18, Fonts.WHITE_72);
         hint.setGravity(Gravity.CENTER);
         stack.addView(hint, new LinearLayout.LayoutParams(-1, px(18)));
-        labelFocus(new View[]{like, prev, rew, play, fwd, next, dislike},
-                new String[]{"Нравится", "Предыдущий трек", "Назад на 10 секунд", "Пауза или играть", "Вперёд на 10 секунд", "Следующий трек", "Не моё: убрать исполнителя"});
 
         // Режимы отдельно: какая волна, чей вкус, и «ещё» с редкими настройками
         FrameLayout modes = new FrameLayout(this);
@@ -223,13 +221,29 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
         FrameLayout box = new FrameLayout(this);
         queue = new TrackList(this, it -> { if (it.kind != TrackList.NOW) e.play(it.t, true); });
-        library = new TrackList(this, it -> { e.play(it.t, true); showTab(0); });
+        // Выбранный трек играет, вкладка остаётся та же: список под курсором не пропадает
+        library = new TrackList(this, it -> e.play(it.t, true));
         library.setVisibility(View.GONE);
+        // Курсор поехал по строкам: подсказка под списком следит за ним («играет» или «включить»)
+        android.widget.AdapterView.OnItemSelectedListener sel = new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) { updateHints(getCurrentFocus()); }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        };
+        queue.setOnItemSelectedListener(sel);
+        library.setOnItemSelectedListener(sel);
         lyricsScroll = new ScrollView(this);
         lyricsScroll.setVerticalScrollBarEnabled(false);
         lyricsScroll.setVerticalFadingEdgeEnabled(true);
         lyricsScroll.setFadingEdgeLength(px(48));
-        lyricsScroll.setFocusable(false);
+        // Текст песни листается пультом: вниз с вкладки «Текст» встаёт на него, вверх и вниз листают
+        lyricsScroll.setFocusable(true);
+        GradientDrawable lf = new GradientDrawable();
+        lf.setCornerRadius(px(16));
+        lf.setStroke(px(2), 0x99FFFFFF);
+        android.graphics.drawable.StateListDrawable ls = new android.graphics.drawable.StateListDrawable();
+        ls.addState(new int[]{android.R.attr.state_focused}, lf);
+        ls.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(0));
+        lyricsScroll.setForeground(ls);
         lyricsBox = new LinearLayout(this);
         lyricsBox.setOrientation(LinearLayout.VERTICAL);
         lyricsBox.setPadding(px(8), px(80), px(8), px(160));
@@ -239,6 +253,11 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         box.addView(library, new FrameLayout.LayoutParams(-1, -1));
         box.addView(lyricsScroll, new FrameLayout.LayoutParams(-1, -1));
         root.addView(box, at(552, 96, 352, 404));
+        // Подсказка под списком: что будет по OK там, где стоит фокус справа
+        hintR = Fonts.text(this, Fonts.CAPTION, Fonts.reg18, Fonts.WHITE_60);
+        hintR.setSingleLine(true);
+        hintR.setEllipsize(TextUtils.TruncateAt.END);
+        root.addView(hintR, at(560, 506, 344, 26));
         showTab(0);
     }
 
@@ -249,19 +268,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (row.getChildCount() > 0) lp.leftMargin = px(12);
         row.addView(i, lp);
         return i;
-    }
-
-    // Подпись под рядом кнопок: что делает кнопка в фокусе
-    void labelFocus(View[] views, String[] names) {
-        for (int i = 0; i < views.length; i++) {
-            final String n = names[i];
-            final View.OnFocusChangeListener old = views[i].getOnFocusChangeListener();
-            views[i].setOnFocusChangeListener((v, f) -> {
-                if (old != null) old.onFocusChange(v, f);
-                if (f) hint.setText(n);
-                else if (n.contentEquals(hint.getText())) hint.setText("");
-            });
-        }
     }
 
     Pill pill(LinearLayout row, String text, View.OnClickListener l) {
@@ -305,7 +311,11 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         List<TrackList.Item> items = new ArrayList<>();
         String now = e.shownId();
         for (Track t : e.store.library()) items.add(new TrackList.Item(t, t.id.equals(now) ? TrackList.NOW : TrackList.LIB));
+        String keep = library.hasFocus() ? library.selectedId() : null;
+        int top = library.selectedTop();
         library.set(items, accent);
+        int i = keep == null ? -1 : library.indexOf(keep);
+        if (i >= 0) library.setSelectionFromTop(i, top);
     }
 
     String queueSig = "";
@@ -325,20 +335,31 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         for (TrackList.Item it : items) sig.append(it.kind).append(it.t.id).append(it.t.title).append(';');
         if (sig.toString().equals(queueSig)) return;
         queueSig = sig.toString();
+        String keep = queue.hasFocus() ? queue.selectedId() : null;
+        int top = queue.selectedTop();
         queue.set(items, accent);
-        int now = queue.indexOfNow();
-        if (now >= 0 && !queue.hasFocus()) queue.setSelectionFromTop(now, px(64));
+        int i = keep == null ? -1 : queue.indexOf(keep);
+        if (i >= 0) queue.setSelectionFromTop(i, top);
+        else if (!queue.hasFocus()) {
+            int now = queue.indexOfNow();
+            if (now >= 0) queue.setSelectionFromTop(now, px(64));
+        }
     }
 
-    // ===== Пульт: зоны по прямой. Слева кнопки и режимы, справа вкладки и список.
-    // Из списка «Влево» сразу к кнопке, с которой пришли, «Назад» к вкладке; «Вправо» с края левой части в список =====
+    // ===== Пульт (04.11): что нарисовано в той стороне, туда и идём =====
+    // Слева сверху вниз: полоса перемотки, ряд кнопок, ряд режимов. Справа: вкладки с крестиком, под ними список (или текст).
+    // Вверх с кнопок на перемотку, вниз обратно на ту же кнопку; между кнопками и режимами таблица «что под чем»,
+    // а обратно на кнопку, с которой спустились. «Вправо» с края левой части в строку списка на той же высоте.
+    // «Влево» из списка за одно нажатие на кнопку, с которой пришли, «Назад» из списка к вкладке. Где ничего нет, стоим
 
-    View lastLeft;
+    View lastLeft, lastTransport;
 
     void wireFocus() {
         lastLeft = play;
         root.getViewTreeObserver().addOnGlobalFocusChangeListener((was, now) -> {
             if (now != null && inLeft(now)) lastLeft = now;
+            if (inTransport(now)) lastTransport = now;
+            updateHints(now);
             // Вкладка открывается, когда на неё встал фокус, как на ТВ принято: OK для этого не нужен
             final int t = now == tabQueue ? 0 : now == tabLib ? 1 : now == tabText ? 2 : -1;
             if (t >= 0 && t != tab) h.postDelayed(() -> { if (tabPill() != now && now.isFocused()) showTab(t); }, 120);
@@ -357,24 +378,94 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     boolean inList(View v) { return v != null && (v == queue || v == library); }
 
-    // В список: на играющий трек, а если его нет в списке, на первую строку
-    void enterList() {
-        if (tab == 2) { tabPill().requestFocus(); return; }
+    boolean inTransport(View v) { return v != null && v.getParent() == like.getParent(); }
+
+    boolean inPills(View v) { return v != null && (v.getParent() == modesRow || v.getParent() == extrasRow); }
+
+    boolean isTab(View v) { return v == tabQueue || v == tabLib || v == tabText; }
+
+    // Что под кнопкой в ряду режимов
+    View below(View t) {
+        boolean ex = extrasRow.getVisibility() == View.VISIBLE;
+        if (t == like || t == prev) return ex ? audioPill : myPill;
+        if (t == rew || t == play) return ex ? phonesPill : newPill;
+        if (t == fwd || t == next) return ex ? toastPill : tastePill;
+        return ex ? toastPill : more;
+    }
+
+    // Что над таблеткой: кнопка, с которой спустились, иначе кнопка над ней по месту
+    View above(View p) {
+        if (lastTransport != null && below(lastTransport) == p) return lastTransport;
+        if (p == myPill || p == audioPill) return prev;
+        if (p == newPill || p == phonesPill) return play;
+        if (p == tastePill || p == toastPill) return next;
+        return dislike;
+    }
+
+    // В список сверху: на верхнюю видимую строку, она прямо под вкладками
+    void enterTop() {
+        if (tab == 2) { lyricsScroll.requestFocus(); return; }
         TrackList l = list();
-        if (l.getCount() == 0) { tabPill().requestFocus(); return; }
-        int now = l.indexOfNow();
-        int pos = l.getSelectedItemPosition();
-        if (pos < 0 || pos >= l.getCount()) pos = Math.max(0, now);
+        if (l.getCount() == 0) return;   // пусто: фокус остаётся, где был
+        View c = l.getChildAt(0);
+        int first = l.getFirstVisiblePosition(), top = c == null ? 0 : c.getTop();
         l.requestFocus();
-        l.setSelection(pos);
+        l.setSelectionFromTop(first, top);
+    }
+
+    // В список сбоку: строка на той же высоте, что и элемент слева, «по прямой»
+    void enterAt(View from) {
+        if (tab == 2) { lyricsScroll.requestFocus(); return; }
+        TrackList l = list();
+        if (l.getCount() == 0 || l.getChildCount() == 0) return;
+        int[] a = new int[2], b = new int[2];
+        from.getLocationOnScreen(a);
+        l.getLocationOnScreen(b);
+        int y = a[1] + from.getHeight() / 2 - b[1];
+        int best = -1, top = 0, bestD = Integer.MAX_VALUE;
+        for (int i = 0; i < l.getChildCount(); i++) {
+            View c = l.getChildAt(i);
+            int d = y < c.getTop() ? c.getTop() - y : y > c.getBottom() ? y - c.getBottom() : 0;
+            if (d < bestD) { bestD = d; best = l.getFirstVisiblePosition() + i; top = c.getTop(); }
+        }
+        l.requestFocus();
+        l.setSelectionFromTop(best, top);
     }
 
     void backToLeft() { (lastLeft != null && lastLeft.isShown() ? lastLeft : play).requestFocus(); }
 
-    // Правый край левой части: последняя кнопка в ряду, где стоит фокус
-    boolean leftEdge(View v) {
-        if (v == dislike || v == more) return true;
-        return extrasRow.getVisibility() == View.VISIBLE && v == toastPill;
+    // Подсказки: слева под кнопками, справа под списком. Что будет по OK там, где стоит фокус
+    void updateHints(View v) {
+        set(hint, leftHint(v));
+        set(hintR, rightHint(v));
+    }
+
+    String leftHint(View v) {
+        if (v == bar) return "◀ ▶ перемотка, вниз к кнопкам";
+        if (v == like) return e.liked() ? "Убрать лайк" : "Нравится";
+        if (v == prev) return "Предыдущий трек";
+        if (v == rew) return "Назад на 10 секунд";
+        if (v == play) return e.playing() ? "Пауза · вверх перемотка" : "Играть · вверх перемотка";
+        if (v == fwd) return "Вперёд на 10 секунд";
+        if (v == next) return "Следующий трек";
+        if (v == dislike) return "Не моё: убрать похожее";
+        if (v == myPill) return "OK: включить «Мою волну»";
+        if (v == newPill) return "OK: включить «Новое для вас»";
+        if (v == tastePill) return "OK: вкус " + e.profileName(e.store.profile.isEmpty() ? Store.SECOND : Store.MAIN);
+        if (v == more) return "OK: ещё настройки";
+        if (v == audioPill) return "OK: погасить экран, музыка играет";
+        if (v == phonesPill) return "OK: подключить наушники";
+        if (v == toastPill) return "OK: когда показывать название трека";
+        return "";
+    }
+
+    String rightHint(View v) {
+        if (v == queue || v == library) return (((TrackList) v).selectedIsNow() ? "Играет сейчас" : "OK: включить этот трек") + " · Назад: к вкладкам";
+        if (v == lyricsScroll) return "▲ ▼ листать текст · Назад: к вкладкам";
+        if (v == tabText) return "Вниз: к тексту песни";
+        if (isTab(v)) return "Вниз: в список";
+        if (v != null && v.getParent() == root && v instanceof Icon) return "OK: выключить музыку и закрыть";
+        return "";
     }
 
     // У TCL экран Bluetooth живёт в «Пультах и аксессуарах»; на чужой прошивке открываем общий
@@ -425,6 +516,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             if (changed) showArt(id);
             else paintArt(false);
             loadLyrics();
+            if (changed && tab == 1) fillLibrary();
         }
         Track nxt = e.driving ? e.brain.peek(e.mode) : null;
         if (nxt != null) Thumbs.prefetch(this, nxt.id, nxt.thumb);
@@ -451,6 +543,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         set(tDur, e.shownDur() > 0 ? Ui.time(e.shownDur()) : "");
         fillQueue();
         tick.run();
+        if (hintR != null) updateHints(getCurrentFocus());   // «Пауза» и «Играть», «Нравится» и «Убрать лайк» меняются сами
     }
 
     Thumbs.Art big;          // большая обложка показанного трека
@@ -652,27 +745,55 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     @Override public boolean dispatchKeyEvent(KeyEvent ev) {
         View f = getCurrentFocus();
         int code = ev.getKeyCode();
-        // «Назад» в списке не закрывает плеер, а поднимает к вкладке. Отпускание той же кнопки тоже наше
-        if (code == KeyEvent.KEYCODE_BACK && inList(f)) {
+        // «Назад» в списке и в тексте не закрывает плеер, а поднимает к вкладке. Отпускание той же кнопки тоже наше
+        if (code == KeyEvent.KEYCODE_BACK && (inList(f) || f == lyricsScroll)) {
             if (ev.getAction() == KeyEvent.ACTION_UP) tabPill().requestFocus();
             return true;
         }
         if (ev.getAction() == KeyEvent.ACTION_DOWN) {
+            boolean ex = extrasRow.getVisibility() == View.VISIBLE;
             switch (code) {
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (inList(f) || f == tabQueue) { backToLeft(); return true; }
-                    if (f == like || f == myPill || f == audioPill) return true;   // левее ничего нет
-                    break;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (leftEdge(f)) { enterList(); return true; }
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    if (f == bar) return true;                                          // выше только название
+                    if (inTransport(f)) { bar.requestFocus(); return true; }             // над кнопками перемотка
+                    if (inPills(f)) { above(f).requestFocus(); return true; }
+                    if (inList(f)) {
+                        if (((TrackList) f).getSelectedItemPosition() <= 0) tabPill().requestFocus();
+                        else break;
+                        return true;
+                    }
+                    if (f == lyricsScroll) {
+                        if (lyricsScroll.getScrollY() <= 0) tabText.requestFocus();
+                        else lyricsScroll.smoothScrollBy(0, -px(140));
+                        return true;
+                    }
+                    if (isTab(f) || (f != null && f.getParent() == root)) return true;  // над вкладками и крестиком ничего
                     break;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (f == tabQueue || f == tabLib || f == tabText || (f != null && f.getParent() == root)) { enterList(); return true; }
-                    if (f != null && (f.getParent() == modesRow || f.getParent() == extrasRow)) return true;   // ниже ничего нет
+                    if (f == bar) { (lastTransport != null ? lastTransport : play).requestFocus(); return true; }
+                    if (inTransport(f)) { below(f).requestFocus(); return true; }
+                    if (inPills(f)) return true;                                         // ниже ничего нет
+                    if (isTab(f)) {
+                        int t = f == tabQueue ? 0 : f == tabLib ? 1 : 2;
+                        if (t != tab) showTab(t);                                        // вкладка под фокусом, не прежняя
+                        enterTop();
+                        return true;
+                    }
+                    if (f != null && f.getParent() == root) { enterTop(); return true; } // крестик
+                    if (inList(f)) {
+                        TrackList l = (TrackList) f;
+                        if (l.getSelectedItemPosition() >= l.getCount() - 1) return true;
+                        break;
+                    }
+                    if (f == lyricsScroll) { lyricsScroll.smoothScrollBy(0, px(140)); return true; }
                     break;
-                case KeyEvent.KEYCODE_DPAD_UP:
-                    if (inList(f) && ((TrackList) f).getSelectedItemPosition() <= 0) { tabPill().requestFocus(); return true; }
-                    if (f != null && f.getParent() == like.getParent()) return true;   // над кнопками только обложка
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (inList(f) || f == tabQueue || f == lyricsScroll) { backToLeft(); return true; }
+                    if (f == like || f == myPill || f == audioPill) return true;           // левее ничего нет
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (f == dislike || f == more || (ex && f == toastPill)) { enterAt(f); return true; }
+                    if (inList(f) || f == lyricsScroll || (f != null && f.getParent() == root)) return true;
                     break;
             }
             switch (code) {

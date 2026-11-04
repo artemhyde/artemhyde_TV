@@ -31,6 +31,22 @@ final class Grid {
         return lp;
     }
 
+    // По центру экрана: базовая линия ровно на baseline (стиль «Vision»)
+    static FrameLayout.LayoutParams center(TextView t, float dp, int baseline) {
+        Paint.FontMetrics fm = t.getPaint().getFontMetrics();
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lp.topMargin = Math.round(baseline * dp + fm.ascent);
+        return lp;
+    }
+
+    // Текст по центру, растущий вверх от последней базовой линии (стих в «Vision»)
+    static FrameLayout.LayoutParams aboveCenter(TextView t, float dp, int lastBaseline, int widthDp) {
+        Paint.FontMetrics fm = t.getPaint().getFontMetrics();
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(widthDp * dp), -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lp.bottomMargin = Math.round(H * dp - lastBaseline * dp - fm.descent);
+        return lp;
+    }
+
     // Текст, растущий вверх от последней базовой линии (стих): низ блока = базовая линия + нижний вынос
     static FrameLayout.LayoutParams above(TextView t, float dp, int x, int lastBaseline, int widthDp) {
         Paint.FontMetrics fm = t.getPaint().getFontMetrics();

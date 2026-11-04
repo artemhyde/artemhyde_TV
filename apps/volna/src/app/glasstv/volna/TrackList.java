@@ -69,6 +69,27 @@ final class TrackList extends ListView {
         adapter.notifyDataSetChanged();
     }
 
+    // Курсор держится за трек, а не за номер строки: очередь пересобирается, и под курсором должен остаться тот же трек
+    String selectedId() {
+        int p = getSelectedItemPosition();
+        return p >= 0 && p < items.size() ? items.get(p).t.id : null;
+    }
+
+    int selectedTop() {
+        View v = getSelectedView();
+        return v == null ? 0 : v.getTop();
+    }
+
+    int indexOf(String id) {
+        for (int i = 0; i < items.size(); i++) if (items.get(i).t.id.equals(id)) return i;
+        return -1;
+    }
+
+    boolean selectedIsNow() {
+        int p = getSelectedItemPosition();
+        return p >= 0 && p < items.size() && items.get(p).kind == NOW;
+    }
+
     int indexOfNow() {
         for (int i = 0; i < items.size(); i++) if (items.get(i).kind == NOW) return i;
         return -1;

@@ -61,7 +61,7 @@ public class PillsActivity extends Activity {
         // «Картинки» может не быть на этом телевизоре: тогда таблетки нет вовсе
         if (getPackageManager().getLaunchIntentForPackage(PICTURE) != null) pills.add(new Pill("picture", "Картинка", PillView.SUN));
         pills.add(new Pill("volna", "Волна", PillView.WAVE));
-        pills.add(new Pill("shape", "Форма", PillView.SHAPE));   // ряд «Дома»: плитки или сферы, по кругу
+        pills.add(new Pill("style", "Стиль", PillView.SHAPE));   // вид «Дома»: «Графит» или «Vision», по кругу
         pills.add(new Pill("tcl", "Панель TCL", PillView.GRID));
 
         FrameLayout root = new FrameLayout(this);
@@ -153,9 +153,9 @@ public class PillsActivity extends Activity {
                     Intent i = getPackageManager().getLaunchIntentForPackage(PICTURE);
                     return i != null && open(i);
                 }
-                case "shape":
-                    // Форма ряда «Дома»: запоминается сразу, «Дом» перестроит ряд, как только покажется (он же под полосой)
-                    Shape.toggle(this);
+                case "style":
+                    // Стиль «Дома»: запоминается сразу, «Дом» перестроится, как только покажется (он же под полосой)
+                    Style.toggle(this);
                     return true;
                 case "volna": return open(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.MenuActivity"));
                 case "tcl":

@@ -51,6 +51,8 @@ final class Ambient implements Data.Listener {
     private Data.Photo shownPhoto;   // какое фото на экране: чтобы не менять то же самое
     private float blurLevel;
     boolean active;
+    boolean vision;           // стиль «Vision» (Style): текст по центру, фото чёткое, частиц нет
+    private boolean styled;
 
     Ambient(Context c) {
         this.c = c;
@@ -156,6 +158,64 @@ final class Ambient implements Data.Listener {
 
     int px(float v) { return Math.round(v * dp); }
 
+    // ===== Стиль (Style) =====
+
+    void setStyle(boolean v) {
+        if (styled && vision == v) return;
+        styled = true;
+        vision = v;
+        layoutText();
+        particles.setVisibility(v ? View.GONE : View.VISIBLE);
+        if (v) particles.stop();
+        else particles.level(active ? 1f : Particles.LOCK, 0);
+        // Копия фото под ряд у каждого стиля своя: размытая тёмная у «Графита», чёткая с затемнением у «Vision»
+        if (shownPhoto != null) showPhoto(shownPhoto, false);
+    }
+
+    // Места текста. «Графит»: часы и дата слева сверху, погода справа, стих слева внизу.
+    // «Vision»: дата над крупными часами по центру, погода и курс под ними, стих по центру внизу, подпись фото сверху справа
+    private void layoutText() {
+        boolean v = vision;
+        clock.setTextSize(v ? 96 : 64);
+        clock.setTranslationX(v ? 0 : -px(4));
+        clock.setLayoutParams(v ? Grid.center(clock, dp, 178) : Grid.at(clock, dp, Grid.MARGIN, 92, false, 0));
+        date.setLayoutParams(v ? Grid.center(date, dp, 74) : Grid.at(date, dp, Grid.MARGIN, 124, false, 0));
+        tempRow.setLayoutParams(v ? Grid.center(temp, dp, 226) : Grid.at(temp, dp, Grid.RIGHT, 92, true, 0));
+        place.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
+        place.setLayoutParams(v ? Grid.center(place, dp, 254) : Grid.at(place, dp, Grid.RIGHT, 124, true, Grid.span(5)));
+        rates.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
+        rates.setLayoutParams(v ? Grid.center(rates, dp, Data.WEATHER_ON ? 278 : 254)
+                : Grid.at(rates, dp, Grid.RIGHT, Data.WEATHER_ON ? 148 : 124, true, Grid.span(5)));
+        for (TextView t : verse) {
+            t.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.START);
+            t.setLayoutParams(v ? Grid.aboveCenter(t, dp, 466, 680) : Grid.above(t, dp, Grid.MARGIN, 472, Grid.span(6)));
+        }
+        ref.setLayoutParams(v ? Grid.center(ref, dp, Grid.BOTTOM) : Grid.at(ref, dp, Grid.MARGIN, Grid.BOTTOM, false, 0));
+        caption.setLayoutParams(v ? Grid.at(caption, dp, Grid.RIGHT, 30, true, Grid.span(6)) : Grid.at(caption, dp, Grid.RIGHT, Grid.BOTTOM, true, Grid.span(7)));
+    }
+
+    // «Vision»: фото остаётся чётким. Затемнение сверху под часы и снизу под сферы запекается в саму картинку один раз,
+    // в кадре это тот же один слой фона, что и размытая копия у «Графита»
+    static Bitmap bake(Bitmap bm) {
+        int w = bm.getWidth(), hh = bm.getHeight();
+        Bitmap out = Bitmap.createBitmap(w, hh, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+        android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+        cm.setScale(0.84f, 0.84f, 0.84f, 1f);
+        p.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+        c.drawBitmap(bm, 0, 0, p);
+        android.graphics.Paint g = new android.graphics.Paint();
+        g.setShader(new android.graphics.LinearGradient(0, 0, 0, hh,
+                // под капсулами (около 0,58 высоты) тоже темнее: на ярком ночном городе стеклянная капсула иначе теряется
+                new int[]{0x99000000, 0x4D000000, 0x40000000, 0x66000000, 0xC7000000}, new float[]{0f, 0.28f, 0.46f, 0.6f, 1f},
+                android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, hh, g);
+        return out;
+    }
+
+    private Bitmap softOf(Bitmap bm) { return vision ? bake(bm) : Blur.of(bm, 4, SOFT_BRIGHT); }
+
     // ===== Жизненный цикл =====
 
     void start() {
@@ -171,7 +231,7 @@ final class Ambient implements Data.Listener {
         onData();
         h.post(tick);
         h.postDelayed(rotate, CHECK_MS);
-        particles.level(active ? 1f : Particles.LOCK, 0);
+        if (!vision) particles.level(active ? 1f : Particles.LOCK, 0);
     }
 
     void stop() {
@@ -253,7 +313,7 @@ final class Ambient implements Data.Listener {
             bottom.setVisibility(View.VISIBLE);
         }
         animateBlur(on ? 1f : 0f, on ? 700 : 900);
-        particles.show(on);
+        if (!vision) particles.show(on);
         for (View g : new View[]{top, bottom})
             g.animate().alpha(on ? 0f : 1f).setStartDelay(0).setDuration(M.t(on ? 500 : 900)).setInterpolator(EASE).start();
         TextView shownVerse = verse[vis];
@@ -301,7 +361,7 @@ final class Ambient implements Data.Listener {
         caption.setAlpha(1f);
         rates.animate().cancel();
         rates.setAlpha(0f);
-        particles.level(Particles.LOCK, 0);
+        if (!vision) particles.level(Particles.LOCK, 0);
         if (kenBurns != null) kenBurns.resume();
     }
 
@@ -392,13 +452,13 @@ final class Ambient implements Data.Listener {
         if (ph == null) return;
         if (!fade) {   // первый кадр нужен сразу, без чёрного экрана
             Bitmap bm = Data.decode(ph.file);
-            if (bm != null) applyPhoto(ph, bm, Blur.of(bm, 4, SOFT_BRIGHT), false);
+            if (bm != null) applyPhoto(ph, bm, softOf(bm), false);
             return;
         }
         DECODE.execute(() -> {
             Bitmap bm = Data.decode(ph.file);
             if (bm == null) return;
-            Bitmap blurred = Blur.of(bm, 4, SOFT_BRIGHT);
+            Bitmap blurred = softOf(bm);
             h.post(() -> applyPhoto(ph, bm, blurred, true));
         });
     }

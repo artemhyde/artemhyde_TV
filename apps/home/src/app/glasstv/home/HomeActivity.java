@@ -67,6 +67,7 @@ public class HomeActivity extends Activity {
     float dp;
     String appsSig;
     View lastDock;
+    boolean vision;   // стиль «Vision» (Style): капсулы над сферами, ряд-карусель
     final View[] gridHead = new View[2];
     long pausedAt;
 
@@ -139,6 +140,7 @@ public class HomeActivity extends Activity {
         shelf.addView(suggestRow, srl);
 
         buildGridLayer();
+        applyStyle(Style.vision(this));
         setContentView(root);
         // Фон окна под корнем не виден (корень сам тёмный, сверху фото), а видеоядро заливало его каждый кадр:
         // с частицами экран перерисовывается целиком, и эта лишняя заливка 1080p стоила около миллисекунды (27.10)
@@ -151,6 +153,29 @@ public class HomeActivity extends Activity {
     }
 
     int px(float v) { return Math.round(v * dp); }
+
+    // Стиль экрана. «Графит»: ряд плиток, под ним капсулы. «Vision»: капсулы по центру, под ними ряд сфер
+    void applyStyle(boolean v) {
+        vision = v;
+        amb.setStyle(v);
+        shelf.removeAllViews();
+        LinearLayout.LayoutParams rsl = new LinearLayout.LayoutParams(-1, px((v ? Style.H : Grid.TILE_H) + 2 * PAD));
+        LinearLayout.LayoutParams srl = new LinearLayout.LayoutParams(-1, px(44));
+        if (v) {
+            rsl.topMargin = px(2);
+            shelf.addView(suggestRow, srl);
+            shelf.addView(rowScroll, rsl);
+        } else {
+            srl.topMargin = px(28 - PAD);
+            shelf.addView(rowScroll, rsl);
+            shelf.addView(suggestRow, srl);
+        }
+        FrameLayout.LayoutParams sl = (FrameLayout.LayoutParams) shelf.getLayoutParams();
+        sl.topMargin = px(v ? Style.CAPS_Y : Grid.ROW_Y - PAD);
+        shelf.setLayoutParams(sl);
+        suggestRow.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.START | Gravity.CENTER_VERTICAL);
+        appsSig = null;   // ряд перестроится в новой форме при ближайшем loadApps
+    }
 
     // «Все приложения»: отдельный слой поверх фона, со своим заголовком и подсказкой, как выйти
     void buildGridLayer() {
@@ -198,8 +223,8 @@ public class HomeActivity extends Activity {
         // Путь к файлу приложения меняется при каждом обновлении, по нему видно новую картинку плитки
         StringBuilder sb = new StringBuilder();
         for (ResolveInfo r : apps.values()) sb.append(r.activityInfo.applicationInfo.sourceDir).append(';');
-        boolean round = Shape.round(this);
-        sb.append(round ? "сферы" : "плитки");   // сменили форму в полосе шестерёнки: ряд перестраивается
+        boolean round = vision;
+        sb.append(round ? "vision" : "графит");   // сменили стиль в полосе шестерёнки: ряд перестраивается
         String sig = sb.toString();
         if (sig.equals(appsSig)) return;
         appsSig = sig;
@@ -213,18 +238,19 @@ public class HomeActivity extends Activity {
                 if (r == null) continue;
                 t = tile(r, true);
             }
-            if (round) t.orb(px(Shape.D), px(Shape.W), px(Shape.H), dp);
-            LinearLayout.LayoutParams lp = round ? new LinearLayout.LayoutParams(px(Shape.W), px(Shape.H))
+            if (round) t.orb(px(Style.D), px(Style.W), px(Style.H), dp);
+            LinearLayout.LayoutParams lp = round ? new LinearLayout.LayoutParams(px(Style.W), px(Style.H))
                     : new LinearLayout.LayoutParams(px(Grid.TILE_W), px(Grid.TILE_H));
-            if (dock.getChildCount() > 0) lp.leftMargin = px(round ? Shape.GAP : Grid.GAP);
+            if (dock.getChildCount() > 0) lp.leftMargin = px(round ? Style.GAP : Grid.GAP);
             dock.addView(t, lp);
             dockTiles.add(t);
         }
         // Высота ряда под форму: шар с подписью выше плитки, капсулы под рядом сдвигаются вниз вместе с ним
         android.view.ViewGroup.LayoutParams rsl = rowScroll.getLayoutParams();
-        int rowH = px((round ? Shape.H : Grid.TILE_H) + 2 * PAD);
-        // Левый край первого шара на линии часов: ячейка шире шара, поле ряда меньше на эту разницу
-        int padL = px(round ? Grid.MARGIN - (Shape.W - Shape.D) / 2 : Grid.MARGIN);
+        int rowH = px((round ? Style.H : Grid.TILE_H) + 2 * PAD);
+        // «Графит»: левый край первой плитки на линии часов. «Vision»: карусель, у краёв поле в полэкрана,
+        // чтобы и первая, и последняя сфера могли встать посередине
+        int padL = px(round ? Grid.W / 2 - Style.W / 2 : Grid.MARGIN);
         if (dock.getPaddingLeft() != padL) dock.setPadding(padL, dock.getPaddingTop(), padL, dock.getPaddingBottom());
         if (rsl != null && rsl.height != rowH) {
             rsl.height = rowH;
@@ -429,8 +455,10 @@ public class HomeActivity extends Activity {
             if (hasCont) cont.fade(v == cont ? 1f : 0.62f);
             play.fade(v == play ? 1f : 0.62f);
         } else if (v instanceof Tile && dockTiles.contains(v)) {
-            if (hasCont) cont.fade(0.45f);
-            play.fade(0.45f);
+            // «Vision»: капсулы стоят над рядом как виджеты под часами, совсем их не гасим
+            float q = vision ? 0.8f : 0.45f;
+            if (hasCont) cont.fade(q);
+            play.fade(q);
         }
         if (v instanceof Tile && dockTiles.contains(v)) {
             lastDock = v;
@@ -456,6 +484,14 @@ public class HomeActivity extends Activity {
     int rowTarget;
 
     void scrollDock(Tile t) {
+        if (vision) {
+            // «Vision»: сфера в фокусе всегда посередине экрана, ряд едет под ней
+            int max = Math.max(0, dock.getWidth() - rowScroll.getWidth());
+            int target = Math.max(0, Math.min(max, t.getLeft() + t.getWidth() / 2 - rowScroll.getWidth() / 2));
+            if (rowAnim != null && rowAnim.isRunning() && target == rowTarget) return;
+            rowScrollTo(target);
+            return;
+        }
         int x = t.getLeft(), sx = rowScroll.getScrollX();
         int maxLeft = px(Grid.col(6)), minLeft = px(Grid.MARGIN);
         boolean running = rowAnim != null && rowAnim.isRunning();
@@ -650,8 +686,19 @@ public class HomeActivity extends Activity {
                 else if (state == ACTIVE) toIdle();
                 return true;
             }
-            // Вниз из капсул никуда не ведёт: «Все приложения» открываются своей плиткой
-            if (state == ACTIVE && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN && getCurrentFocus() instanceof Suggest) return true;
+            // «Графит»: вниз из капсул никуда не ведёт, «Все приложения» открываются своей плиткой.
+            // «Vision»: капсулы над рядом, вниз из них на сферу посередине, вверх из них некуда
+            if (state == ACTIVE && getCurrentFocus() instanceof Suggest) {
+                int k = e.getKeyCode();
+                if (k == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    if (vision) {
+                        View back = lastDock != null ? lastDock : (dockTiles.isEmpty() ? null : dockTiles.get(0));
+                        if (back != null) back.requestFocus();
+                    }
+                    return true;
+                }
+                if (vision && k == KeyEvent.KEYCODE_DPAD_UP) return true;
+            }
         } else if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
             return true;
         }
@@ -697,6 +744,8 @@ public class HomeActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        boolean v = Style.vision(this);
+        if (v != vision) applyStyle(v);
         amb.start();
         loadApps();
         updateSuggest();
