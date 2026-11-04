@@ -3,13 +3,13 @@
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
 **Заводской Google TV с рекламой ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
-![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif)  
+![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0411)  
 Подвигать шторку самому: [открыть сравнение](https://artemhyde.github.io/artemhyde_TV/before-after.html) или на своём компьютере `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 Домашний экран, ночной режим, звук и картинка для Google TV и TCL, которые настраивает ваш Claude Code. В пакетах и папках проект зовётся техническим именем glasstv (`app.glasstv.*`).
 
 Светлая тема «Объём» на выбор (мастер спросит при установке):  
-![Светлая тема Объём](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/theme-volume.png)
+![Светлая тема Объём](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/theme-volume.png?v=0411)
 
 **Как поставить**
 1. Поставьте Claude Code (claude.com/claude-code).
@@ -25,26 +25,26 @@
 **Что умеет**
 
 «Дом»: главный экран. Фото по времени суток, часы, погода, стих, плитки приложений и экран «Все приложения». Когда ТВ не трогают, это экран блокировки с часами и стихом: заставка Android выключена совсем, второго экрана поверх него нет.  
-![Все приложения](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/apps.png)
+![Все приложения](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/apps.png?v=0411)
 
 Форма ряда на выбор, переключается таблеткой «Форма» в полосе шестерёнки: стеклянные плитки или сферы в духе visionOS. Шар в фокусе растёт и наполняется цветом своего значка, листание держит 60 кадров в секунду.  
 ![Главный экран: сферы](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/home-orbs.png)
 
 Полоса таблеток на кнопку с шестерёнкой: Ночь, Звук, Картинка, Волна, Форма, Панель TCL. Появляется поверх любого приложения и фильма. Долгое нажатие на шестерёнку может открывать панель TCL: получится не на всех ТВ, а если нет, панель TCL остаётся в полосе таблеток.  
-![Полоса таблеток](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/pills.png)
+![Полоса таблеток](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/pills.png?v=0411)
 
 «Звук»: стеклянная полоса поверх фильма. Четыре режима (Кино, Музыка и концерты, Ночной, Чистый) и ползунки: чёткость речи, выравнивание громкости взрывов и шёпота, глубина баса, прозрачность. Меняете на слух, фильм не останавливается.  
-![Звук поверх фильма](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/sound.png)
+![Звук поверх фильма](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/sound.png?v=0411)
 
 «Картинка»: такая же полоса. Четыре режима (Кино Вечер, Дневной Чёткий, Максимум HDR, Мягкий для глаз), «Авто» и ползунки: подсветка панели, глубина чёрного, пик HDR, тёплый оттенок.  
-![Картинка](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/picture.png)
+![Картинка](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/picture.png?v=0411)
 
 «Ночной режим» в два этапа. Первое нажатие: маленькая плашка внизу экрана с одним ползунком яркости. Ползунок показывает настоящую подсветку панели один к одному, с нуля влево сразу минус, вправо 1, 2, 3. Левее нуля красная зона до −100 %: вуаль, а ниже −50 поверх неё второй слой, и разница видна на всём пути. Второе нажатие той же кнопки (или «Вниз» и OK на «Таймер сна»): плашка плавно вырастает в полное меню с таймером сна и кнопкой «Выключить».  
-![Ночной режим: плашка](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night.png)  
+![Ночной режим: плашка](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night.png?v=0411)  
 ![Ночной режим: полное меню](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/night-full.png)
 
 «Сторож»: служба в фоне. Меняет подсветку ровно два раза в сутки, в 22:00 и в 7:00, и не спорит с вами: тронули яркость сами, и до следующего утра он её не трогает. По желанию выравнивает громкость, возвращает ТВ на главный экран при выключении, держит беспроводную отладку и следит за Key Mapper. Может присматривать за локальным сервером другого приложения (адрес и пакет задаются командой): если сервер пропал, запускает приложение заново и возвращает экран, на котором вы были.  
-![Сторож](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/guard.png)
+![Сторож](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/guard.png?v=0411)
 
 «Волна» (по желанию): музыка через свою сборку Aura Music (патчи и скрипт сборки в папке `aura/`, APK в репозитории нет), подборки «Моя волна» и «Новое для вас», тексты песен. Трек запускается по точному id, крестик закрывает музыку совсем: ни кнопки, ни включение ТВ её не вернут. Если вы сами вошли в плеер, волны строятся от вашего аккаунта, а лайк и «Не моё» уходят в него. У второго вкуса свой канал этого же аккаунта с тем же именем, его лайки в основной профиль не попадают. Обложки в высоком качестве, фон плеера в цвет обложки, пульт ходит по прямой: «Влево» из списка к кнопкам, «Назад» к вкладкам. «Моя волна» на треть из ваших треков, остальное в том же духе; «Не моё» убирает всё похожее направление до конца вечера. Удалённый ролик «Волна» заменяет той же песней из YouTube Music.  
 ![Волна](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/volna.png)
