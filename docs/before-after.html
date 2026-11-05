@@ -35,8 +35,11 @@ input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor
 input:focus-visible ~ .line .knob{outline:3px solid #7FB2FF;outline-offset:3px}
 a{color:inherit}
 @media (max-width:600px){
-  /* На телефоне сравнение во всю ширину экрана: так крупнее */
-  .compare{width:100vw;margin:0 -16px;border-radius:0;border-left:0;border-right:0}
+  /* На телефоне сравнение во всю ширину экрана (так крупнее), текст и кнопки с полями по 16 точек, всё сверху */
+  body{display:block;padding:20px 0;align-content:start}
+  h1,p{margin:0 16px 12px}
+  .seg{display:flex;width:fit-content;margin:0 16px 12px}
+  .compare{width:100vw;border-radius:0;border-left:0;border-right:0}
   .seg button{padding:7px 12px;font-size:13px}.tag{font-size:12px;padding:5px 10px}}
 @media (prefers-reduced-motion:reduce){.knob,.compare .after,.seg button{transition:none}}
 </style>
