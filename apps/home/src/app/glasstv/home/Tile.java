@@ -115,24 +115,58 @@ final class Tile extends View {
         return this;
     }
 
-    // ===== Форма «Сферы» (ноябрь, Shape) =====
+    // ===== Сферы стиля «Vision» (ноябрь) =====
     // Та же плитка, но контур круглый: стекло тем же рецептом (glassShape с радиусом в половину стороны), значок внутри
-    // шара, подпись под ним. Подсветка покоя, значок и подпись запечены в одну картинку на всю ячейку: в кадре это
-    // два слоя стекла и одна картинка, как у прямоугольной плитки. Без наклона и бегущего блика: шар просто растёт
-    static final float ORB_GROW = 1.14f;
+    // шара, подпись под ним. В покое сфера это одна готовая картинка (стекло, значок, подпись): кадр на ТВ всегда
+    // рисуется целиком, а видеоядро слабое.
+    // Движение (05.11, второй заход: «не живое, не дышит»; числа сведены из разборов Apple TV, Google TV и консолей):
+    // - фокус: рост до 1,17 на пружине с заметным перелётом (затухание 0,46: пик около 1,20) и подъём на 8 dp. Прошлый
+    //   перелёт был на 1,5 точки, глаз его не видел;
+    // - стекло фокуса и цветной ореол цвета значка зажигаются вместе с ростом и гаснут с уходом, ореол вспыхивает
+    //   при посадке и оседает (постоянное свечение выглядело дёшево);
+    // - зажатая стрелка: спокойный режим (1,12 без перелёта, без блика и ореола), на отпускании полная посадка с толчком;
+    // - OK: сфера проседает на 7 % и отпружинивает, приложение открывается после отскока;
+    // - дыхание заметное (±2,2 % за 3,6 с), начинается после посадки и через 25 с тишины затихает: экран становится
+    //   неподвижным и ничего не тратит
+    static final float ORB_GROW = Style.GROW;
+    static boolean holding;    // стрелка зажата (повторы клавиши): спокойный режим, ставит HomeActivity
     private boolean orb;
     private int orbD;          // диаметр шара в точках экрана; шар стоит вверху ячейки, по центру
     private float orbK;        // масштаб чисел стекла (тени, кромка) для шара
+    private float orbDp = 1f;
     private Bitmap orbArt;
     private int orbExt;        // подпись шире ячейки на столько с каждой стороны: длинные названия заходят в зазор
     private RadialGradient orbGlow;
+    private Bitmap orbRest;    // сфера в покое одной картинкой
+    private int restX, restY;
+    private Spring spring;     // масштаб сферы
+    private Spring push;       // сдвиг вбок: соседи сферы в фокусе расступаются
+    private float lift;        // подъём в фокусе, точки (рисуется сдвигом холста: свойство подъёма ведёт каскад)
+    private float halo;        // яркость ореола 0..1 (вспышка при посадке, дыхание)
+    private float breath;      // текущая добавка дыхания к ореолу
+    private long breathAt;
+    private ValueAnimator haloAnim;
+    private static final LruCache<String, Bitmap> HALO = new LruCache<>(2);
+    private Bitmap haloBmp;
+    private final Paint haloPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private static final LruCache<String, Bitmap> ORB_SHEEN = new LruCache<>(2);
+    private Bitmap orbSheen;
+    private final Paint sheenCircle = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private android.graphics.BitmapShader sheenShader;
+    private final Matrix sheenM = new Matrix();
 
     Tile orb(int d, int cellW, int cellH, float dp) {
         orb = true;
         orbD = d;
+        orbDp = dp;
         orbK = d / (W0 * 0.5f);
         orbExt = Math.round(8 * dp);
         orbArt = orbArt(cellW, cellH, dp);
+        // Ореол цвета значка; у бесцветного значка холодный белый
+        float[] hsv = new float[3];
+        Color.colorToHSV(tint, hsv);
+        int col = hsv[1] < 0.25f ? 0xFFDCE6FF : tint;
+        haloPaint.setColorFilter(new android.graphics.PorterDuffColorFilter(col | 0xFF000000, PorterDuff.Mode.SRC_IN));
         return this;
     }
 
@@ -140,37 +174,54 @@ final class Tile extends View {
         Bitmap b = Bitmap.createBitmap(cw + 2 * orbExt, ch, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
         float cx = cw / 2f + orbExt, cy = orbD / 2f;
+        float[] hsv = new float[3];
+        Color.colorToHSV(tint, hsv);
+        boolean grey = hsv[1] < 0.25f;
         if (Theme.TILE_GLOW) {
             // Подсветка цвета значка изнутри шара, у бесцветного значка слабее
-            float[] hsv = new float[3];
-            Color.colorToHSV(tint, hsv);
-            float a = hsv[1] < 0.25f ? 0.12f : 0.20f;
+            float a = grey ? 0.12f : 0.20f;
             Paint g = new Paint(Paint.ANTI_ALIAS_FLAG);
             g.setShader(new RadialGradient(cx, cy - orbD * 0.04f, orbD * 0.46f, new int[]{withAlpha(tint, a), tint & 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
             c.drawCircle(cx, cy, orbD * 0.47f, g);
         }
-        if (raw != null) {
-            // Значок: часть картинки выше подписи (в картинках ряда подпись лежит ниже 137 из 224, у нарисованных кодом ниже 146)
+        Bitmap own = orbIcon(getContext(), pkg);
+        Paint ip = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        if (own != null) {
+            // Свой значок 160x160 (значок 128 по центру, вокруг тень): значок занимает 0,46 диаметра
+            float s = orbD * 0.46f / 128f;
+            float iw = own.getWidth() * s, ih = own.getHeight() * s;
+            c.drawBitmap(own, null, new RectF(cx - iw / 2f, cy - ih / 2f, cx + iw / 2f, cy + ih / 2f), ip);
+        } else if (raw != null) {
+            // Чужое приложение: значок из картинки плитки (подпись в ней ниже 0,6 высоты)
             int cut = Math.max(1, Math.min(raw.getHeight(), Math.round(fullH * 0.6f) - rawBox.top));
             Bitmap icon = trim(Bitmap.createBitmap(raw, 0, 0, raw.getWidth(), cut));
-            // В квадрат 0,52 диаметра, но не крупнее, чем на плитке: растянутый значок мылится
-            float nat = Grid.TILE_W * dp / full, box = orbD * 0.52f;
+            float nat = Grid.TILE_W * dp / full * 1.25f, box = orbD * 0.5f;
             float s = Math.min(nat, Math.min(box / icon.getWidth(), box / icon.getHeight()));
             float iw = icon.getWidth() * s, ih = icon.getHeight() * s;
-            Paint ip = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
             c.drawBitmap(icon, null, new RectF(cx - iw / 2f, cy - ih / 2f, cx + iw / 2f, cy + ih / 2f), ip);
         }
-        // Подпись под шаром: Inter Medium 16,5 dp, белая на 86 %, с мягкой тенью, как подписи плиток
-        TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-        t.setTypeface(Fonts.med18);
-        t.setTextSize(16f * dp);
-        t.setColor(0xDBFFFFFF);
-        t.setTextAlign(Paint.Align.CENTER);
-        CharSequence s = TextUtils.ellipsize(label, t, cw + 2 * orbExt - 2 * dp, TextUtils.TruncateAt.END);
+        // Подпись под шаром: Inter Medium 16 dp, белая на 86 %, с мягкой тенью, как подписи плиток
+        TextPaint tp = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        tp.setTypeface(Fonts.med18);
+        tp.setTextSize(16f * dp);
+        tp.setColor(0xDBFFFFFF);
+        tp.setTextAlign(Paint.Align.CENTER);
+        CharSequence s = TextUtils.ellipsize(label, tp, cw + 2 * orbExt - 2 * dp, TextUtils.TruncateAt.END);
         float base = orbD + 27 * dp;
-        t.setShadowLayer(cssBlur(12 * dp / 2f), 0, 2 * dp, 0x80000000);
-        c.drawText(s, 0, s.length(), cx, base, t);
-        return b;
+        tp.setShadowLayer(cssBlur(12 * dp / 2f), 0, 2 * dp, 0x80000000);
+        c.drawText(s, 0, s.length(), cx, base, tp);
+        return Tile.fixed(b);
+    }
+
+    // Свой крупный значок сферы (assets/orbs, собирает Home/tiles-src/build_orbs.py); нет: null
+    static Bitmap orbIcon(Context c, String key) {
+        try (InputStream in = c.getAssets().open("orbs/" + key + ".png")) {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inScaled = false;
+            return BitmapFactory.decodeStream(in, null, o);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // Обрезать прозрачные поля, не трогая размеров основной картинки
@@ -189,9 +240,53 @@ final class Tile extends View {
         return r < 0 ? b : Bitmap.createBitmap(b, l, t, r - l + 1, btm - t + 1);
     }
 
+    // Сфера в покое одной картинкой: стекло покоя и сверху значок с подписью
+    private void buildRest() {
+        if (chrome == null || orbArt == null || getWidth() == 0) return;
+        int ox = (getWidth() - orbD) / 2;
+        int gx = ox - Math.round(PAD_X[0] * orbK), gy = -Math.round(PAD_TOP[0] * orbK);
+        int ax = -orbExt, ay = 0;
+        int l = Math.min(gx, ax), tp = Math.min(gy, ay);
+        int r = Math.max(gx + chrome[0].getWidth(), ax + orbArt.getWidth()), btm = Math.max(gy + chrome[0].getHeight(), ay + orbArt.getHeight());
+        Bitmap b = Bitmap.createBitmap(r - l, btm - tp, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        c.drawBitmap(chrome[0], gx - l, gy - tp, null);
+        c.drawBitmap(orbArt, ax - l, ay - tp, null);
+        orbRest = Tile.fixed(b);
+        restX = l;
+        restY = tp;
+    }
+
+    // Ореол: белая маска (цвет даёт фильтр краски), пусто внутри шара, ярче всего у кромки, к 1,5 радиуса в ноль.
+    // Одна картинка на размер, общая для всех сфер
+    private static Bitmap haloArt(int d) {
+        float r = d / 2f, outer = r * 1.5f;
+        int s = Math.round(outer * 2);
+        Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new RadialGradient(s / 2f, s / 2f, outer, new int[]{0x00FFFFFF, 0x00FFFFFF, 0xFFFFFFFF, 0x59FFFFFF, 0x00FFFFFF},
+                new float[]{0f, 0.5f, r / outer, (r * 1.18f) / outer, 1f}, Shader.TileMode.CLAMP));
+        c.drawCircle(s / 2f, s / 2f, outer, p);
+        return Tile.fixed(b);
+    }
+
+    private float focusOf(float scale) { return Math.max(0f, Math.min(1f, (scale - 1f) / (ORB_GROW - 1f))); }
+
     private void drawOrb(Canvas c) {
         float f = quiet ? focus * 0.35f : focus;
         int ox = (getWidth() - orbD) / 2;
+        if (lift != 0f) c.translate(0, -lift);
+        if (f < 0.001f && orbRest != null) {
+            c.drawBitmap(orbRest, restX, restY, paint);
+            return;
+        }
+        float ha = Math.min(1f, (halo + breath) * f) * (quiet ? 0.35f : 1f);
+        if (haloBmp != null && ha > 0.004f) {
+            // Ореол под стеклом: снаружи шара светится цветом значка, внутри его закрывает стекло
+            haloPaint.setAlpha(Math.round(255 * ha));
+            c.drawBitmap(haloBmp, ox + orbD / 2f - haloBmp.getWidth() / 2f, orbD / 2f - haloBmp.getHeight() / 2f, haloPaint);
+        }
         if (chrome != null) {
             if (f < 0.999f) {
                 paint.setAlpha(Math.round(255 * (1f - f)));
@@ -212,6 +307,187 @@ final class Tile extends View {
             c.drawCircle(getWidth() / 2f, orbD / 2f, orbD * 0.5f, glow);
         }
         if (orbArt != null) c.drawBitmap(orbArt, -orbExt, 0, paint);
+        if (sweep > 0f && sweep < 1f && orbSheen != null && sheenShader != null && !quiet) {
+            // Блик: светлая косая полоса один раз проходит по шару слева направо; рисуется кругом с картинкой полосы
+            // внутри, без обрезки по контуру
+            float bw = orbSheen.getWidth();
+            sheenM.setTranslate(ox - bw + (orbD + bw) * sweep, 0);
+            sheenShader.setLocalMatrix(sheenM);
+            c.drawCircle(ox + orbD / 2f, orbD / 2f, orbD / 2f - 1f, sheenCircle);
+        }
+    }
+
+    // ===== Пружина, ореол, дыхание и блик сферы =====
+
+    private void ensureSprings() {
+        if (spring != null) return;
+        spring = new Spring(getScaleX(), v -> {
+            setScaleX(v);
+            setScaleY(v);
+            float p = (v - 1f) / (ORB_GROW - 1f);
+            float l = p * 8f * orbDp;   // подъём идёт вместе с ростом и тоже перелетает
+            float fo = focusOf(v);
+            if (Math.abs(l - lift) > 0.05f || Math.abs(fo - focus) > 0.002f) {
+                lift = l;
+                focus = fo;
+                invalidate();
+            }
+        });
+        spring.eps = 0.0015f;
+        push = new Spring(0f, this::setTranslationX).tune(0.85f, 0.38f);
+        push.eps = 0.5f;
+    }
+
+    private void orbFocus(boolean f) {
+        ensureSprings();
+        removeCallbacks(breathTick);
+        removeCallbacks(landLater);
+        if (breath != 0f) breath = 0f;
+        spring.value = getScaleX();   // дыхание двигало масштаб мимо пружины: продолжаем с того, что на экране
+        setTranslationZ(f ? 1 : 0);
+        if (sheenAnim != null) sheenAnim.cancel();
+        sweep = -1f;
+        if (f) {
+            if (holding) {
+                // Стрелка зажата: сфера спокойно подрастает и отдаёт фокус дальше, без перелёта, блика и ореола
+                spring.tune(0.85f, 0.22f);
+                spring.onRest = null;
+                setHalo(0f, 120);
+                spring.to(1.12f);
+            } else {
+                land(0.35f);
+            }
+        } else {
+            spring.tune(holding ? 0.85f : 0.78f, holding ? 0.22f : 0.30f);
+            spring.onRest = null;
+            setHalo(0f, 160);
+            spring.to(1f);
+        }
+    }
+
+    // Посадка: рост с перелётом, вспышка ореола, блик, потом дыхание. kick: толчок скорости (масштаб в секунду)
+    void land(float kick) {
+        if (!orb || !isFocused()) return;
+        ensureSprings();
+        removeCallbacks(breathTick);
+        spring.value = getScaleX();
+        spring.velocity += kick;
+        spring.tune(0.46f, 0.40f);
+        spring.onRest = () -> { if (isFocused()) { breathAt = 0; postDelayed(breathTick, 700); } };
+        spring.to(ORB_GROW);
+        // Ореол вспыхивает вместе с ростом и оседает до спокойного свечения
+        if (haloAnim != null) haloAnim.cancel();
+        haloAnim = ValueAnimator.ofFloat(halo, 0.55f, 0.24f);
+        haloAnim.setDuration(M.t(900));
+        haloAnim.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
+        haloAnim.addUpdateListener(a -> { halo = (float) a.getAnimatedValue(); invalidate(); });
+        haloAnim.start();
+        if (orbSheen != null) {
+            if (sheenAnim != null) sheenAnim.cancel();
+            sheenAnim = ValueAnimator.ofFloat(0f, 1f);
+            sheenAnim.setStartDelay(M.t(140));
+            sheenAnim.setDuration(M.t(650));
+            sheenAnim.setInterpolator(SHEEN_EASE);
+            sheenAnim.addUpdateListener(a -> { sweep = (float) a.getAnimatedValue(); invalidate(); });
+            sheenAnim.start();
+        }
+    }
+
+    private final Runnable landLater = () -> land(0.8f);
+
+    private void setHalo(float to, long ms) {
+        if (haloAnim != null) haloAnim.cancel();
+        if (halo == to) return;
+        haloAnim = ValueAnimator.ofFloat(halo, to);
+        haloAnim.setDuration(M.t(ms));
+        haloAnim.addUpdateListener(a -> { halo = (float) a.getAnimatedValue(); invalidate(); });
+        haloAnim.start();
+    }
+
+    // OK на сфере: нажали, сфера проседает; отпустили, отпружинивает с перелётом. Действие выполняет HomeActivity
+    // после отскока, чтобы отклик был виден до смены экрана
+    void press(boolean down) {
+        if (!orb) return;
+        ensureSprings();
+        removeCallbacks(breathTick);
+        breath = 0f;
+        spring.value = getScaleX();
+        spring.onRest = null;
+        if (down) {
+            spring.tune(0.75f, 0.12f);
+            spring.to(ORB_GROW * 0.93f);
+            setHalo(0.14f, 120);
+        } else {
+            spring.tune(0.40f, 0.30f);
+            spring.to(ORB_GROW);
+            setHalo(0.5f, 160);
+        }
+    }
+
+    // Соседи расступаются: сдвиг вбок в точках (плюс вправо)
+    void pushTo(float px) {
+        if (!orb) return;
+        ensureSprings();
+        if (Math.abs(push.target - px) < 0.5f && !push.running()) return;
+        push.value = getTranslationX();
+        push.to(px);
+    }
+
+    // Стрелка упёрлась в край ряда: сфера на миг проседает (ряд толкает HomeActivity)
+    void squeeze() {
+        if (!orb) return;
+        ensureSprings();
+        spring.value = getScaleX();
+        spring.velocity -= 1.1f;
+        spring.tune(0.5f, 0.32f);
+        spring.to(isFocused() ? ORB_GROW : 1f);
+    }
+
+    // Отпустили зажатую стрелку: на последней сфере полная посадка
+    void holdEnded() {
+        if (!orb || !isFocused()) return;
+        removeCallbacks(landLater);
+        post(landLater);
+    }
+
+    // Дыхание сферы в фокусе: ±2,2 % за 3,6 с (прошлые 0,9 % глаз не видел) и вместе с ним ореол. Шаг 12,5 раза
+    // в секунду: за шаг край шара сдвигается меньше чем на полточки, ступенек не видно, а видеоядру впятеро легче.
+    // Через 25 с без нажатий дыхание за 0,8 с затихает, и экран неподвижен. Пока ряд скрыт, дыхание стоит
+    static final float BREATH = 0.022f;
+    static final long BREATH_PERIOD = 3600, BREATH_FOR = 25_000;
+    private final Runnable breathTick = new Runnable() {
+        @Override public void run() {
+            if (!isFocused()) return;
+            if (quiet || !isShown() || getAlpha() < 0.99f || !hasWindowFocus()) {
+                if (getScaleX() != ORB_GROW) { setScaleX(ORB_GROW); setScaleY(ORB_GROW); }
+                breath = 0f;
+                breathAt = 0;
+                postDelayed(this, 500);
+                return;
+            }
+            long now = android.os.SystemClock.uptimeMillis();
+            if (breathAt == 0) breathAt = now;
+            float t = (now - breathAt) / 1000f;
+            float amp = Math.min(1f, t / 0.6f);
+            float end = BREATH_FOR / 1000f;
+            if (t > end) amp *= Math.max(0f, 1f - (t - end) / 0.8f);
+            float b = (float) Math.sin(2 * Math.PI * t * 1000f / BREATH_PERIOD) * amp;
+            float s = ORB_GROW * (1f + BREATH * b);
+            setScaleX(s);
+            setScaleY(s);
+            breath = 0.07f * b;
+            invalidate();
+            if (amp <= 0f && t > end) { breath = 0f; setScaleX(ORB_GROW); setScaleY(ORB_GROW); return; }
+            postDelayed(this, 80);
+        }
+    };
+
+    @Override protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        removeCallbacks(breathTick);
+        removeCallbacks(landLater);
+        if (spring != null) spring.stop();
+        if (push != null) push.stop();
     }
 
     // Подсветка в покое запекается в картинку содержимого (27.10): отдельным слоем она проходила по каждой плитке
@@ -260,6 +536,13 @@ final class Tile extends View {
                 chrome = new Bitmap[]{glassShape(orbD, orbD, orbK, orbD / 2f, false), glassShape(orbD, orbD, orbK, orbD / 2f, true)};
                 CHROME.put(key, chrome);
             }
+            buildRest();
+            haloBmp = HALO.get("h" + orbD);
+            if (haloBmp == null) { haloBmp = haloArt(orbD); HALO.put("h" + orbD, haloBmp); }
+            orbSheen = ORB_SHEEN.get("s" + orbD);
+            if (orbSheen == null) { orbSheen = sheenBand(orbD, orbD, orbD * 0.42f, false); ORB_SHEEN.put("s" + orbD, orbSheen); }
+            sheenShader = new android.graphics.BitmapShader(orbSheen, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            sheenCircle.setShader(sheenShader);
             return;
         }
         sheenW = 0.5f * w;
@@ -333,7 +616,7 @@ final class Tile extends View {
             if (y < t) t = y;
             if (y > btm) btm = y;
         }
-        if (r < 0) { out.set(0, 0, w, h); return b; }
+        if (r < 0) { out.set(0, 0, w, h); b = Tile.fixed(b); return b; }
         out.set(l, t, r + 1, btm + 1);
         return Bitmap.createBitmap(b, l, t, out.width(), out.height());
     }
@@ -350,15 +633,15 @@ final class Tile extends View {
     private void focus(boolean f) {
         float k = getWidth() > 0 ? getWidth() / W0 : 1f;
         if (orb) {
-            animate().scaleX(f ? ORB_GROW : 1f).scaleY(f ? ORB_GROW : 1f).translationY(f ? -4 * orbK : 0).translationZ(f ? 1 : 0)
-                    .setStartDelay(0).setDuration(M.t(f ? 420 : 320)).setInterpolator(EASE).start();
+            orbFocus(f);   // у сферы рост, стекло и ореол ведёт пружина
+            return;
         } else {
             animate().scaleX(f ? grow : 1f).scaleY(f ? grow : 1f).translationY(f ? -6 * k : 0)
                     .rotationX(f ? TILT_X : 0).rotationY(f ? TILT_Y : 0).translationZ(f ? 1 : 0)
                     .setStartDelay(0).setDuration(M.t(f ? 420 : 320)).setInterpolator(EASE).start();
         }
-        if (sheenAnim != null) sheenAnim.cancel();
-        sweep = -1f;
+        if (!orb && sheenAnim != null) sheenAnim.cancel();
+        if (!orb) sweep = -1f;
         if (f && !orb) {
             sheenAnim = ValueAnimator.ofFloat(0f, 1f);
             sheenAnim.setStartDelay(M.t(SHEEN_DELAY_MS));
@@ -511,6 +794,14 @@ final class Tile extends View {
         return Color.HSVToColor(hsv);
     }
 
+    // Готовая картинка неизменяемой копией (05.11). Изменяемую картинку видеоядро этого ТВ грузило заново на каждом
+    // кадре: одно стекло капсулы стоило 10 мс из 16, и ряд при зажатой стрелке шёл рывками
+    static Bitmap fixed(Bitmap m) {
+        if (m == null || !m.isMutable()) return m;
+        Bitmap f = m.copy(m.getConfig(), false);
+        return f == null ? m : f;
+    }
+
     private static int withAlpha(int c, float a) { return (Math.round(255 * a) << 24) | (c & 0xFFFFFF); }
 
     // ===== Стекло =====
@@ -583,12 +874,15 @@ final class Tile extends View {
         c.drawPath(cardPath, p);
         p.setShader(css(106, w, h, new int[]{0x00FFFFFF, Theme.TILE_DIAG[s], 0x00FFFFFF}, Theme.TILE_DIAG_POS[s]));
         c.drawPath(cardPath, p);
-        return b;
+        return Tile.fixed(b);
     }
 
     // Картинка полосы блика: светлая полоса шириной в половину плитки, наклонена на 18° («/»), к краям в ноль,
     // в середине 30 % белого. Сверху и снизу полоса гаснет, чтобы у скруглённых углов не светилось за краем стекла
-    static Bitmap sheenBand(int w, int h, float band) {
+    static Bitmap sheenBand(int w, int h, float band) { return sheenBand(w, h, band, true); }
+
+    // fadeEdges: гасить полосу сверху и снизу (плитка); у шара контур и так круглый
+    static Bitmap sheenBand(int w, int h, float band, boolean fadeEdges) {
         float slant = h * 0.3249f;                       // tg 18°
         int bw = Math.round(band * 1.0515f + slant);     // ширина полосы вдоль строки (1 / cos 18°) плюс сдвиг наклона
         Bitmap b = Bitmap.createBitmap(Math.max(1, bw), h, Bitmap.Config.ARGB_8888);
@@ -601,12 +895,13 @@ final class Tile extends View {
         g.setLocalMatrix(m);
         p.setShader(g);
         c.drawRect(0, 0, bw, h, p);
+        if (!fadeEdges) { b = Tile.fixed(b); return b; }
         Paint fade = new Paint();
         fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
         fade.setShader(new LinearGradient(0, 0, 0, h, new int[]{0x00000000, 0xFF000000, 0xFF000000, 0x00000000},
                 new float[]{0f, 0.22f, 0.78f, 1f}, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, bw, h, fade);
-        return b;
+        return Tile.fixed(b);
     }
 
     // inset box-shadow из CSS внутри уже обрезанного по плитке холста: светится всё вокруг «дыры», а дыра это

@@ -256,8 +256,8 @@ public class PillsActivity extends Activity {
             th = (int) Math.ceil(fm.descent - fm.ascent);
             // Поле под широкую тень (размытие 12 dp тянется примерно на 12 dp от букв); размер и место подписи не меняются
             pad = Math.round(14 * dp);
-            bmp = Bitmap.createBitmap(tw + 2 * pad, th + 2 * pad, Bitmap.Config.ARGB_8888);
-            Canvas cv = new Canvas(bmp);
+            Bitmap m = Bitmap.createBitmap(tw + 2 * pad, th + 2 * pad, Bitmap.Config.ARGB_8888);
+            Canvas cv = new Canvas(m);
             float base = pad - fm.ascent;
             float hx = 12 * dp, hy = 4 * dp;
             android.graphics.RectF cap = new android.graphics.RectF(pad - hx, pad - hy, pad + tw + hx, pad + th + hy);
@@ -271,6 +271,7 @@ public class PillsActivity extends Activity {
             cv.drawRoundRect(cap, cap.height() / 2, cap.height() / 2, bg);
             t.setColor(0xC7FFFFFF);
             cv.drawText(s, pad, base, t);
+            bmp = Tile.fixed(m);   // неизменяемую картинку видеоядро не грузит заново на каждом кадре (05.11)
         }
 
         @Override protected void onMeasure(int w, int hh) { setMeasuredDimension(tw, th); }

@@ -15,7 +15,11 @@ import android.widget.TextView;
 // Не спорит с плитками: тонкая, графитовая, в фокусе светлее и с яркой кромкой-градиентом, как у плиток «Графита».
 // В теме «Объём» (Theme) капсула светлая, а в фокусе белая рамка 2 dp
 final class Suggest extends LinearLayout {
-    private final float dp, radius;
+    private final float dp;
+    private float radius;
+    private boolean compact;
+    private int maxDp = 360;
+    private final Paint art = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final ImageView icon;
     private final TextView text;
     private final Glass glass;
@@ -75,7 +79,25 @@ final class Suggest extends LinearLayout {
     }
 
     // Шире обычных 360 dp: у «Продолжить» в подписи ещё и «осталось N мин»
-    void wide(int maxDp) { text.setMaxWidth(px(maxDp)); }
+    void wide(int maxDp) { this.maxDp = maxDp; text.setMaxWidth(px(compact ? Math.round(maxDp * 0.86f) : maxDp)); }
+
+    // «Vision» (05.11): капсула ниже и тише, 34 dp вместо 44, значок 22 dp, текст 14: не тянет на себя внимание
+    void compact(boolean on) {
+        compact = on;
+        radius = (on ? Style.CAPS_H / 2f : 22) * dp;
+        glass.radius(radius);
+        LayoutParams il = (LayoutParams) icon.getLayoutParams();
+        il.width = il.height = px(on ? 22 : 30);
+        icon.setLayoutParams(il);
+        text.setTextSize(on ? 14 : Fonts.BODY);
+        text.setPadding(px(on ? 8 : 10), 0, 0, 0);
+        wide(maxDp);
+        pads();
+    }
+
+    private void pads() { setPadding(px(compact ? 7 : 10), 0, px(compact ? 14 : 18), 0); }
+
+
 
     @Override public boolean hasOverlappingRendering() { return false; }
 

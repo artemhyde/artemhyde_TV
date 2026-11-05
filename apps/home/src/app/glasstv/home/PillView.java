@@ -214,6 +214,8 @@ final class PillView extends View {
         RectF rr = new RectF(r);
         rr.inset(rw / 2f, rw / 2f);
         lc.drawRoundRect(rr, rad - rw / 2f, rad - rw / 2f, ring);
+        base = Tile.fixed(base);   // неизменяемую картинку видеоядро не грузит заново на каждом кадре (05.11)
+        lit = Tile.fixed(lit);
         return new Bitmap[]{base, lit};
     }
 

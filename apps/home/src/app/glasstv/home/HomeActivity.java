@@ -68,6 +68,8 @@ public class HomeActivity extends Activity {
     String appsSig;
     View lastDock;
     boolean vision;   // стиль «Vision» (Style): капсулы над сферами, ряд-карусель
+    String styleName;
+    TextView flash;   // короткая плашка с названием стиля после переключения
     final View[] gridHead = new View[2];
     long pausedAt;
 
@@ -97,11 +99,17 @@ public class HomeActivity extends Activity {
         // забирал фокус, и следующее нажатие прыгало на несколько плиток назад (найдено проверкой 27.10)
         rowScroll = new HorizontalScrollView(this) {
             @Override protected int computeScrollDeltaToGetChildRectOnScreen(android.graphics.Rect r) { return 0; }
+            // На краю ряда фокус стоит (05.11): раньше «вправо» с последней плитки уводило его из ряда на капсулы,
+            // и при зажатой стрелке фокус прыгал по капсулам
             @Override public boolean arrowScroll(int d) {
                 View cur = findFocus();
                 if (cur == this) cur = null;
                 View next = android.view.FocusFinder.getInstance().findNextFocus(this, cur, d);
-                return next != null && next.requestFocus(d);
+                if (next == null) {
+                    if ((d == View.FOCUS_LEFT || d == View.FOCUS_RIGHT) && vision && keyRepeat == 0) edgeBump(d == View.FOCUS_RIGHT ? 1 : -1);
+                    return d == View.FOCUS_LEFT || d == View.FOCUS_RIGHT;
+                }
+                return next.requestFocus(d);
             }
             @Override public boolean pageScroll(int d) { return false; }
             @Override public boolean fullScroll(int d) { return false; }
@@ -140,7 +148,17 @@ public class HomeActivity extends Activity {
         shelf.addView(suggestRow, srl);
 
         buildGridLayer();
-        applyStyle(Style.vision(this));
+        flash = Fonts.text(this, Fonts.CAPTION, Fonts.med18, Fonts.WHITE_92);
+        android.graphics.drawable.GradientDrawable fb = new android.graphics.drawable.GradientDrawable();
+        fb.setColor(0x8C000000);
+        fb.setCornerRadius(px(15));
+        flash.setBackground(fb);
+        flash.setPadding(px(12), px(4), px(12), px(4));
+        flash.setAlpha(0f);
+        FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        fl.topMargin = px(10);
+        root.addView(flash, fl);
+        applyStyle(Style.get(this));
         setContentView(root);
         // Фон окна под корнем не виден (корень сам тёмный, сверху фото), а видеоядро заливало его каждый кадр:
         // с частицами экран перерисовывается целиком, и эта лишняя заливка 1080p стоила около миллисекунды (27.10)
@@ -155,12 +173,17 @@ public class HomeActivity extends Activity {
     int px(float v) { return Math.round(v * dp); }
 
     // Стиль экрана. «Графит»: ряд плиток, под ним капсулы. «Vision»: капсулы по центру, под ними ряд сфер
-    void applyStyle(boolean v) {
+    void applyStyle(String s) {
+        styleName = s;
+        boolean v = !Style.GRAPHITE.equals(s);
         vision = v;
         amb.setStyle(v);
+        if (rowSpring != null) rowSpring.stop();
+        cont.compact(v);
+        play.compact(v);
         shelf.removeAllViews();
         LinearLayout.LayoutParams rsl = new LinearLayout.LayoutParams(-1, px((v ? Style.H : Grid.TILE_H) + 2 * PAD));
-        LinearLayout.LayoutParams srl = new LinearLayout.LayoutParams(-1, px(44));
+        LinearLayout.LayoutParams srl = new LinearLayout.LayoutParams(-1, px(v ? Style.CAPS_H : 44));
         if (v) {
             rsl.topMargin = px(2);
             shelf.addView(suggestRow, srl);
@@ -224,7 +247,7 @@ public class HomeActivity extends Activity {
         StringBuilder sb = new StringBuilder();
         for (ResolveInfo r : apps.values()) sb.append(r.activityInfo.applicationInfo.sourceDir).append(';');
         boolean round = vision;
-        sb.append(round ? "vision" : "графит");   // сменили стиль в полосе шестерёнки: ряд перестраивается
+        sb.append(styleName);   // сменили стиль в полосе шестерёнки: ряд перестраивается
         String sig = sb.toString();
         if (sig.equals(appsSig)) return;
         appsSig = sig;
@@ -456,13 +479,15 @@ public class HomeActivity extends Activity {
             play.fade(v == play ? 1f : 0.62f);
         } else if (v instanceof Tile && dockTiles.contains(v)) {
             // «Vision»: капсулы стоят над рядом как виджеты под часами, совсем их не гасим
-            float q = vision ? 0.8f : 0.45f;
+            // 05.11: тише, чем было (0,8): капсулы не должны спорить со сферами
+            float q = vision ? 0.62f : 0.45f;
             if (hasCont) cont.fade(q);
             play.fade(q);
         }
         if (v instanceof Tile && dockTiles.contains(v)) {
             lastDock = v;
             scrollDock((Tile) v);
+            if (vision) makeRoom((Tile) v);
         } else if (v instanceof Tile && state == GRID) {
             // Сетка едет, только когда строка в фокусе не помещается над нижним полем.
             // Уехала: заголовок тает, чтобы плитки не наезжали на текст
@@ -488,7 +513,7 @@ public class HomeActivity extends Activity {
             // «Vision»: сфера в фокусе всегда посередине экрана, ряд едет под ней
             int max = Math.max(0, dock.getWidth() - rowScroll.getWidth());
             int target = Math.max(0, Math.min(max, t.getLeft() + t.getWidth() / 2 - rowScroll.getWidth() / 2));
-            if (rowAnim != null && rowAnim.isRunning() && target == rowTarget) return;
+            if (target == rowTarget && rowSpring != null && rowSpring.running()) return;
             rowScrollTo(target);
             return;
         }
@@ -516,7 +541,22 @@ public class HomeActivity extends Activity {
         rowScrollTo(target);
     }
 
+    // «Vision»: ряд едет на пружине без отскока. Новая цель посреди движения не обрывает его, скорость сохраняется:
+    // при зажатой стрелке карусель течёт ровно, а не дёргается от перезапусков
+    Spring rowSpring;
+
     void rowScrollTo(int to) {
+        if (vision) {
+            if (rowAnim != null) rowAnim.cancel();
+            if (rowSpring == null) {
+                rowSpring = new Spring(rowScroll.getScrollX(), v -> rowScroll.scrollTo(Math.round(v), 0)).tune(1f, 0.42f);
+                rowSpring.eps = 0.5f;
+            }
+            if (!rowSpring.running()) { rowSpring.value = rowScroll.getScrollX(); rowSpring.velocity = 0; }
+            rowTarget = to;
+            rowSpring.to(to);
+            return;
+        }
         int from = rowScroll.getScrollX();
         rowTarget = to;
         if (rowAnim != null) rowAnim.cancel();
@@ -672,7 +712,39 @@ public class HomeActivity extends Activity {
         h.postDelayed(goIdle, state == GRID ? GRID_IDLE_MS : IDLE_MS);
     }
 
+    // Повтор зажатой клавиши (0: обычное нажатие): по нему ряд отличает удержание стрелки от шага
+    int keyRepeat;
+
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
+        int kc = e.getKeyCode();
+        boolean arrow = kc == KeyEvent.KEYCODE_DPAD_LEFT || kc == KeyEvent.KEYCODE_DPAD_RIGHT;
+        boolean ok = kc == KeyEvent.KEYCODE_DPAD_CENTER || kc == KeyEvent.KEYCODE_ENTER || kc == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (vision && state == ACTIVE) {
+            if (arrow) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    keyRepeat = e.getRepeatCount();
+                    Tile.holding = keyRepeat > 0;
+                } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                    boolean was = Tile.holding;
+                    Tile.holding = false;
+                    keyRepeat = 0;
+                    if (was && getCurrentFocus() instanceof Tile) ((Tile) getCurrentFocus()).holdEnded();
+                }
+            }
+            // OK на сфере: сфера проседает на нажатии и отпружинивает на отпускании, приложение открывается после отскока
+            View fv = getCurrentFocus();
+            if (ok && fv instanceof Tile && dockTiles.contains(fv)) {
+                restartIdle();
+                Tile t = (Tile) fv;
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (e.getRepeatCount() == 0) t.press(true);
+                } else if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+                    t.press(false);
+                    h.postDelayed(t::performClick, M.t(110));
+                }
+                return true;
+            }
+        }
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             restartIdle();
             saverOff();
@@ -744,8 +816,11 @@ public class HomeActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        boolean v = Style.vision(this);
-        if (v != vision) applyStyle(v);
+        String st = Style.get(this);
+        if (!st.equals(styleName)) {
+            applyStyle(st);
+            showFlash(Style.title(st));
+        }
         amb.start();
         loadApps();
         updateSuggest();
@@ -761,6 +836,8 @@ public class HomeActivity extends Activity {
 
     @Override protected void onPause() {
         resumed = false;
+        Tile.holding = false;
+        keyRepeat = 0;
         saverOff();
         amb.stop();
         h.removeCallbacksAndMessages(null);
@@ -769,4 +846,39 @@ public class HomeActivity extends Activity {
     }
 
     @Override public void onBackPressed() { }
+
+    // «Vision»: соседи сферы в фокусе расступаются (на 6 dp ближние, на 2 dp следующие) и тихо возвращаются
+    void makeRoom(Tile f) {
+        int i = dockTiles.indexOf(f);
+        for (int j = 0; j < dockTiles.size(); j++) {
+            int d = j - i, a = Math.abs(d);
+            float to = a == 1 ? 6 : a == 2 ? 2 : 0;
+            dockTiles.get(j).pushTo(Math.signum(d) * to * dp);
+        }
+    }
+
+    // Стрелка упёрлась в край ряда: ряд на миг подаётся в сторону нажатия и пружинит обратно, сфера чуть проседает.
+    // Только на первом нажатии, на повторах зажатой стрелки ничего не дёргается
+    Spring rowBump;
+
+    void edgeBump(int dir) {
+        if (rowBump == null) {
+            rowBump = new Spring(0f, rowScroll::setTranslationX).tune(0.6f, 0.35f);
+            rowBump.eps = 0.5f;
+        }
+        rowBump.value = rowScroll.getTranslationX();
+        rowBump.velocity = dir * 360f * dp;
+        rowBump.to(0f);
+        View fv = getCurrentFocus();
+        if (fv instanceof Tile) ((Tile) fv).squeeze();
+    }
+
+    // Плашка сверху по центру на 2,5 с: какой стиль теперь включён
+    void showFlash(String s) {
+        flash.setText(s);
+        flash.animate().cancel();
+        flash.setAlpha(0f);
+        flash.animate().alpha(1f).setStartDelay(M.t(250)).setDuration(M.t(250)).withEndAction(() ->
+                flash.animate().alpha(0f).setStartDelay(M.t(2500)).setDuration(M.t(500)).start()).start();
+    }
 }

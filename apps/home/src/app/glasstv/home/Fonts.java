@@ -31,8 +31,13 @@ final class Fonts {
     }
 
     // Текст нужного кегля, начертания и цвета; цифры табличные, чтобы время и курсы не «дышали»
+    // Прозрачность наносится прямо на буквы, без отдельного холста (05.11). У текста с цветными кусками (Spannable)
+    // система иначе на каждом кадре рисовала его в свой холст: две полупрозрачные капсулы стоили видеоядру 10 мс
+    // из 14, и ряд при зажатой стрелке шёл рывками. Буквы друг на друга не ложатся, так что на вид разницы нет
     static TextView text(Context c, float sp, Typeface tf, int color) {
-        TextView t = new TextView(c);
+        TextView t = new TextView(c) {
+            @Override public boolean hasOverlappingRendering() { return false; }
+        };
         t.setTextSize(sp);
         t.setTypeface(tf);
         t.setTextColor(color);

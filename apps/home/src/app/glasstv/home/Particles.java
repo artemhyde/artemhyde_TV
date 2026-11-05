@@ -143,7 +143,7 @@ final class Particles extends View {
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setShader(new RadialGradient(d / 2f, d / 2f, d / 2f, colors, pos, Shader.TileMode.CLAMP));
         c.drawCircle(d / 2f, d / 2f, d / 2f, p);
-        return b;
+        return Tile.fixed(b);
     }
 
     // Искра: мягкий ореол и тонкая четырёхлучевая звёздочка
@@ -162,6 +162,6 @@ final class Particles extends View {
         star.moveTo(m - l, m); star.lineTo(m, m + wd); star.lineTo(m + l, m); star.lineTo(m, m - wd); star.close();
         c.drawPath(star, p);
         c.drawCircle(m, m, m * 0.12f, p);
-        return b;
+        return Tile.fixed(b);
     }
 }

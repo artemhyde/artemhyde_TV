@@ -9,6 +9,19 @@ Drag the curtain yourself: [open the comparison](https://artemhyde.github.io/art
 **What it is**  
 A stock Google TV with ads on the home screen becomes a clean TV: its own home screen, quick settings on a remote button, night mode, sound and picture controls over a film, music. Your Claude Code installs and sets it all up: it asks one question at a time, you answer and press "Allow" on the TV. No root, the firmware stays stock. In packages and folders the project keeps its technical name, glasstv (`app.glasstv.*`).
 
+**Why this beats a typical TV "build"**  
+A typical "build" for a TV is a bundle of apps from a forum or a Telegram channel, sometimes a reflashed box: free cinemas, pirate sources, someone else's launcher. It works while the source lives, updates by hand, and nobody knows what is inside.  
+Here it is different:
+- It goes onto your TV as is: no reflashing and no root. Every change is logged and rolled back with one command.
+- An AI installer (Claude Code) does the setup: in your language, step by step, asks what you need and never acts silently.
+- The code is open. Third-party apps are downloaded only from their official pages and checked by signature.
+- Not a pile of icons but one system: its own home screen (clock, weather, rates, "continue watching", music), night backlight on a schedule, even sound, a menu on a remote button, the Volna music player.
+- With your consent, ads, telemetry and unneeded TCL services are switched off.
+- The project installs no pirate sources.
+- Animations are measured on the TV itself: 60 frames per second on weak hardware.
+
+Honest downsides: so far tested on one TV (TCL 65C6K, Android 14), you need a computer for the setup, and the browser and the Volna player are built on your machine, which takes a while.
+
 The apps on the TV are in Russian. The setup wizard speaks your language: write to Claude in English and it answers in English.
 
 **Two home screen styles**  
@@ -16,12 +29,12 @@ Switched by the "Style" pill in the gear-button strip, instantly, no restart.
 "Graphite": clock and weather at the edges, the photo under the row blurred and dimmed, glass tiles from the left edge, "Continue" and "Volna" capsules under the row.  
 ![Graphite style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/home.png?v=0411b)
 
-"Vision": everything centred, like the iPhone lock screen. The date above a large clock, the photo stays sharp, capsules under the clock, a row of glass spheres, and the selected sphere always sits in the middle of the screen.  
-![Vision style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/home-vision.png?v=0411b)
+"Vision": everything centred, like the iPhone lock screen. The date above a large clock, the photo stays sharp, small capsules under the clock, a row of glass spheres, and the selected sphere always sits in the middle of the screen. The focused sphere grows with a soft bounce and glows in its app's colour, its neighbours make room, a light glint runs across the glass, and OK presses it in like a real button.  
+![Vision style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/home-vision.png?v=0511)
 
 Each style has its own lock screen (after a minute without key presses):  
 ![Lock screen, Graphite](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/lock-graphite.png?v=0411b)  
-![Lock screen, Vision](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/lock-vision.png?v=0411b)
+![Lock screen, Vision](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/lock-vision.png?v=0511)
 
 Light "Obyom" theme is available too (the wizard asks during setup):  
 ![Light Obyom theme](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/theme-volume.png?v=0411b)

@@ -21,13 +21,23 @@ import android.graphics.drawable.Drawable;
 // Всё рисуется в картинку один раз на размер и состояние. Мягкие тени макета сняты 27.10: при капсулах на 45 %
 // их не видно, а лишние поля картинки видеоядро смешивало в каждом кадре
 final class Glass extends Drawable {
-    private final float radius, stroke, k;
+    private float radius;
+    private final float stroke, k;
     private boolean lit;
 
     Glass(float radiusPx, float density) {
         this.radius = radiusPx;
         this.k = density / 2f;   // числа макета даны в точках экрана 1920x1080, где dp = 2
         this.stroke = Math.max(1f, 1.4f * k);
+    }
+
+    // Скругление меняется вместе со стилем: у «Vision» капсулы ниже (05.11)
+    void radius(float r) {
+        if (radius == r) return;
+        radius = r;
+        cache = null;
+        cacheLit = null;
+        invalidateSelf();
     }
 
     // В фокусе стекло светлее и кромка ярче
@@ -43,22 +53,36 @@ final class Glass extends Drawable {
 
     // Сложные фигуры кромки и свечения видеоядро ТВ считало бы заново в каждом кадре: две капсулы
     // в прошлом стоили 14 мс кадра. Поэтому картинка, в кадре одна операция
-    private android.graphics.Bitmap cache;
-    private boolean cacheLit;
+    // 05.11: обе картинки (покой и фокус) готовятся сразу и дальше не меняются. Раньше картинка перерисовывалась при
+    // каждом переходе фокуса прямо в кадре (18 мс работы и пропущенный кадр на каждом шаге по капсулам).
+    // Готовая картинка неизменяемая: такую видеоядро держит у себя и не грузит заново
+    private android.graphics.Bitmap cache, cacheLit;
+    private int cw, ch;
     private final Paint fade = new Paint(Paint.FILTER_BITMAP_FLAG);
+
+    private android.graphics.Bitmap make(int w, int h, int sx, boolean on) {
+        android.graphics.Bitmap m = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        Canvas cc = new Canvas(m);
+        cc.translate(sx, 0);
+        boolean keep = lit;
+        lit = on;
+        paint(cc, w - 2 * sx, h - below());
+        lit = keep;
+        return Tile.fixed(m);
+    }
 
     @Override public void draw(Canvas c) {
         Rect b = getBounds();
         if (b.isEmpty()) return;
         int sx = side(), by = below();
-        if (cache == null || cache.getWidth() != b.width() + 2 * sx || cache.getHeight() != b.height() + by || cacheLit != lit) {
-            cache = android.graphics.Bitmap.createBitmap(b.width() + 2 * sx, b.height() + by, android.graphics.Bitmap.Config.ARGB_8888);
-            cacheLit = lit;
-            Canvas cc = new Canvas(cache);
-            cc.translate(sx, 0);
-            paint(cc, b.width(), b.height());
+        int w = b.width() + 2 * sx, h = b.height() + by;
+        if (cache == null || cw != w || ch != h) {
+            cw = w;
+            ch = h;
+            cache = make(w, h, sx, false);
+            cacheLit = make(w, h, sx, true);
         }
-        c.drawBitmap(cache, b.left - sx, b.top, fade);
+        c.drawBitmap(lit ? cacheLit : cache, b.left - sx, b.top, fade);
     }
 
     private void paint(Canvas c, float w, float h) {

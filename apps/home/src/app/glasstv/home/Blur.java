@@ -36,7 +36,7 @@ final class Blur {
         }
         small.setPixels(px, 0, w, 0, 0, w, h);
         if (bright < 1f) vignette(small);
-        return small;
+        return Tile.fixed(small);
     }
 
     // Края темнее середины, как в макете «Графит» (27.10): овал 68 % на 78 % чуть выше центра, прозрачно до половины,

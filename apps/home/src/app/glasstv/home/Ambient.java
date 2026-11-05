@@ -37,7 +37,10 @@ final class Ambient implements Data.Listener {
     private final FrameLayout[] frame = new FrameLayout[2];
     private final ImageView[] sharp = new ImageView[2], soft = new ImageView[2];
     private int front;
-    private ObjectAnimator kenBurns;
+    // Наплыв фото (drift) шагами по таймеру, см. ниже
+    private View driftView;
+    private float driftA, driftB;
+    private long driftMs, driftDone, driftMark;
     private final View dim, top, bottom;
     final TextView clock, date, temp, place, rates, ref, caption;
     private final TextView[] verse = new TextView[2];
@@ -174,24 +177,28 @@ final class Ambient implements Data.Listener {
 
     // Места текста. «Графит»: часы и дата слева сверху, погода справа, стих слева внизу.
     // «Vision»: дата над крупными часами по центру, погода и курс под ними, стих по центру внизу, подпись фото сверху справа
+    // 05.11: в «Vision» всё на 16..28 dp выше (место под крупные сферы), подписи места съёмки нет: экран чище
+    static final int V_DATE = 58, V_CLOCK = 158, V_TEMP = 202, V_PLACE = 228, V_RATES = 250;
+
     private void layoutText() {
         boolean v = vision;
         clock.setTextSize(v ? 96 : 64);
         clock.setTranslationX(v ? 0 : -px(4));
-        clock.setLayoutParams(v ? Grid.center(clock, dp, 178) : Grid.at(clock, dp, Grid.MARGIN, 92, false, 0));
-        date.setLayoutParams(v ? Grid.center(date, dp, 74) : Grid.at(date, dp, Grid.MARGIN, 124, false, 0));
-        tempRow.setLayoutParams(v ? Grid.center(temp, dp, 226) : Grid.at(temp, dp, Grid.RIGHT, 92, true, 0));
+        clock.setLayoutParams(v ? Grid.center(clock, dp, V_CLOCK) : Grid.at(clock, dp, Grid.MARGIN, 92, false, 0));
+        date.setLayoutParams(v ? Grid.center(date, dp, V_DATE) : Grid.at(date, dp, Grid.MARGIN, 124, false, 0));
+        tempRow.setLayoutParams(v ? Grid.center(temp, dp, V_TEMP) : Grid.at(temp, dp, Grid.RIGHT, 92, true, 0));
         place.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
-        place.setLayoutParams(v ? Grid.center(place, dp, 254) : Grid.at(place, dp, Grid.RIGHT, 124, true, Grid.span(5)));
+        place.setLayoutParams(v ? Grid.center(place, dp, V_PLACE) : Grid.at(place, dp, Grid.RIGHT, 124, true, Grid.span(5)));
         rates.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
-        rates.setLayoutParams(v ? Grid.center(rates, dp, Data.WEATHER_ON ? 278 : 254)
+        rates.setLayoutParams(v ? Grid.center(rates, dp, Data.WEATHER_ON ? V_RATES : V_PLACE)
                 : Grid.at(rates, dp, Grid.RIGHT, Data.WEATHER_ON ? 148 : 124, true, Grid.span(5)));
         for (TextView t : verse) {
             t.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.START);
             t.setLayoutParams(v ? Grid.aboveCenter(t, dp, 466, 680) : Grid.above(t, dp, Grid.MARGIN, 472, Grid.span(6)));
         }
         ref.setLayoutParams(v ? Grid.center(ref, dp, Grid.BOTTOM) : Grid.at(ref, dp, Grid.MARGIN, Grid.BOTTOM, false, 0));
-        caption.setLayoutParams(v ? Grid.at(caption, dp, Grid.RIGHT, 30, true, Grid.span(6)) : Grid.at(caption, dp, Grid.RIGHT, Grid.BOTTOM, true, Grid.span(7)));
+        caption.setLayoutParams(Grid.at(caption, dp, Grid.RIGHT, Grid.BOTTOM, true, Grid.span(7)));
+        caption.setVisibility(v ? View.GONE : View.VISIBLE);
     }
 
     // «Vision»: фото остаётся чётким. Затемнение сверху под часы и снизу под сферы запекается в саму картинку один раз,
@@ -211,14 +218,22 @@ final class Ambient implements Data.Listener {
                 new int[]{0x99000000, 0x4D000000, 0x40000000, 0x66000000, 0xC7000000}, new float[]{0f, 0.28f, 0.46f, 0.6f, 1f},
                 android.graphics.Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, hh, g);
-        return out;
+        // 05.11: в 16-битном цвете с подмешанным шумом (без полос на переходах). Фон самый крупный слой кадра, а этот ТВ
+        // делит память с обработкой картинки и упирается в неё: вдвое меньше чтения на каждом кадре
+        Bitmap lean = Bitmap.createBitmap(w, hh, Bitmap.Config.RGB_565);
+        android.graphics.Paint d = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
+        new android.graphics.Canvas(lean).drawBitmap(out, 0, 0, d);
+        return Tile.fixed(lean);
     }
 
     private Bitmap softOf(Bitmap bm) { return vision ? bake(bm) : Blur.of(bm, 4, SOFT_BRIGHT); }
 
     // ===== Жизненный цикл =====
 
+    private boolean running;
+
     void start() {
+        running = true;
         Now.attach(c, nowChanged);
         data.addListener(this);
         data.refresh();
@@ -235,10 +250,11 @@ final class Ambient implements Data.Listener {
     }
 
     void stop() {
+        running = false;
         Now.detach(c, nowChanged);
         data.removeListener(this);
         h.removeCallbacksAndMessages(null);
-        if (kenBurns != null) kenBurns.cancel();
+        stopDrift();
         particles.stop();
     }
 
@@ -248,7 +264,8 @@ final class Ambient implements Data.Listener {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             Date now = new Date();
-            clock.setText(new SimpleDateFormat("H:mm", Locale.forLanguageTag("ru")).format(now));
+            String hm = new SimpleDateFormat("H:mm", Locale.forLanguageTag("ru")).format(now);
+            clock.setText(hm);
             String d = new SimpleDateFormat("EEEE, d MMMM", Locale.forLanguageTag("ru")).format(now);
             date.setText(Character.toUpperCase(d.charAt(0)) + d.substring(1));
             h.postDelayed(this, 60_000 - System.currentTimeMillis() % 60_000 + 50);
@@ -335,7 +352,7 @@ final class Ambient implements Data.Listener {
         }
         caption.animate().alpha(on ? 0f : 1f).setStartDelay(M.t(on ? 0 : 300)).setDuration(M.t(on ? 300 : 600)).start();
         rates.animate().alpha(on ? 1f : 0f).setStartDelay(M.t(on ? 200 : 0)).setDuration(M.t(400)).setInterpolator(EASE).start();
-        if (kenBurns != null) { if (on) kenBurns.pause(); else kenBurns.resume(); }
+        if (on) pauseDrift(); else resumeDrift();
     }
 
     // Сразу на экран блокировки, без переходов: ТВ выключили или он выключен. При включении первый же кадр чистый,
@@ -362,7 +379,7 @@ final class Ambient implements Data.Listener {
         rates.animate().cancel();
         rates.setAlpha(0f);
         if (!vision) particles.level(Particles.LOCK, 0);
-        if (kenBurns != null) kenBurns.resume();
+        resumeDrift();
     }
 
     // Сетка «Все приложения»: фон ещё темнее, часы и погода гаснут.
@@ -506,36 +523,62 @@ final class Ambient implements Data.Listener {
         return t;
     }
 
-    // Медленный наплыв фото от текущего масштаба до 1,06
-    // Очень медленный наплыв без остановки: 1,0 ↔ 1,06 туда и обратно по 10 минут (фото теперь висит часами,
-    // а прошлый наплыв за 2 минуты останавливался, и экран выглядел застывшим). На главном экране с плитками стоит
-    static final long DRIFT_MS = 10 * 60_000;
+    // Наплыв фото без остановки: 1,0 ↔ 1,06 туда и обратно по 10 минут (фото висит часами, без движения экран выглядел
+    // застывшим). На главном экране с плитками стоит. 05.11: шаг раз в 0,4 с, а не каждый кадр. За кадр фото сдвигалось
+    // на тысячную долю точки, а экран блокировки из-за этого перерисовывался целиком 60 раз в секунду и держал треть
+    // процессора ТВ. За 0,4 с край кадра уходит меньше чем на десятую долю точки: шагов не видно
+    static final long DRIFT_MS = 10 * 60_000, DRIFT_STEP_MS = 400;
 
     private void drift(View f) {
-        if (kenBurns != null) kenBurns.cancel();
+        stopDrift();
+        driftView = f;
         float from = f.getScaleX();
-        kenBurns = ObjectAnimator.ofPropertyValuesHolder(f,
-                PropertyValuesHolder.ofFloat(View.SCALE_X, from, 1.06f), PropertyValuesHolder.ofFloat(View.SCALE_Y, from, 1.06f));
-        kenBurns.setDuration(M.t(Math.max(20_000, Math.round(DRIFT_MS * (1.06f - from) / 0.06f))));
-        kenBurns.setInterpolator(new AccelerateDecelerateInterpolator());
-        kenBurns.addListener(new android.animation.AnimatorListenerAdapter() {
-            private boolean cancelled;
-            @Override public void onAnimationCancel(android.animation.Animator a) { cancelled = true; }
-            @Override public void onAnimationEnd(android.animation.Animator a) {
-                if (cancelled) return;
-                // Дошли до 1,06: обратно к 1,0 и снова вперёд, бесконечно
-                ObjectAnimator back = ObjectAnimator.ofPropertyValuesHolder(f,
-                        PropertyValuesHolder.ofFloat(View.SCALE_X, 1.06f, 1f), PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.06f, 1f));
-                back.setDuration(M.t(DRIFT_MS));
-                back.setInterpolator(new AccelerateDecelerateInterpolator());
-                back.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-                back.setRepeatMode(android.animation.ValueAnimator.REVERSE);
-                kenBurns = back;
-                back.start();
-                if (active) back.pause();
-            }
-        });
-        kenBurns.start();
-        if (active) kenBurns.pause();
+        driftA = from;
+        driftB = 1.06f;
+        driftMs = Math.max(20_000, Math.round(DRIFT_MS * (1.06f - from) / 0.06f));
+        driftDone = 0;
+        if (!active) resumeDrift();
     }
+
+    private void resumeDrift() {
+        if (driftView == null || driftMark != 0) return;
+        driftMark = android.os.SystemClock.uptimeMillis();
+        h.removeCallbacks(driftTick);
+        h.post(driftTick);
+    }
+
+    private void pauseDrift() {
+        if (driftMark == 0) return;
+        driftDone += android.os.SystemClock.uptimeMillis() - driftMark;
+        driftMark = 0;
+        h.removeCallbacks(driftTick);
+    }
+
+    private void stopDrift() {
+        pauseDrift();
+        driftView = null;
+    }
+
+    private final Runnable driftTick = new Runnable() {
+        @Override public void run() {
+            if (driftView == null || driftMark == 0) return;
+            long now = android.os.SystemClock.uptimeMillis();
+            long done = driftDone + now - driftMark;
+            if (done >= driftMs) {
+                // Дошли до края: обратно, и так бесконечно
+                driftA = driftB;
+                driftB = driftB > 1.03f ? 1f : 1.06f;
+                driftMs = DRIFT_MS;
+                driftDone = 0;
+                driftMark = now;
+                done = 0;
+            }
+            float x = done / (float) driftMs;
+            float e = (float) (0.5 - 0.5 * Math.cos(Math.PI * x));   // разгон и торможение
+            float s = driftA + (driftB - driftA) * e;
+            driftView.setScaleX(s);
+            driftView.setScaleY(s);
+            h.postDelayed(this, DRIFT_STEP_MS);
+        }
+    };
 }
