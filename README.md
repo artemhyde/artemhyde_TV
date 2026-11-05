@@ -3,7 +3,7 @@
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
 **Заводской Google TV с рекламой ➔ HYDE TV (Vision и Графит, 60 FPS)**  
-![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV, сначала в стиле Vision, потом в стиле Графит](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0511)  
+![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV, сначала в стиле Vision, потом в стиле Графит](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0511c)  
 Подвигать шторку самому и переключить вариант (Vision, Графит, светлое стекло): [открыть сравнение](https://artemhyde.github.io/artemhyde_TV/before-after.html) или на своём компьютере `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 **Что это**  

@@ -3,7 +3,7 @@
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
 **Stock Google TV with ads ➔ HYDE TV (Vision and Graphite, 60 FPS)**  
-![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen, first in the Vision style, then in the Graphite style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0511)  
+![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen, first in the Vision style, then in the Graphite style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0511c)  
 Drag the curtain yourself and switch the variant (Vision, Graphite, light glass): [open the comparison](https://artemhyde.github.io/artemhyde_TV/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 **What it is**  
