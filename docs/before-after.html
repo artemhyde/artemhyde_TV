@@ -5,16 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HYDE TV: до и после</title>
 <style>
-/* Шторка: снизу «после», сверху «до», обрезанное по положению ползунка. Без сети и сборки: файл и две картинки рядом */
-:root{--bg:#0E0E12;--ink:#F2F2F5;--muted:#A0A0AC;--edge:rgba(255,255,255,.14);color-scheme:dark}
+/* Шторка: снизу «после», сверху «до», обрезанное по положению ползунка. Над шторкой выбор варианта «после»:
+   Vision, Графит, Графит в светлом стекле. Без сети и сборки: файл и картинки рядом */
+:root{--bg:#0E0E12;--ink:#F2F2F5;--muted:#A0A0AC;--edge:rgba(255,255,255,.14);--seg:rgba(255,255,255,.07);color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);display:grid;place-content:center;gap:18px;padding:24px 16px;
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);display:grid;place-content:center;gap:16px;padding:24px 16px;
   font:400 16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
 h1{margin:0;font-size:clamp(20px,3.2vw,32px);line-height:1.15;font-weight:600;letter-spacing:-.015em;text-wrap:balance}
 p{margin:0;color:var(--muted);font-size:15px}
+.seg{display:inline-flex;gap:4px;padding:4px;border-radius:999px;background:var(--seg);border:1px solid var(--edge);justify-self:start;flex-wrap:wrap}
+.seg button{appearance:none;border:0;margin:0;padding:8px 16px;border-radius:999px;background:transparent;color:var(--muted);
+  font-family:inherit;font-size:14px;font-weight:500;line-height:1.2;cursor:pointer;transition:background .2s ease-out,color .2s ease-out}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:#fff;color:#14141A}
+.seg button:focus-visible{outline:3px solid #7FB2FF;outline-offset:2px}
 .compare{position:relative;width:min(1280px,calc(100vw - 32px));aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#000;
   border:1px solid var(--edge);box-shadow:0 24px 70px -28px rgba(0,0,0,.8);touch-action:pan-y;--pos:50%}
 .compare img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none}
+.compare .after{opacity:0;transition:opacity .35s ease-out}
+.compare .after.on{opacity:1}
 .compare .before{clip-path:inset(0 calc(100% - var(--pos)) 0 0)}
 .line{position:absolute;top:0;bottom:0;left:var(--pos);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);pointer-events:none}
 .knob{position:absolute;top:50%;left:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:#fff;color:#14141A;
@@ -25,46 +34,82 @@ p{margin:0;color:var(--muted);font-size:15px}
 input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:ew-resize}
 input:focus-visible ~ .line .knob{outline:3px solid #7FB2FF;outline-offset:3px}
 a{color:inherit}
-@media (prefers-reduced-motion:reduce){.knob{transition:none}}
+@media (max-width:600px){
+  /* На телефоне сравнение во всю ширину экрана: так крупнее */
+  .compare{width:100vw;margin:0 -16px;border-radius:0;border-left:0;border-right:0}
+  .seg button{padding:7px 12px;font-size:13px}.tag{font-size:12px;padding:5px 10px}}
+@media (prefers-reduced-motion:reduce){.knob,.compare .after,.seg button{transition:none}}
 </style>
 </head>
 <body>
-<h1 id="t">Заводской Google TV с рекламой ➔ HYDE TV (Graphite visionOS, 60 FPS)</h1>
+<h1 id="t">Заводской Google TV с рекламой ➔ HYDE TV (Vision и Графит, 60 FPS)</h1>
+<div class="seg" role="group" aria-label="Вариант «после»" id="s">
+  <button type="button" data-k="vision" aria-pressed="true">Vision</button>
+  <button type="button" data-k="graphite" aria-pressed="false">Графит</button>
+  <button type="button" data-k="volume" aria-pressed="false">Светлое стекло</button>
+</div>
+<p id="h">Тяните шторку мышью, пальцем или стрелками на клавиатуре. Кнопки выше меняют вид «после».</p>
 <div class="compare" id="c">
-  <img src="screenshots/home.png" alt="HYDE TV: главный экран с часами, погодой и стеклянными плитками" id="a">
-  <img class="before" src="screenshots/before.jpg" alt="Заводской Google TV: ленты рекомендаций Prime Video и Apple TV" id="b">
+  <img class="after on" data-k="vision" data-f="home-vision.png" src="screenshots/home-vision.png" alt="HYDE TV, стиль Vision: часы по центру, ряд стеклянных сфер, сфера в фокусе крупнее и светится">
+  <img class="after" data-k="graphite" data-f="home.png" src="screenshots/home.png" alt="HYDE TV, стиль Графит: часы слева, погода справа, ряд стеклянных плиток">
+  <img class="after" data-k="volume" data-f="theme-volume.png" src="screenshots/theme-volume.png" alt="HYDE TV, Графит в светлом стекле: те же плитки из светлого матового стекла">
+  <img class="before" data-f="before.jpg" src="screenshots/before.jpg" alt="Заводской Google TV: ленты рекомендаций Prime Video и Apple TV" id="b">
   <span class="tag l" id="tl">До: заводской Google TV</span>
-  <span class="tag r" id="tr">После: HYDE TV</span>
+  <span class="tag r" id="tr">После: HYDE TV · Vision</span>
   <input id="r" type="range" min="0" max="100" step="0.1" value="50" aria-label="Сдвинуть шторку">
   <div class="line" aria-hidden="true"><div class="knob">‹›</div></div>
 </div>
-<p id="h">Тяните шторку мышью или пальцем, на клавиатуре стрелки влево и вправо.</p>
 <script>
 (function () {
-  var c = document.getElementById('c'), r = document.getElementById('r');
+  var c = document.getElementById('c'), r = document.getElementById('r'), tr = document.getElementById('tr');
+  var imgs = c.querySelectorAll('img'), btns = document.querySelectorAll('#s button');
 
-  // В интернете картинки берём с CDN: raw.githubusercontent.com из части сетей недоступен. Открыто с диска: файлы рядом
+  // В интернете картинки берём с CDN: raw.githubusercontent.com из части сетей недоступен. Открыто с диска: файлы рядом.
+  // Метка версии нужна, чтобы CDN не отдавал старые картинки
   if (location.protocol !== 'file:') {
     var cdn = 'https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/';
-    document.getElementById('a').src = cdn + 'home.png';
-    document.getElementById('b').src = cdn + 'before.jpg';
+    imgs.forEach(function (im) { im.src = cdn + im.getAttribute('data-f') + '?v=0511'; });
   }
   function set(v) { c.style.setProperty('--pos', v + '%'); }
   r.addEventListener('input', function () { stop = true; set(r.value); });
 
   // Английский для тех, у кого браузер не на русском
   var ru = /^(ru|be|uk)/i.test(navigator.language || '');
+  var names = ru ? {vision: 'Vision', graphite: 'Графит', volume: 'Светлое стекло'}
+                 : {vision: 'Vision', graphite: 'Graphite', volume: 'Light glass'};
+  var after = ru ? 'После: HYDE TV · ' : 'After: HYDE TV · ';
   if (!ru) {
     document.documentElement.lang = 'en';
     document.title = 'HYDE TV: before and after';
-    document.getElementById('t').textContent = 'Stock Google TV with ads ➔ HYDE TV (Graphite visionOS, 60 FPS)';
+    document.getElementById('t').textContent = 'Stock Google TV with ads ➔ HYDE TV (Vision and Graphite, 60 FPS)';
+    document.getElementById('s').setAttribute('aria-label', 'The "after" variant');
     document.getElementById('tl').textContent = 'Before: stock Google TV';
-    document.getElementById('tr').textContent = 'After: HYDE TV';
-    document.getElementById('h').textContent = 'Drag the curtain with a mouse or finger, or use the left and right arrow keys.';
+    document.getElementById('h').textContent = 'Drag the curtain with a mouse, a finger or the arrow keys. The buttons above switch the "after" look.';
     r.setAttribute('aria-label', 'Move the curtain');
-    document.getElementById('a').alt = 'HYDE TV: home screen with a clock, weather and glass tiles';
+    var alts = {vision: 'HYDE TV, Vision style: centred clock, a row of glass spheres, the focused sphere is larger and glows',
+                graphite: 'HYDE TV, Graphite style: clock on the left, weather on the right, a row of glass tiles',
+                volume: 'HYDE TV, Graphite in light glass: the same tiles in light frosted glass'};
+    imgs.forEach(function (im) { var k = im.getAttribute('data-k'); if (alts[k]) im.alt = alts[k]; });
     document.getElementById('b').alt = 'Stock Google TV: rows of Prime Video and Apple TV recommendations';
+    btns.forEach(function (b) { b.textContent = names[b.getAttribute('data-k')]; });
   }
+
+  // Вариант «после»: кнопка сверху или ссылка с меткой (#graphite, #volume)
+  function pick(k) {
+    if (!names[k]) k = 'vision';
+    imgs.forEach(function (im) { if (im.classList.contains('after')) im.classList.toggle('on', im.getAttribute('data-k') === k); });
+    btns.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-k') === k ? 'true' : 'false'); });
+    tr.textContent = after + names[k];
+  }
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-k');
+      pick(k);
+      sweep();   // шторка один раз проходит сама: смену вида видно сразу
+      history.replaceState(null, '', k === 'vision' ? location.pathname + location.search : '#' + k);
+    });
+  });
+  pick(location.hash.slice(1));
 
   // При открытии шторка один раз проходит сама и показывает, что её можно двигать. Любое касание это прерывает
   var stop = matchMedia('(prefers-reduced-motion: reduce)').matches, t0 = null;
@@ -76,6 +121,11 @@ a{color:inherit}
     if (p >= 1) { set(50); r.value = 50; return; }
     var v = 50 + 34 * Math.sin(p * Math.PI * 2);
     set(v); r.value = v;
+    requestAnimationFrame(frame);
+  }
+  function sweep() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    stop = false; t0 = null;
     requestAnimationFrame(frame);
   }
   setTimeout(function () { requestAnimationFrame(frame); }, 500);

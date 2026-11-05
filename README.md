@@ -2,9 +2,9 @@
 
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
-**Заводской Google TV с рекламой ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
-![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0411b)  
-Подвигать шторку самому: [открыть сравнение](https://artemhyde.github.io/artemhyde_TV/before-after.html) или на своём компьютере `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
+**Заводской Google TV с рекламой ➔ HYDE TV (Vision и Графит, 60 FPS)**  
+![До и После: шторка едет от заводского экрана Google TV с рекламой к главному экрану HYDE TV, сначала в стиле Vision, потом в стиле Графит](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0511)  
+Подвигать шторку самому и переключить вариант (Vision, Графит, светлое стекло): [открыть сравнение](https://artemhyde.github.io/artemhyde_TV/before-after.html) или на своём компьютере `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 **Что это**  
 Заводской Google TV с рекламой на главном экране превращается в чистый телевизор: свой главный экран, быстрые настройки на кнопку пульта, ночной режим, звук и картинка поверх фильма, музыка. Всё ставит и настраивает ваш Claude Code: он задаёт вопросы по одному, вы отвечаете и нажимаете «Разрешить» на ТВ. Root не нужен, прошивка остаётся родной. В пакетах и папках проект зовётся техническим именем glasstv (`app.glasstv.*`).

@@ -2,9 +2,9 @@
 
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
-**Stock Google TV with ads ➔ HYDE TV (Graphite visionOS, 60 FPS)**  
-![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0411b)  
-Drag the curtain yourself: [open the comparison](https://artemhyde.github.io/artemhyde_TV/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
+**Stock Google TV with ads ➔ HYDE TV (Vision and Graphite, 60 FPS)**  
+![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen, first in the Vision style, then in the Graphite style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/before-after.gif?v=0511)  
+Drag the curtain yourself and switch the variant (Vision, Graphite, light glass): [open the comparison](https://artemhyde.github.io/artemhyde_TV/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
 **What it is**  
 A stock Google TV with ads on the home screen becomes a clean TV: its own home screen, quick settings on a remote button, night mode, sound and picture controls over a film, music. Your Claude Code installs and sets it all up: it asks one question at a time, you answer and press "Allow" on the TV. No root, the firmware stays stock. In packages and folders the project keeps its technical name, glasstv (`app.glasstv.*`).
