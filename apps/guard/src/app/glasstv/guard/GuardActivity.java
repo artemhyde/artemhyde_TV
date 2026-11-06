@@ -155,7 +155,8 @@ public class GuardActivity extends Activity {
         adb.setText((adbOn ? "включена" : "выключена") + (GuardService.ADB_SERVICE.equals(mode) ? " · обслуживание до " + until
                 : GuardService.ADB_OFF.equals(mode) ? " · «Сторож» не включает"
                 : adbOn ? " · держит всегда"
-                : g != null && g.refusedAt != 0 ? " · нужен Wi-Fi и «Разрешить» на экране ТВ" : " · держит всегда"));
+                : g != null && !g.wifiUp() ? " · нужен Wi-Fi"
+                : g != null && g.refusedAt != 0 ? " · нужно «Разрешить» на экране ТВ" : " · держит всегда"));
         adb.setTextColor(adbOn ? 0xFF5ED3B4 : 0xFFFFB454);
         adbBtn.setText(GuardService.ADB_SERVICE.equals(mode) ? "Отладка: 2 часа" : GuardService.ADB_OFF.equals(mode) ? "Отладка: выключена" : "Отладка: всегда");
         notesBtn.setText(GuardService.notesEnabled(this) ? "Записки: вкл" : "Записки: выкл");

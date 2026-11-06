@@ -1004,12 +1004,8 @@ public class HomeActivity extends Activity {
             showFlash(Style.title(st));
         }
         amb.start();
-        int sr = Setup.rev(this);
-        if (sr != setupRev) {   // вернулись из «Настроек «Дома»» с правками: погода, курсы, стих, ярлыки
-            boolean first = setupRev < 0;
-            setupRev = sr;
-            if (!first) { Data.get(this).setupChanged(); amb.applySetup(); appsSig = null; }
-        }
+        setupCheck();
+        Setup.sp(this).registerOnSharedPreferenceChangeListener(setupWatch);
         loadApps();
         updateSuggest();
         // История использования читается в фоне, не чаще раза в 5 с; когда прочиталась, капсула подпишется заново
@@ -1022,7 +1018,27 @@ public class HomeActivity extends Activity {
         if (state == IDLE) h.postDelayed(saverOn, SAVER_MS);
     }
 
+    // Правки настроек «Дома» (Setup): погода, курсы, стих, ярлыки. Вернулись из «Настроек «Дома»»: их ловит onResume.
+    // Перенос с ПК (SetupCmd) идёт, пока «Дом» на экране, и onResume не случается: новый город с погодой не появлялись,
+    // пока не уйти с экрана и не вернуться (06.11, проверка на виртуальном ТВ). Поэтому смену номера правки ловим сразу
+    void setupCheck() {
+        int sr = Setup.rev(this);
+        if (sr == setupRev) return;
+        boolean first = setupRev < 0;
+        setupRev = sr;
+        if (!first) { Data.get(this).setupChanged(); amb.applySetup(); appsSig = null; }
+    }
+
+    final android.content.SharedPreferences.OnSharedPreferenceChangeListener setupWatch = (sp, key) -> {
+        if (!"rev".equals(key) || !resumed || isDestroyed()) return;
+        String st = Style.get(this);
+        if (!st.equals(styleName)) applyStyle(st);
+        setupCheck();
+        loadApps();
+    };
+
     @Override protected void onPause() {
+        Setup.sp(this).unregisterOnSharedPreferenceChangeListener(setupWatch);
         resumed = false;
         Tile.holding = false;
         keyRepeat = 0;

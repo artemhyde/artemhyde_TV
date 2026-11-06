@@ -258,6 +258,7 @@ SAVED_ROOT="$GT_ROOT"; GT_ROOT="$TMP/root2"; mkdir -p "$GT_ROOT"
 EXPORT_PATH='/sdcard/Download/hyde-settings-20261106-2000 (1).json'
 call settings_save "$TMP/copy.json"
 check "сохранение: файл забран с ТВ, путь с пробелом цел" '[ "$rc" = 0 ] && [ -s "$TMP/copy.json" ] && grep -qF "adb pull $EXPORT_PATH" "$ST/calls"'
+check "сохранение: копия в «Загрузках» ТВ убрана после забора" 'grep -qF "rm -f '"'"'$EXPORT_PATH'"'"'" "$ST/calls"'
 call settings_load "$TMP/copy.json"
 check "загрузка: ответ «Дома» показан" '[ "$rc" = 0 ] && case "$out" in *"«Сторож»: 16"*) true ;; *) false ;; esac'
 check "загрузка: прежние настройки сохранены до загрузки" 'ls "$GT_ROOT"/backup/hyde-settings-before-*.json >/dev/null 2>&1'

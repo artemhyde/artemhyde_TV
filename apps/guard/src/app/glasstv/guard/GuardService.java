@@ -111,14 +111,24 @@ public class GuardService extends Service {
         netCb = new ConnectivityManager.NetworkCallback() {
             @Override public void onAvailable(Network net) {
                 netEventAt = SystemClock.elapsedRealtime();
-                refusedAt = 0;   // другая сеть: в ней отладка может быть уже разрешена
-                h.postDelayed(() -> keepAdb("сеть сменилась"), 4_000);
+                // Сразу после регистрации Android сообщает о сети, которая уже была: это не смена, и после отказа при запуске
+                // просить снова незачем (06.11: на чужом ТВ окно «Разрешить» вызывалось дважды за 4 секунды). Сети при
+                // запуске не было (lastNet пуст): первая появившаяся сеть это смена, иначе после загрузки ТВ, когда Wi-Fi
+                // поднимается позже «Сторожа», отладка не включилась бы до следующей смены сети
+                boolean changed = lastNet == null || !lastNet.equals(net);
+                lastNet = net;
+                if (changed) refusedAt = 0;   // другая сеть: в ней отладка может быть уже разрешена
+                h.postDelayed(() -> keepAdb(changed ? "сеть сменилась" : "сеть на месте", changed), 4_000);
                 h.removeCallbacks(dnsTick);
                 h.postDelayed(dnsTick, 20_000);
             }
             @Override public void onLost(Network net) { netEventAt = SystemClock.elapsedRealtime(); }
         };
-        try { getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(netCb); } catch (Exception ignored) { }
+        try {
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            lastNet = cm.getActiveNetwork();   // сеть, которая уже есть при запуске (null: пока никакой)
+            cm.registerDefaultNetworkCallback(netCb);
+        } catch (Exception ignored) { }
         log("Сторож запущен");
     }
 
@@ -1012,13 +1022,30 @@ public class GuardService extends Service {
     static final long QUIET_MS = 20_000;        // столько после смены сети или пробуждения выключение считается системным
     long netEventAt;                            // последняя смена сети, пробуждение или запуск (SystemClock.elapsedRealtime)
     long selfOffAt;                             // когда «Сторож» сам выключил отладку: это не решение человека
-    // Когда «Сторож» сам включил отладку (06.11, проверка на ТВ другой марки). Если Android тут же выключает её обратно,
-    // это отказ системы, а не человек: нет Wi-Fi или в этой сети отладку ещё не разрешали (Android показывает окно
-    // «Разрешить отладку в этой сети?» и до ответа держит её выключенной). Режим остаётся прежним
-    long selfOnAt;
+    // Когда «Сторож» увидел отладку включённой (0: сейчас выключена; 06.11, проверка на ТВ другой марки). Выключение через
+    // мгновение после включения, или когда включённой её вообще не видели, делает Android, а не человек: нет Wi-Fi или
+    // в этой сети её ещё не разрешили (окно «Разрешить отладку в этой сети?»), кто бы ни включал: «Сторож», мастер или
+    // человек в настройках. Режим тогда остаётся прежним
+    long adbOnAt;
+    static final long REFUSE_MS = 5_000;
     // Когда Android последний раз так отказал. До смены сети «Сторож» не просит снова: иначе окно «Разрешить» всплывало бы
     // при каждом пробуждении экрана и каждые 15 минут. Просит при запуске, смене сети и выборе режима на экране «Сторожа»
     volatile long refusedAt;
+    volatile Network lastNet;                   // сеть по умолчанию при запуске и из прошлого onAvailable
+    long noWifiLogAt;                           // когда последний раз писали в журнал «ТВ не в Wi-Fi» (не чаще раза в час)
+
+    // Есть ли сейчас Wi-Fi. Без него Android отказывает в отладке по сети молча, без окна «Разрешить», поэтому
+    // такой отказ не повод перестать просить: попросим снова, как только Wi-Fi появится
+    boolean wifiUp() {
+        try {
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            for (Network n : cm.getAllNetworks()) {
+                android.net.NetworkCapabilities c = cm.getNetworkCapabilities(n);
+                if (c != null && c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) return true;
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
     android.database.ContentObserver adbWatch;
 
     boolean adbOn() { return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1; }
@@ -1075,7 +1102,6 @@ public class GuardService extends Service {
         if (ADB_SERVICE.equals(m) && System.currentTimeMillis() >= adbUntil()) { h.post(serviceEnd); return; }
         try {
             if (!adbOn()) {
-                selfOnAt = SystemClock.elapsedRealtime();
                 Settings.Global.putInt(getContentResolver(), "adb_wifi_enabled", 1);
                 log("Отладка по сети включена (" + why + ")");
             }
@@ -1085,16 +1111,29 @@ public class GuardService extends Service {
     }
 
     // Следим, кто выключил отладку. Выключение рядом со сменой сети, пробуждением или запуском делает сам Android,
-    // своё выключение «Сторож» помнит; остальное значит, что человек выключил её в настройках
+    // своё выключение «Сторож» помнит, мгновенное выключение после включения это отказ Android (см. adbOnAt);
+    // остальное значит, что человек выключил её в настройках
     void watchAdb() {
         netEventAt = SystemClock.elapsedRealtime();
+        adbOnAt = adbOn() ? netEventAt : 0;
         adbWatch = new android.database.ContentObserver(h) {
             @Override public void onChange(boolean self) {
-                if (adbOn() || ADB_OFF.equals(adbMode())) return;
                 long now = SystemClock.elapsedRealtime();
-                if (selfOnAt != 0 && now - selfOnAt <= QUIET_MS) {
+                if (adbOn()) { if (adbOnAt == 0) adbOnAt = now; refusedAt = 0; return; }   // включилась: отказа больше нет
+                long onAt = adbOnAt;
+                adbOnAt = 0;
+                if (ADB_OFF.equals(adbMode())) return;
+                if (onAt == 0 || now - onAt < REFUSE_MS) {
+                    if (!wifiUp()) {
+                        if (noWifiLogAt == 0 || now - noWifiLogAt > 3_600_000) {
+                            noWifiLogAt = now;
+                            log("Android не включил отладку по сети: ТВ не в Wi-Fi. Включу, когда Wi-Fi появится");
+                        }
+                        return;
+                    }
+                    if (refusedAt != 0 && now - refusedAt < 2_000) return;   // тот же отказ: Android сообщил о смене дважды
                     refusedAt = now;
-                    log("Android не дал включить отладку по сети: нет Wi-Fi или в этой сети её ещё не разрешили. Снова попрошу при смене сети");
+                    log("Android не дал включить отладку по сети: в этой сети её ещё не разрешили (окно «Разрешить» на экране ТВ). Снова попрошу при смене сети");
                     return;
                 }
                 if (humanOff(now, netEventAt, selfOffAt, now)) {
