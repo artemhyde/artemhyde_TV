@@ -177,7 +177,11 @@ if [ "$1" = get-state ]; then if [ "$(cat "$st")" = 1 ]; then echo device; exit 
 shift
 # Чтение настройки: значение из файла cur_<пространство>_<ключ>, нет файла: null (в журнал выполненного не идёт)
 case "$*" in "settings get "*) set -- $*; f="$RTMP/cur_$3_$4"; if [ -f "$f" ]; then cat "$f"; echo; else echo null; fi; exit 0 ;; esac
+# Есть ли пакет на ТВ: список в файле installed (нет файла: пакетов нет)
+case "$*" in "pm path "*) set -- $*; if grep -qx "$3" "$RTMP/installed" 2>/dev/null; then echo "package:/data/app/$3/base.apk"; exit 0; fi; exit 1 ;; esac
 echo "$*" >> "$RTMP/ran"
+# FAILONCE: команда не проходит только в первый раз (сбой связи на мгновение)
+case "$*" in "${FAILONCE:-@@}") if [ ! -f "$RTMP/failed-once" ]; then : > "$RTMP/failed-once"; exit 1; fi ;; esac
 case "$*" in "${LOSECMD:-@@}") echo 0 > "$st"; exit 1 ;; "${FAILCMD:-@@}") exit 1 ;; esac
 exit 0
 EOF
@@ -236,6 +240,21 @@ check "итог: код 0 и «Готово»" '[ "$rc" = 0 ] && case "$out" in 
 out="$(bash "$TMP/backup/r/restore.sh" --dry-run 2>&1)"
 check "сухой прогон показывает и эти настройки" 'case "$out" in *"частный DNS"*"opportunistic"*) true ;; *) false ;; esac'
 rm -f "$TMP"/cur_* "$TMP/backup/r"/settings-*.txt
+
+echo "== restore.sh: сбой связи на мгновение и повторный запуск"
+mkdir -p "$TMP/backup/r3"
+printf '%s\t%s\t%s\t%s\n' "t1" "установлен app.x" "pm install x.apk" "pm uninstall --user 0 app.x" \
+    "t2" "право app.y" "appops set app.y OP allow" "appops set app.y OP default" > "$TMP/backup/r3/ledger.tsv"
+bash "$HERE/../make-restore.sh" "$TMP/backup/r3" >/dev/null
+runr3() { rm -f "$TMP/online" "$TMP/ran" "$TMP/failed-once"; RTMP="$TMP" ADB="$TMP/radb" TV=x:1 RETRY_PAUSE=0 bash "$TMP/backup/r3/restore.sh" --yes 2>&1; }
+printf 'app.y\n' > "$TMP/installed"
+out="$(FAILONCE="appops set app.y OP default" runr3)"; rc=$?
+check "команда не прошла один раз: повтор прошёл, код 0" '[ "$rc" = 0 ] && case "$out" in *"прошло со второй попытки"*) true ;; *) false ;; esac'
+out="$(FAILCMD="pm uninstall --user 0 app.x" runr3)"; rc=$?
+check "повторный запуск: приложения уже нет, это не ошибка" '[ "$rc" = 0 ] && case "$out" in *"app.x на ТВ уже нет"*) true ;; *) false ;; esac'
+out="$(FAILCMD="appops set app.y OP default" runr3)"; rc=$?
+check "приложение на месте, а команда не проходит: ошибка, код 1" '[ "$rc" = 1 ] && case "$out" in *"не вышло"*) true ;; *) false ;; esac'
+rm -f "$TMP/installed"
 
 echo "== tiles_install: плитка ставится и при другом варианте приложения"
 reset_tv

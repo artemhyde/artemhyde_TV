@@ -154,18 +154,38 @@ tvsh() { if [ -n "${TV:-}" ]; then "$ADB" -s "$TV" shell "$1"; else "$ADB" shell
 tvstate() { if [ -n "${TV:-}" ]; then "$ADB" -s "$TV" get-state 2>&1; else "$ADB" get-state 2>&1; fi | tr -d '\r'; }
 # FAIL: команда не прошла при живой связи. LOST: связь пропала, дальше ничего не выполняется, оставшиеся команды пересчитываются
 FAIL=0; LOST=0; LEFT=0
+# Приложение, к которому относится обратная команда (права, белый список, удаление, снятие прав администратора)
+pkg_of() {
+    case "$1" in
+        "appops set "*|"pm revoke "*|"pm grant "*) set -- $1; echo "$3" ;;
+        "pm uninstall --user "*) set -- $1; echo "$5" ;;
+        "pm uninstall "*) set -- $1; echo "$3" ;;
+        "cmd notification disallow_listener "*) set -- $1; echo "${4%%/*}" ;;
+        "dumpsys deviceidle whitelist -"*) set -- $1; echo "${4#-}" ;;
+        "am start -n "*) set -- $1; echo "${4%%/*}" ;;
+    esac
+}
 run() {
     echo "  $1"
     echo "    > $2"
     [ "$DRY" = 1 ] && return 0
     if [ "$LOST" = 1 ]; then echo "    не выполнено: нет связи с ТВ"; LEFT=$((LEFT + 1)); return 0; fi
-    if ! tvsh "$2"; then
-        if [ "$(tvstate)" != device ]; then
-            echo "    связь с ТВ пропала: дальше ничего не выполняю"; LOST=1; LEFT=$((LEFT + 1))
-        else
-            echo "    не вышло, иду дальше"; FAIL=$((FAIL + 1))
-        fi
+    tvsh "$2" && return 0
+    # Связь на мгновение пропала (06.11 на виртуальном ТВ посреди отката перезапустился сервер adb): ещё одна попытка
+    if [ "$(tvstate)" = device ]; then
+        sleep "${RETRY_PAUSE:-2}"
+        if tvsh "$2"; then echo "    прошло со второй попытки"; return 0; fi
     fi
+    if [ "$(tvstate)" != device ]; then
+        echo "    связь с ТВ пропала: дальше ничего не выполняю"; LOST=1; LEFT=$((LEFT + 1))
+        return 0
+    fi
+    # Повторный запуск отката: приложения уже нет на ТВ, значит отменять нечего, это не ошибка
+    local p; p="$(pkg_of "$2")"
+    if [ -n "$p" ] && [ -z "$(tvsh "pm path $p" 2>/dev/null | tr -d '\r')" ]; then
+        echo "    $p на ТВ уже нет: отменять нечего"; return 0
+    fi
+    echo "    не вышло, иду дальше"; FAIL=$((FAIL + 1))
 }
 # Настройка, которую приложения меняют сами: вернуть как в снимке «до», только если сейчас иначе.
 # back 'что' пространство ключ 'значение до' есть_в_снимке (1; 0 значит «до установки не было», тогда настройка удаляется)
