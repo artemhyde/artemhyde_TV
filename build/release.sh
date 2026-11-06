@@ -2,9 +2,12 @@
 # release.sh: собрать общий выпуск HYDE TV. Все приложения из apps/ с одним номером версии, подписаны ключом выпуска,
 # рядом опись manifest.json (пакет, версия, minSdk, ABI, SHA-256 файла, сертификат, источник, лицензия, зависимости,
 # способ возврата) и SHA256SUMS. Результат: out/release/<версия>/.
-# Запуск: bash build/release.sh 1.0.0 [--check]
+# Запуск: bash build/release.sh 1.0.0 [--check] [--browser] [--aura]
 #   номер X.Y.Z (Y и Z от 0 до 99): versionName у всех приложений X.Y.Z, versionCode X*10000 + Y*100 + Z
 #   --check: собрать второй раз в другую папку и сравнить: файлы должны совпасть байт в байт (воспроизводимость)
+#   --browser: добавить HYDE Browser (tvbro/build-tvbro.sh: Gradle, JDK 21, SDK 36, долго; исходники TV Bro из TVBRO_REPO)
+#   --aura: добавить плеер «Волны» (aura/build-aura.sh, 32-битный ARM; исходники Aura Music из AURA_REPO) и рядом архив его исходников
+#           hyde-aura-source-<версия>.tar.gz: GPL-3.0 требует отдавать исходники вместе с файлом
 # Ключ выпуска лежит вне репозитория: HYDE_RELEASE_DIR (по умолчанию ~/.hyde-release с release.jks и release.pass,
 # создаёт build/release-key.sh). Ключ личных сборок keys/tv.jks выпуск не трогает.
 # Настройки сборки нейтральные (config/release.json): город, цвет стекла, курсы, стихи и имена человек выбирает на ТВ,
@@ -15,8 +18,15 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-ver="${1:-}"; check=0
-[ "${2:-}" = "--check" ] && check=1
+ver="${1:-}"; check=0; browser=0; aura=0
+for a in "${@:2}"; do
+    case "$a" in
+        --check) check=1 ;;
+        --browser) browser=1 ;;
+        --aura) aura=1 ;;
+        *) die "Неизвестный параметр: $a" ;;
+    esac
+done
 [[ "$ver" =~ ^([0-9]+)\.([0-9]{1,2})\.([0-9]{1,2})$ ]] || die "Нужен номер выпуска X.Y.Z, например: bash build/release.sh 1.0.0"
 code=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
 rdir="${HYDE_RELEASE_DIR:-$HOME/.hyde-release}"
@@ -49,6 +59,8 @@ build_from() { # build_from <корень исходников> <папка ре
     export HYDE_OUT="$2" HYDE_SETTINGS="$1/config/release.json"
     rm -rf "$HYDE_OUT"
     bash "$1/build/build-all.sh" --all
+    if [ "$browser" = 1 ]; then bash "$1/tvbro/build-tvbro.sh"; fi
+    if [ "$aura" = 1 ]; then bash "$1/aura/build-aura.sh"; fi
 }
 
 stage="$ROOT/out/release/$ver"
@@ -58,6 +70,29 @@ build_from "$src" "$ROOT/out/release-build"
 rm -rf "$stage"; mkdir -p "$stage"
 for f in "$ROOT/out/release-build"/*.apk; do cp "$f" "$stage/hyde-$(basename "$f" .apk)-$ver.apk"; done
 for f in "$ROOT/out/release-build/tiles"/*.apk; do [ -f "$f" ] && cp "$f" "$stage/hyde-tile-$(basename "$f" .apk)-$ver.apk"; done
+# HYDE Browser лежит рядом под своим именем (hyde-browser.apk), в цикл выше попал бы как hyde-hyde-browser
+rm -f "$stage/hyde-hyde-browser-$ver.apk"
+if [ "$browser" = 1 ]; then
+    [ -f "$ROOT/out/release-build/hyde-browser.apk" ] || die "HYDE Browser не собрался (нет out/release-build/hyde-browser.apk)"
+    cp "$ROOT/out/release-build/hyde-browser.apk" "$stage/hyde-browser-$ver.apk"
+fi
+if [ "$aura" = 1 ]; then
+    [ -f "$stage/hyde-aura-$ver.apk" ] || die "Плеер «Волны» не собрался (нет out/release-build/aura.apk)"
+    # Исходники плеера по GPL-3.0: исходники Aura Music того же коммита с нашими патчами, как они собирались, и наши скрипты сборки.
+    # Постоянные даты и порядок, чтобы архив одного выпуска не менялся от сборки к сборке
+    asrc="$ROOT/out/release-build/aura-src"
+    [ -d "$asrc" ] || die "Нет исходников плеера в $asrc"
+    pack="$ROOT/out/release-build/aura-pack"
+    rm -rf "$pack"; mkdir -p "$pack/hyde-build/aura" "$pack/hyde-build/build"
+    cp "$src/aura/build-aura.sh" "$src/aura/README.md" "$src/aura/LICENSE-Aura.txt" "$pack/hyde-build/aura/"
+    cp -r "$src/aura/patches" "$pack/hyde-build/aura/"
+    cp "$src/build/env.sh" "$src/build/sign.sh" "$pack/hyde-build/build/"
+    tar -C "$ROOT/out/release-build" --sort=name --mtime='1981-01-01 00:00:00' --owner=0 --group=0 --numeric-owner \
+        --exclude='aura-src/.git' --exclude='aura-src/*/build' --exclude='aura-src/build' --exclude='aura-src/.gradle' \
+        --exclude='aura-src/.kotlin' --exclude='aura-src/local.properties' \
+        -cf - aura-src -C "$pack" hyde-build | gzip -n -9 > "$stage/hyde-aura-source-$ver.tar.gz"
+    note "Исходники плеера: hyde-aura-source-$ver.tar.gz ($(du -h "$stage/hyde-aura-source-$ver.tar.gz" | cut -f1))"
+fi
 HYDE_COMMIT="$commit" HYDE_DIRTY="$dirty" $PY -I -X utf8 "$(P "$GT_BUILD_DIR/release-manifest.py")" "$(P "$stage")" "$ver" "$code" \
     "$(P "$AAPT2")" "$(P "$JAVA")" "$(P "$SIGNERJAR")" "$(P "$src")"
 

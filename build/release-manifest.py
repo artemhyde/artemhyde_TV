@@ -28,10 +28,18 @@ MODULES = {
     'nightmode': ('«Ночной режим»', [], 'перед обновлением снять права администратора (CLAUDE.md, шаг 7)'),
     'sound': ('«Звук»', ['guard'], ''),
     'picture': ('«Картинка»', ['guard'], ''),
-    'volna': ('«Волна»: музыка', ['Aura (своя сборка, отдельный выпуск по GPL)'], ''),
+    'volna': ('«Волна»: музыка', ['app.glasstv.aura (плеер «Волны», hyde-aura в выпуске)'], ''),
+    'aura': ('Плеер «Волны» (Aura Music с нашими патчами)', [], 'подпись совпадает с «Волной»: команды плеер принимает только от неё'),
     'clip': ('«Буфер»: вставка текста с компьютера', [], ''),
     'keyboard': ('Клавиатура', [], 'перед удалением вернуть прежнюю клавиатуру: ime set'),
+    'browser': ('HYDE Browser: браузер для пульта (TV Bro с нашими правками)', [], ''),
 }
+MIT = 'MIT (LICENSE); шрифты OFL 1.1 (shared/fonts/OFL.txt)'
+# HYDE Browser: изменённая сборка TV Bro по второму пути его лицензии (своё имя, значок, application ID, окно авторства)
+TVBRO_COMMIT = '52b078f'
+AURA_COMMIT = '2e4f1263f710d88b6841c9ee097bb94a0e456f16'
+BROWSER_LICENSE = ('лицензия TV Bro (tvbro/LICENSE-TVBro.md): изменённая сборка со своим именем, значком, application ID '
+                   'и окном «О программе» со ссылкой на github.com/truefedex/tv-bro; наши патчи MIT')
 
 
 def run(*cmd):
@@ -92,13 +100,15 @@ for name in sorted(os.listdir(stage)):
     if b['versionCode'] != code or b['versionName'] != ver:
         sys.exit('%s: версия %s (%s), а выпуск %s (%s)' % (name, b['versionName'], b['versionCode'], ver, code))
     m = re.match(r'hyde-(tile-)?(.+)-' + re.escape(ver) + r'\.apk$', name)
+    if not m:
+        sys.exit('непонятное имя файла в выпуске: %s' % name)
     module = ('tile-' if m.group(1) else '') + m.group(2)
     if m.group(1):
         t = tiles.get(m.group(2))
         title, deps, note, src = ('Плитка «%s»' % (t[2] if t else m.group(2)), [t[1]] if t else [], 'ставится, только если стоит цель', 'apps/tiles')
     else:
         title, deps, note = MODULES.get(module, (module, [], ''))
-        src = 'apps/' + module
+        src = {'browser': 'tvbro/patches', 'aura': 'aura/patches'}.get(module, 'apps/' + module)
     s = sha256(path)
     sums.append('%s  %s' % (s, name))
     apps.append({
@@ -106,11 +116,25 @@ for name in sorted(os.listdir(stage)):
         'versionCode': b['versionCode'], 'versionName': b['versionName'],
         'minSdk': b['minSdk'], 'targetSdk': b['targetSdk'], 'abi': b['abi'],
         'sha256': s, 'size': os.path.getsize(path), 'cert_sha256': c,
-        'source': {'path': src, 'commit': commit},
-        'license': 'MIT (LICENSE); шрифты OFL 1.1 (shared/fonts/OFL.txt)',
+        'source': ({'path': src, 'commit': commit, 'upstream': 'https://github.com/truefedex/tv-bro', 'upstream_commit': TVBRO_COMMIT}
+                   if module == 'browser' else
+                   {'path': src, 'commit': commit, 'upstream': 'https://github.com/TeamAuraMusic/AuraMusic', 'upstream_commit': AURA_COMMIT,
+                    'source_archive': 'hyde-aura-source-%s.tar.gz' % ver}
+                   if module == 'aura' else {'path': src, 'commit': commit}),
+        'license': (BROWSER_LICENSE if module == 'browser' else
+                    'GPL-3.0 (aura/LICENSE-Aura.txt): исходники в этом выпуске, hyde-aura-source-%s.tar.gz' % ver if module == 'aura' else MIT),
         'depends': deps,
         'rollback': {'first_install': FIRST.format(pkg=b['package']), 'update': BACK, 'note': note},
     })
+
+# Архивы исходников (плеер «Волны» по GPL) в суммах и в описи
+archives = []
+for name in sorted(os.listdir(stage)):
+    if name.endswith('.tar.gz'):
+        path = os.path.join(stage, name)
+        s = sha256(path)
+        sums.append('%s  %s' % (s, name))
+        archives.append({'file': name, 'sha256': s, 'size': os.path.getsize(path)})
 
 if len(certs) != 1:
     sys.exit('у файлов выпуска разные ключи: %s' % ', '.join(sorted(certs)))
@@ -130,6 +154,7 @@ manifest = {
     'built_from': {'commit': commit, 'uncommitted_changes': dirty},
     'reproducible': 'bash build/release.sh %s --check собирает второй раз и сравнивает байт в байт' % ver,
     'apps': apps,
+    'source_archives': archives,
     'third_party': third,
 }
 json.dump(manifest, open(os.path.join(stage, 'manifest.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False, indent=1)

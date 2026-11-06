@@ -203,13 +203,13 @@ check "ТВ не на связи с самого начала: код 3, нич�
 echo "== tiles_install: плитка ставится и при другом варианте приложения"
 reset_tv
 SAVED_ROOT="$GT_ROOT"; GT_ROOT="$TMP/root"; mkdir -p "$GT_ROOT/apps/tiles" "$GT_ROOT/out/tiles"
-printf '%s\n' '# имя|плитка|цель|подпись' 'browser|app.glasstv.tile.browser|com.phlox.tvwebbrowser.foss|Браузер' \
+printf '%s\n' '# имя|плитка|цель|подпись' 'browser|app.glasstv.tile.browser|app.glasstv.browser|Браузер' \
     'files|app.glasstv.tile.files|me.zhanghai.android.files|Файлы' 'twitch|app.glasstv.tile.twitch|tv.twitch.android.app|Twitch' \
     > "$GT_ROOT/apps/tiles/tiles.txt"
 for n in browser files twitch; do echo apk > "$GT_ROOT/out/tiles/$n.apk"; done
 ss pkgs "$(sg pkgs) com.phlox.tvwebbrowser com.cxinventor.file.explorer"
 INST_PKG=app.glasstv.tile.x; call tiles_install
-check "браузер из Google Play вместо нашей сборки: плитка ставится" 'case "$out" in *"плитка browser: вместо com.phlox.tvwebbrowser.foss стоит com.phlox.tvwebbrowser,"*) true ;; *) false ;; esac'
+check "браузер из Google Play вместо HYDE Browser: плитка ставится" 'case "$out" in *"плитка browser: вместо app.glasstv.browser стоит com.phlox.tvwebbrowser,"*) true ;; *) false ;; esac'
 check "другой файловый менеджер: плитка ставится" 'case "$out" in *"плитка files: вместо me.zhanghai.android.files стоит com.cxinventor.file.explorer"*) true ;; *) false ;; esac'
 check "нет ни приложения, ни варианта: плитка пропущена" 'case "$out" in *"пропуск плитки twitch"*) true ;; *) false ;; esac'
 check "итог: две поставлены, одна пропущена" 'case "$out" in *"плиток поставлено: 2, пропущено: 1"*) true ;; *) false ;; esac'

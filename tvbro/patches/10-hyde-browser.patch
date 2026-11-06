@@ -1,0 +1,936 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 72f36ec..a7f0125 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -8,8 +8,9 @@ android {
+ 
+     defaultConfig {
+         applicationId = "com.phlox.tvwebbrowser"
+-        versionCode = 77
+-        versionName = "3.0.0"
++        // HYDE Browser: номер из выпуска HYDE TV (gradle -PhydeVersionCode=10000 -PhydeVersionName=1.0.0), без него как у TV Bro
++        versionCode = (project.findProperty("hydeVersionCode") as String?)?.toInt() ?: 77
++        versionName = (project.findProperty("hydeVersionName") as String?) ?: "3.0.0"
+     }
+ 
+     signingConfigs {
+@@ -63,7 +64,8 @@ android {
+         }
+         create("foss") {
+             dimension = "appstore"
+-            applicationIdSuffix = ".foss"
++            // HYDE Browser: свой application ID, как требует лицензия TV Bro для изменённой сборки
++            applicationId = "app.glasstv.browser"
+             buildConfigField("Boolean", "BUILT_IN_AUTO_UPDATE", "false")
+         }
+ 
+diff --git a/app/src/main/assets/pages/home/index.html b/app/src/main/assets/pages/home/index.html
+index fec483e..992aab0 100644
+--- a/app/src/main/assets/pages/home/index.html
++++ b/app/src/main/assets/pages/home/index.html
+@@ -1,7 +1,7 @@
+ <!DOCTYPE html>
+ <html>
+ <head>
+-    <title>TV Bro: Home</title>
++    <title>HYDE Browser</title>
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+     <meta name="color-scheme" content="dark">
+diff --git a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt
+index 7c21eb5..e07db55 100644
+--- a/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt
++++ b/app/src/main/java/com/phlox/tvwebbrowser/activity/main/SettingsNavigator.kt
+@@ -51,7 +51,7 @@ class SettingsNavigator(
+         INTERFACE, THEME, DARKENING, KEEP_SCREEN_ON, MATCH_FRAME_RATE,
+         CURSOR_SPEED, CURSOR_ACCELERATION, JOYSTICK, SHORTCUT,
+         CLEAR_CACHE, ENGINE_DEBUG, DOWNLOAD_FOLDER, PROXY, PROXY_TYPE, PROXY_HOST, PROXY_PORT, PROXY_USERNAME, PROXY_PASSWORD,
+-        INFO, UPDATE, AUTO_UPDATE, UPDATE_CHANNEL, UX_TAP_SCROLL, UX_SUGGESTIONS,
++        INFO, HYDE_ABOUT, UPDATE, AUTO_UPDATE, UPDATE_CHANNEL, UX_TAP_SCROLL, UX_SUGGESTIONS,
+         LINK_SOURCE, LINK_SUPPORT, LINK_ICON, LINK_LICENSE, LINK_PRIVACY, LINK_PUBLIC_SUFFIX_LIST
+     }
+ 
+@@ -955,7 +955,9 @@ class SettingsNavigator(
+ 
+     private fun aboutSections(): List<Section> {
+         val sections = arrayListOf(Section(null, listOf(Row.Info(Key.INFO, string(R.string.web_browser_optimized_for_tvs),
+-            context.getString(R.string.settings_version_line, store.versionName, store.buildName, store.engineVersion)))))
++            context.getString(R.string.settings_version_line, store.versionName, store.buildName, store.engineVersion)),
++            // HYDE Browser: окно авторства по лицензии TV Bro (чья это основа и где её исходники)
++            Row.Info(Key.HYDE_ABOUT, string(R.string.hyde_about_title), string(R.string.hyde_about_text)))))
+         if (store.builtInUpdates) {
+             val rows = ArrayList<Row>()
+             val updates = updates
+@@ -975,7 +977,6 @@ class SettingsNavigator(
+         sections += Section(string(R.string.settings_group_links), listOf(
+             Row.Link(Key.LINK_SOURCE, string(R.string.settings_source_code), URL_SOURCE),
+             Row.Link(Key.LINK_SUPPORT, string(R.string.settings_support_author), URL_SUPPORT_AUTHOR),
+-            Row.Link(Key.LINK_ICON, string(R.string.why_icon_changed), URL_WHY_ICON),
+             Row.Link(Key.LINK_LICENSE, string(R.string.settings_license), URL_LICENSE),
+             Row.Link(Key.LINK_PRIVACY, string(R.string.settings_privacy_policy), URL_PRIVACY_POLICY),
+             Row.Link(Key.LINK_PUBLIC_SUFFIX_LIST, string(R.string.settings_public_suffix_list), URL_PUBLIC_SUFFIX_LIST)
+diff --git a/app/src/main/res/drawable/hyde_icon_foreground.xml b/app/src/main/res/drawable/hyde_icon_foreground.xml
+new file mode 100644
+index 0000000..fc4e5c5
+--- /dev/null
++++ b/app/src/main/res/drawable/hyde_icon_foreground.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- HYDE Browser: глобус (окружность, меридиан, три параллели) в безопасной зоне значка 108x108 -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="3"
++        android:pathData="M32,54 A22,22 0 1,1 76,54 A22,22 0 1,1 32,54 Z" />
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2.4"
++        android:pathData="M54,32 A9,22 0 1,1 54,76 A9,22 0 1,1 54,32 Z" />
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2.4"
++        android:strokeLineCap="round"
++        android:pathData="M32,54 L76,54 M35,43 L73,43 M35,65 L73,65" />
++</vector>
+diff --git a/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml b/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+index ef49c99..379dada 100644
+--- a/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
++++ b/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+-    <background android:drawable="@color/ic_launcher_background"/>
+-    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+-    <monochrome android:drawable="@drawable/ic_launcher_foreground"/>
++    <background android:drawable="@color/hyde_icon_background"/>
++    <foreground android:drawable="@drawable/hyde_icon_foreground"/>
++    <monochrome android:drawable="@drawable/hyde_icon_foreground"/>
+ </adaptive-icon>
+\ No newline at end of file
+diff --git a/app/src/main/res/mipmap-anydpi/banner.xml b/app/src/main/res/mipmap-anydpi/banner.xml
+new file mode 100644
+index 0000000..a3ac226
+--- /dev/null
++++ b/app/src/main/res/mipmap-anydpi/banner.xml
+@@ -0,0 +1,40 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- HYDE Browser: баннер для экрана приложений ТВ. Слева глобус, справа надпись HYDE линиями (в векторе нет шрифтов) -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="320dp"
++    android:height="180dp"
++    android:viewportWidth="320"
++    android:viewportHeight="180">
++    <path
++        android:fillColor="@color/hyde_icon_background"
++        android:pathData="M0,0 L320,0 L320,180 L0,180 Z" />
++    <group
++        android:scaleX="1.36"
++        android:scaleY="1.36"
++        android:translateX="4.6"
++        android:translateY="16.6">
++        <path
++            android:fillColor="#00000000"
++            android:strokeColor="#FFFFFFFF"
++            android:strokeWidth="3"
++            android:pathData="M32,54 A22,22 0 1,1 76,54 A22,22 0 1,1 32,54 Z" />
++        <path
++            android:fillColor="#00000000"
++            android:strokeColor="#FFFFFFFF"
++            android:strokeWidth="2.4"
++            android:pathData="M54,32 A9,22 0 1,1 54,76 A9,22 0 1,1 54,32 Z" />
++        <path
++            android:fillColor="#00000000"
++            android:strokeColor="#FFFFFFFF"
++            android:strokeWidth="2.4"
++            android:strokeLineCap="round"
++            android:pathData="M32,54 L76,54 M35,43 L73,43 M35,65 L73,65" />
++    </group>
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="7"
++        android:strokeLineCap="round"
++        android:strokeLineJoin="round"
++        android:pathData="M130,68 L130,112 M156,68 L156,112 M130,90 L156,90 M170,68 L184,90 L198,68 M184,90 L184,112 M212,68 L212,112 M212,68 L222,68 A20,22 0 0,1 222,112 L212,112 M280,68 L256,68 L256,112 L280,112 M256,90 L276,90" />
++</vector>
+diff --git a/app/src/main/res/mipmap-anydpi/ic_launcher.xml b/app/src/main/res/mipmap-anydpi/ic_launcher.xml
+new file mode 100644
+index 0000000..181569b
+--- /dev/null
++++ b/app/src/main/res/mipmap-anydpi/ic_launcher.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- HYDE Browser для Android до 8.0: тот же глобус на графитовом скруглённом квадрате -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="48dp"
++    android:height="48dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:fillColor="@color/hyde_icon_background"
++        android:pathData="M24,6 L84,6 A18,18 0 0,1 102,24 L102,84 A18,18 0 0,1 84,102 L24,102 A18,18 0 0,1 6,84 L6,24 A18,18 0 0,1 24,6 Z" />
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="3"
++        android:pathData="M32,54 A22,22 0 1,1 76,54 A22,22 0 1,1 32,54 Z" />
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2.4"
++        android:pathData="M54,32 A9,22 0 1,1 54,76 A9,22 0 1,1 54,32 Z" />
++    <path
++        android:fillColor="#00000000"
++        android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2.4"
++        android:strokeLineCap="round"
++        android:pathData="M32,54 L76,54 M35,43 L73,43 M35,65 L73,65" />
++</vector>
+diff --git a/app/src/main/res/values-cs/strings.xml b/app/src/main/res/values-cs/strings.xml
+index da8610f..d68d386 100644
+--- a/app/src/main/res/values-cs/strings.xml
++++ b/app/src/main/res/values-cs/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro: webový prohlížeč pro TV</string>
++    <string name="app_name">HYDE Browser: webový prohlížeč pro TV</string>
+     <string name="error">Chyba</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">Zadejte hledaný text nebo URL</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">Vymazat</string>
+     <string name="install">Instalovat</string>
+     <string name="turn_on_unknown_sources">Zapněte prosím systémové nastavení „Neznámé zdroje“</string>
+-    <string name="turn_on_unknown_sources_for_app">Povolte prosím v nastavení systému aplikaci TV Bro instalovat aplikace z „Neznámých zdrojů“</string>
++    <string name="turn_on_unknown_sources_for_app">Povolte prosím v nastavení systému aplikaci HYDE Browser instalovat aplikace z „Neznámých zdrojů“</string>
+     <string name="voice_search_not_found">Hlasové vyhledávání nebylo nalezeno</string>
+     <string name="new_version_dialog_title">Je k dispozici nová verze</string>
+     <string name="later">Později</string>
+@@ -79,7 +79,7 @@
+         <item>Tmavý</item>
+     </array>
+     <string name="incognito_mode">Anonymní režim</string>
+-    <string name="incognito_mode_hint">Nyní můžete prohlížet soukromě a ostatní lidé, kteří toto zařízení používají, neuvidí vaši aktivitu. TV Bro nebude ukládat historii prohlížení, soubory cookie a data webů ani informace zadané do formulářů.\n\nStažené soubory a záložky se však uloží. Vaše aktivita může být stále viditelná pro navštěvované weby, vaši organizaci nebo poskytovatele internetových služeb.</string>
++    <string name="incognito_mode_hint">Nyní můžete prohlížet soukromě a ostatní lidé, kteří toto zařízení používají, neuvidí vaši aktivitu. HYDE Browser nebude ukládat historii prohlížení, soubory cookie a data webů ani informace zadané do formulářů.\n\nStažené soubory a záložky se však uloží. Vaše aktivita může být stále viditelná pro navštěvované weby, vaši organizaci nebo poskytovatele internetových služeb.</string>
+     <string name="don_t_show_again">Znovu nezobrazovat</string>
+     <string name="why_icon_changed">Proč se změnila ikona?</string>
+     <string name="block_popups">Blokování vyskakovacích oken</string>
+@@ -99,7 +99,7 @@
+     <string name="external_app_open_error">Nelze najít vhodnou aplikaci</string>
+     <string name="home_page">Domovská stránka</string>
+     <array name="home_page_modes">
+-        <item>Domovská stránka TV Bro</item>
++        <item>Domovská stránka HYDE Browser</item>
+         <item>Vyhledávač</item>
+         <item>Vlastní</item>
+         <item>Prázdná</item>
+diff --git a/app/src/main/res/values-de/strings.xml b/app/src/main/res/values-de/strings.xml
+index c1c1c18..e497d67 100644
+--- a/app/src/main/res/values-de/strings.xml
++++ b/app/src/main/res/values-de/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: Webbrowser für TVs</string>
++  <string name="app_name">HYDE Browser: Webbrowser für TVs</string>
+   <string name="error">Fehler</string>
+   <string name="ok">OK</string>
+   <string name="url_prompt">Suchbegriff oder URL eingeben</string>
+@@ -42,7 +42,7 @@
+   <string name="clear">Löschen</string>
+   <string name="install">Installieren</string>
+   <string name="turn_on_unknown_sources">Bitte aktivieren Sie die Systemeinstellung „Unbekannte Quellen“</string>
+-  <string name="turn_on_unknown_sources_for_app">Bitte erlauben Sie TV Bro in den Systemeinstellungen, Apps aus „Unbekannten Quellen“ zu installieren</string>
++  <string name="turn_on_unknown_sources_for_app">Bitte erlauben Sie HYDE Browser in den Systemeinstellungen, Apps aus „Unbekannten Quellen“ zu installieren</string>
+   <string name="voice_search_not_found">Sprachsuche nicht gefunden</string>
+   <string name="new_version_dialog_title">Neue Version verfügbar</string>
+   <string name="later">Später</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">Direkter Navigationsmodus</string>
+   <string name="direct_navigation_mode_message">Direkte Navigation blendet den Bildschirm-Cursor aus und leitet Tasten von Ihrer Fernbedienung oder Ihrem Gamecontroller direkt an die Webseite weiter, sodass Seiten mit TV- oder Tastaturfokus Links und Steuerelemente hervorheben können.\n\nUm diesen Modus zu beenden: Drücken Sie Zurück auf der TV-Fernbedienung oder halten Sie die B-Taste am Gamecontroller gedrückt.\n\nDieser Modus funktioniert am besten mit der WebView-Engine: WebView unterstützt das Verschieben des Fokus durch die Seite mit dem Steuerkreuz.</string>
+   <string name="incognito_mode">Inkognito-Modus</string>
+-  <string name="incognito_mode_hint">Jetzt können Sie privat surfen und andere Personen, die dieses Gerät verwenden, können Ihre Aktivitäten nicht sehen. TV Bro speichert Ihren Browserverlauf, Cookies und Websitedaten sowie in Formulare eingegebene Informationen nicht.\n\nDownloads und Lesezeichen werden jedoch gespeichert. Ihre Aktivitäten sind möglicherweise weiterhin für von Ihnen besuchte Websites, Ihre Organisation oder Ihren Internetdienstanbieter sichtbar.</string>
++  <string name="incognito_mode_hint">Jetzt können Sie privat surfen und andere Personen, die dieses Gerät verwenden, können Ihre Aktivitäten nicht sehen. HYDE Browser speichert Ihren Browserverlauf, Cookies und Websitedaten sowie in Formulare eingegebene Informationen nicht.\n\nDownloads und Lesezeichen werden jedoch gespeichert. Ihre Aktivitäten sind möglicherweise weiterhin für von Ihnen besuchte Websites, Ihre Organisation oder Ihren Internetdienstanbieter sichtbar.</string>
+   <string name="don_t_show_again">Nicht mehr anzeigen</string>
+   <string name="why_icon_changed">Warum wurde das Symbol geändert?</string>
+   <string name="no_bookmarks_yet">Noch keine Lesezeichen</string>
+@@ -98,7 +98,7 @@
+   </string-array>
+   <string name="home_page">Startseite</string>
+   <string-array name="home_page_modes">
+-    <item>TV Bro-Startseite</item>
++    <item>HYDE Browser-Startseite</item>
+     <item>Suchmaschine</item>
+     <item>Benutzerdefiniert</item>
+     <item>Leer</item>
+diff --git a/app/src/main/res/values-el/strings.xml b/app/src/main/res/values-el/strings.xml
+index f5bcbe3..5ad4e07 100644
+--- a/app/src/main/res/values-el/strings.xml
++++ b/app/src/main/res/values-el/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro: Πρόγραμμα περιήγησης για τηλεόραση</string>
++    <string name="app_name">HYDE Browser: Πρόγραμμα περιήγησης για τηλεόραση</string>
+     <string name="error">Σφάλμα</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">Εισαγάγετε κείμενο αναζήτησης ή URL</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">Εκκαθάριση</string>
+     <string name="install">Εγκατάσταση</string>
+     <string name="turn_on_unknown_sources">Ενεργοποιήστε τη ρύθμιση συστήματος «Άγνωστες πηγές»</string>
+-    <string name="turn_on_unknown_sources_for_app">Επιτρέψτε στο TV Bro να εγκαθιστά εφαρμογές από «Άγνωστες πηγές» στις ρυθμίσεις συστήματος</string>
++    <string name="turn_on_unknown_sources_for_app">Επιτρέψτε στο HYDE Browser να εγκαθιστά εφαρμογές από «Άγνωστες πηγές» στις ρυθμίσεις συστήματος</string>
+     <string name="voice_search_not_found">Η φωνητική αναζήτηση δεν βρέθηκε</string>
+     <string name="new_version_dialog_title">Υπάρχει διαθέσιμη νέα έκδοση</string>
+     <string name="later">Αργότερα</string>
+@@ -79,7 +79,7 @@
+         <item>Σκούρο</item>
+     </array>
+     <string name="incognito_mode">Λειτουργία ανώνυμης περιήγησης</string>
+-    <string name="incognito_mode_hint">Τώρα μπορείτε να περιηγείστε ιδιωτικά και τα άλλα άτομα που χρησιμοποιούν αυτή τη συσκευή δεν θα βλέπουν τη δραστηριότητά σας. Το TV Bro δεν θα αποθηκεύει το ιστορικό περιήγησης, τα cookies και τα δεδομένα ιστοτόπων ή τις πληροφορίες που εισάγετε σε φόρμες.\n\nΩστόσο, οι λήψεις και οι σελιδοδείκτες θα αποθηκεύονται. Η δραστηριότητά σας μπορεί να εξακολουθεί να είναι ορατή στους ιστοτόπους που επισκέπτεστε, στον οργανισμό σας ή στον πάροχο υπηρεσιών διαδικτύου.</string>
++    <string name="incognito_mode_hint">Τώρα μπορείτε να περιηγείστε ιδιωτικά και τα άλλα άτομα που χρησιμοποιούν αυτή τη συσκευή δεν θα βλέπουν τη δραστηριότητά σας. Το HYDE Browser δεν θα αποθηκεύει το ιστορικό περιήγησης, τα cookies και τα δεδομένα ιστοτόπων ή τις πληροφορίες που εισάγετε σε φόρμες.\n\nΩστόσο, οι λήψεις και οι σελιδοδείκτες θα αποθηκεύονται. Η δραστηριότητά σας μπορεί να εξακολουθεί να είναι ορατή στους ιστοτόπους που επισκέπτεστε, στον οργανισμό σας ή στον πάροχο υπηρεσιών διαδικτύου.</string>
+     <string name="don_t_show_again">Να μην εμφανιστεί ξανά</string>
+     <string name="why_icon_changed">Γιατί άλλαξε το εικονίδιο;</string>
+     <string name="block_popups">Αποκλεισμός αναδυόμενων παραθύρων</string>
+@@ -99,7 +99,7 @@
+     <string name="external_app_open_error">Δεν βρέθηκε κατάλληλη εφαρμογή</string>
+     <string name="home_page">Αρχική σελίδα</string>
+     <array name="home_page_modes">
+-        <item>Αρχική TV Bro</item>
++        <item>Αρχική HYDE Browser</item>
+         <item>Μηχανή αναζήτησης</item>
+         <item>Προσαρμοσμένη</item>
+         <item>Κενή</item>
+diff --git a/app/src/main/res/values-es/strings.xml b/app/src/main/res/values-es/strings.xml
+index 821b7e9..05459ac 100644
+--- a/app/src/main/res/values-es/strings.xml
++++ b/app/src/main/res/values-es/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro: navegador web para TV</string>
++    <string name="app_name">HYDE Browser: navegador web para TV</string>
+     <string name="error">Error</string>
+     <string name="ok">Aceptar</string>
+     <string name="url_prompt">Introduce el texto de búsqueda o la URL</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">Borrar</string>
+     <string name="install">Instalar</string>
+     <string name="turn_on_unknown_sources">Activa el ajuste del sistema \"Orígenes desconocidos\"</string>
+-    <string name="turn_on_unknown_sources_for_app">Permite que TV Bro instale aplicaciones de \"Orígenes desconocidos\" en los ajustes del sistema</string>
++    <string name="turn_on_unknown_sources_for_app">Permite que HYDE Browser instale aplicaciones de \"Orígenes desconocidos\" en los ajustes del sistema</string>
+     <string name="voice_search_not_found">Búsqueda por voz no disponible</string>
+     <string name="new_version_dialog_title">Nueva versión disponible</string>
+     <string name="later">Más tarde</string>
+@@ -79,7 +79,7 @@
+         <item>Oscuro</item>
+     </array>
+     <string name="incognito_mode">Modo incógnito</string>
+-    <string name="incognito_mode_hint">Ahora puedes navegar de forma privada y otras personas que usen este dispositivo no verán tu actividad. TV Bro no guardará tu historial de navegación, las cookies ni los datos de sitios, ni la información introducida en formularios.\n\nSin embargo, las descargas y los marcadores sí se guardarán. Tu actividad puede seguir siendo visible para los sitios web que visites, tu organización o tu proveedor de servicios de Internet.</string>
++    <string name="incognito_mode_hint">Ahora puedes navegar de forma privada y otras personas que usen este dispositivo no verán tu actividad. HYDE Browser no guardará tu historial de navegación, las cookies ni los datos de sitios, ni la información introducida en formularios.\n\nSin embargo, las descargas y los marcadores sí se guardarán. Tu actividad puede seguir siendo visible para los sitios web que visites, tu organización o tu proveedor de servicios de Internet.</string>
+     <string name="don_t_show_again">No volver a mostrar</string>
+     <string name="why_icon_changed">¿Por qué ha cambiado el icono?</string>
+     <string name="block_popups">Bloqueo de ventanas emergentes</string>
+@@ -99,7 +99,7 @@
+     <string name="external_app_open_error">No se encuentra ninguna aplicación adecuada</string>
+     <string name="home_page">Página de inicio</string>
+     <array name="home_page_modes">
+-        <item>Inicio de TV Bro</item>
++        <item>Inicio de HYDE Browser</item>
+         <item>Motor de búsqueda</item>
+         <item>Personalizada</item>
+         <item>En blanco</item>
+diff --git a/app/src/main/res/values-fa/strings.xml b/app/src/main/res/values-fa/strings.xml
+index 62fa76b..1011415 100644
+--- a/app/src/main/res/values-fa/strings.xml
++++ b/app/src/main/res/values-fa/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: مرورگر وب تلویزیون</string>
++  <string name="app_name">HYDE Browser: مرورگر وب تلویزیون</string>
+   <string name="error">خطا</string>
+   <string name="ok">تأیید</string>
+   <string name="url_prompt">جستجو یا URL را تایپ کنید</string>
+@@ -42,7 +42,7 @@
+   <string name="clear">پاک کردن</string>
+   <string name="install">نصب</string>
+   <string name="turn_on_unknown_sources">لطفاً تنظیم سیستمی «منابع ناشناخته» را فعال کنید</string>
+-  <string name="turn_on_unknown_sources_for_app">لطفاً در تنظیمات سیستم به TV Bro اجازه دهید برنامه‌ها را از «منابع ناشناخته» نصب کند</string>
++  <string name="turn_on_unknown_sources_for_app">لطفاً در تنظیمات سیستم به HYDE Browser اجازه دهید برنامه‌ها را از «منابع ناشناخته» نصب کند</string>
+   <string name="voice_search_not_found">جستجوی صوتی یافت نشد</string>
+   <string name="new_version_dialog_title">نسخه جدید در دسترس است</string>
+   <string name="later">بعداً</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">حالت پیمایش مستقیم</string>
+   <string name="direct_navigation_mode_message">پیمایش مستقیم مکان‌نما را پنهان می‌کند و فشردن کلیدهای ریموت یا دسته بازی را مستقیماً به صفحه وب می‌فرستد تا سایت‌هایی که فوکوس تلویزیونی یا صفحه‌کلید را پشتیبانی می‌کنند بتوانند پیوندها و کنترل‌ها را برجسته کنند.\n\nبرای خروج از این حالت: «برگشت» را روی ریموت تلویزیون بزنید یا دکمه B دسته را نگه دارید.\n\nاین حالت با موتور WebView بهتر کار می‌کند: WebView جابه‌جایی فوکوس در صفحه با D-pad را پشتیبانی می‌کند.</string>
+   <string name="incognito_mode">حالت ناشناس</string>
+-  <string name="incognito_mode_hint">اکنون می‌توانید به‌صورت خصوصی مرور کنید و سایر افرادی که از این دستگاه استفاده می‌کنند فعالیت شما را نخواهند دید. TV Bro تاریخچه مرور، کوکی‌ها، داده‌های سایت‌ها و اطلاعات واردشده در فرم‌ها را ذخیره نمی‌کند.\n\nبا این حال، بارگیری‌ها و نشانک‌ها ذخیره خواهند شد. ممکن است فعالیت شما همچنان برای وب‌سایت‌هایی که بازدید می‌کنید، سازمان شما یا ارائه‌دهنده خدمات اینترنت قابل مشاهده باشد.</string>
++  <string name="incognito_mode_hint">اکنون می‌توانید به‌صورت خصوصی مرور کنید و سایر افرادی که از این دستگاه استفاده می‌کنند فعالیت شما را نخواهند دید. HYDE Browser تاریخچه مرور، کوکی‌ها، داده‌های سایت‌ها و اطلاعات واردشده در فرم‌ها را ذخیره نمی‌کند.\n\nبا این حال، بارگیری‌ها و نشانک‌ها ذخیره خواهند شد. ممکن است فعالیت شما همچنان برای وب‌سایت‌هایی که بازدید می‌کنید، سازمان شما یا ارائه‌دهنده خدمات اینترنت قابل مشاهده باشد.</string>
+   <string name="don_t_show_again">دیگر نشان نده</string>
+   <string name="why_icon_changed">چرا نماد تغییر کرد؟</string>
+   <string name="no_bookmarks_yet">هنوز هیچ نشانکی وجود ندارد</string>
+@@ -98,7 +98,7 @@
+   </string-array>
+   <string name="home_page">صفحه اصلی</string>
+   <string-array name="home_page_modes">
+-    <item>صفحه اصلی TV Bro</item>
++    <item>صفحه اصلی HYDE Browser</item>
+     <item>موتور جستجو</item>
+     <item>سفارشی</item>
+     <item>خالی</item>
+diff --git a/app/src/main/res/values-fr/strings.xml b/app/src/main/res/values-fr/strings.xml
+index ca991f1..5e9621b 100644
+--- a/app/src/main/res/values-fr/strings.xml
++++ b/app/src/main/res/values-fr/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro : navigateur web pour TV</string>
++    <string name="app_name">HYDE Browser : navigateur web pour TV</string>
+     <string name="error">Erreur</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">Saisissez une recherche ou une URL</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">Effacer</string>
+     <string name="install">Installer</string>
+     <string name="turn_on_unknown_sources">Veuillez activer le paramètre système « Sources inconnues »</string>
+-    <string name="turn_on_unknown_sources_for_app">Veuillez autoriser TV Bro à installer des applications de « Sources inconnues » dans les paramètres système</string>
++    <string name="turn_on_unknown_sources_for_app">Veuillez autoriser HYDE Browser à installer des applications de « Sources inconnues » dans les paramètres système</string>
+     <string name="voice_search_not_found">Recherche vocale introuvable</string>
+     <string name="new_version_dialog_title">Nouvelle version disponible</string>
+     <string name="later">Plus tard</string>
+@@ -79,7 +79,7 @@
+         <item>Sombre</item>
+     </array>
+     <string name="incognito_mode">Mode navigation privée</string>
+-    <string name="incognito_mode_hint">Vous pouvez maintenant naviguer en privé : les autres personnes qui utilisent cet appareil ne verront pas votre activité. TV Bro n’enregistrera pas votre historique de navigation, les cookies et données de sites, ni les informations saisies dans les formulaires.\n\nToutefois, les téléchargements et les favoris seront enregistrés. Votre activité peut rester visible par les sites web que vous consultez, votre organisation ou votre fournisseur d’accès à Internet.</string>
++    <string name="incognito_mode_hint">Vous pouvez maintenant naviguer en privé : les autres personnes qui utilisent cet appareil ne verront pas votre activité. HYDE Browser n’enregistrera pas votre historique de navigation, les cookies et données de sites, ni les informations saisies dans les formulaires.\n\nToutefois, les téléchargements et les favoris seront enregistrés. Votre activité peut rester visible par les sites web que vous consultez, votre organisation ou votre fournisseur d’accès à Internet.</string>
+     <string name="don_t_show_again">Ne plus afficher</string>
+     <string name="why_icon_changed">Pourquoi l’icône a-t-elle changé ?</string>
+     <string name="block_popups">Blocage des fenêtres pop-up</string>
+@@ -99,7 +99,7 @@
+     <string name="external_app_open_error">Aucune application adaptée trouvée</string>
+     <string name="home_page">Page d’accueil</string>
+     <array name="home_page_modes">
+-        <item>Accueil TV Bro</item>
++        <item>Accueil HYDE Browser</item>
+         <item>Moteur de recherche</item>
+         <item>Personnalisée</item>
+         <item>Page vierge</item>
+diff --git a/app/src/main/res/values-it/strings.xml b/app/src/main/res/values-it/strings.xml
+index 263f809..9ad2da7 100644
+--- a/app/src/main/res/values-it/strings.xml
++++ b/app/src/main/res/values-it/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: browser web per TV</string>
++  <string name="app_name">HYDE Browser: browser web per TV</string>
+   <string name="error">Errore</string>
+   <string name="ok">OK</string>
+   <string name="url_prompt">Inserisci testo da cercare o URL</string>
+@@ -44,7 +44,7 @@
+   <string name="clear">Cancella</string>
+   <string name="install">Installa</string>
+   <string name="turn_on_unknown_sources">Attiva l\'impostazione di sistema \"Origini sconosciute\"</string>
+-  <string name="turn_on_unknown_sources_for_app">Consenti a TV Bro di installare app da \"Origini sconosciute\" nelle impostazioni di sistema</string>
++  <string name="turn_on_unknown_sources_for_app">Consenti a HYDE Browser di installare app da \"Origini sconosciute\" nelle impostazioni di sistema</string>
+   <string name="voice_search_not_found">Ricerca vocale non trovata</string>
+   <string name="new_version_dialog_title">Nuova versione disponibile</string>
+   <string name="later">Più tardi</string>
+@@ -78,7 +78,7 @@
+     <item>Scuro</item>
+   </array>
+   <string name="incognito_mode">Modalità Incognito</string>
+-  <string name="incognito_mode_hint">Ora puoi navigare in privato e le altre persone che usano questo dispositivo non vedranno la tua attività. TV Bro non salverà la cronologia di navigazione, i cookie e i dati dei siti, né le informazioni inserite nei moduli.\n\nTuttavia, i download e i segnalibri verranno salvati. La tua attività potrebbe essere comunque visibile ai siti web che visiti, alla tua organizzazione o al tuo provider di servizi Internet.</string>
++  <string name="incognito_mode_hint">Ora puoi navigare in privato e le altre persone che usano questo dispositivo non vedranno la tua attività. HYDE Browser non salverà la cronologia di navigazione, i cookie e i dati dei siti, né le informazioni inserite nei moduli.\n\nTuttavia, i download e i segnalibri verranno salvati. La tua attività potrebbe essere comunque visibile ai siti web che visiti, alla tua organizzazione o al tuo provider di servizi Internet.</string>
+   <string name="don_t_show_again">Non mostrare più</string>
+   <string name="why_icon_changed">Perché l\'icona è cambiata?</string>
+   <string name="block_popups">Blocco popup</string>
+@@ -98,7 +98,7 @@
+   </string-array>
+   <string name="home_page">Pagina iniziale</string>
+   <string-array name="home_page_modes">
+-    <item>Home di TV Bro</item>
++    <item>Home di HYDE Browser</item>
+     <item>Motore di ricerca</item>
+     <item>Personalizzata</item>
+     <item>Vuota</item>
+diff --git a/app/src/main/res/values-iw/strings.xml b/app/src/main/res/values-iw/strings.xml
+index fae48d0..b7f114e 100644
+--- a/app/src/main/res/values-iw/strings.xml
++++ b/app/src/main/res/values-iw/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: דפדפן לטלוויזיה</string>
++  <string name="app_name">HYDE Browser: דפדפן לטלוויזיה</string>
+   <string name="error">שגיאה</string>
+   <string name="ok">OK</string>
+   <string name="url_prompt">הזן טקסט לחיפוש או URL</string>
+@@ -42,7 +42,7 @@
+   <string name="clear">נקה</string>
+   <string name="install">התקן</string>
+   <string name="turn_on_unknown_sources">אנא הפעל את \"התקן ממקורות לא ידועים\" בהגדרות המערכת</string>
+-  <string name="turn_on_unknown_sources_for_app">אנא אפשר ל-TV Bro להתקין אפליקציות מ\"מקורות לא ידועים\" בהגדרות המערכת</string>
++  <string name="turn_on_unknown_sources_for_app">אנא אפשר ל-HYDE Browser להתקין אפליקציות מ\"מקורות לא ידועים\" בהגדרות המערכת</string>
+   <string name="voice_search_not_found">חיפוש קולי לא נמצא</string>
+   <string name="new_version_dialog_title">גרסה חדשה זמינה</string>
+   <string name="later">מאוחר יותר</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">מצב ניווט ישיר</string>
+   <string name="direct_navigation_mode_message">ניווט ישיר מסתיר את סמן המסך ומעביר לחיצות מהשלט או מבקר המשחק ישירות לדף האינטרנט, כך שאתרים שתומכים במיקוד לטלוויזיה או במקלדת יכולים להדגיש קישורים ופקדים.\n\nליציאה מהמצב: לחץ חזור בשלט הטלוויזיה או החזק את כפתור B בבקר.\n\nהמצב עובד הכי טוב עם מנוע WebView: WebView תומך בהזזת המיקוד בדף באמצעות D-pad.</string>
+   <string name="incognito_mode">מצב גלישה בסתר</string>
+-  <string name="incognito_mode_hint">עכשיו אתה יכול לגלוש באופן פרטי, ואנשים אחרים שמשתמשים במכשיר הזה לא יראו את הפעילות שלך. TV Bro לא ישמור את היסטוריית הגלישה שלך, קובצי Cookie, נתוני אתרים או מידע שהוזן בטפסים.\n\nעם זאת, הורדות וסימניות יישמרו. ייתכן שהפעילות שלך עדיין תהיה גלויה לאתרים שבהם אתה מבקר, לארגון שלך או לספק שירותי האינטרנט שלך.</string>
++  <string name="incognito_mode_hint">עכשיו אתה יכול לגלוש באופן פרטי, ואנשים אחרים שמשתמשים במכשיר הזה לא יראו את הפעילות שלך. HYDE Browser לא ישמור את היסטוריית הגלישה שלך, קובצי Cookie, נתוני אתרים או מידע שהוזן בטפסים.\n\nעם זאת, הורדות וסימניות יישמרו. ייתכן שהפעילות שלך עדיין תהיה גלויה לאתרים שבהם אתה מבקר, לארגון שלך או לספק שירותי האינטרנט שלך.</string>
+   <string name="don_t_show_again">אל תראה שוב</string>
+   <string name="why_icon_changed">למה הסמל השתנה?</string>
+   <string name="no_bookmarks_yet">עדיין אין סימניות</string>
+@@ -98,7 +98,7 @@
+   </string-array>
+   <string name="home_page">דף הבית</string>
+   <string-array name="home_page_modes">
+-    <item>דף הבית של TV Bro</item>
++    <item>דף הבית של HYDE Browser</item>
+     <item>מנוע חיפוש</item>
+     <item>מותאם אישית</item>
+     <item>ריק</item>
+diff --git a/app/src/main/res/values-pl/strings.xml b/app/src/main/res/values-pl/strings.xml
+index ab357c8..918bf5a 100644
+--- a/app/src/main/res/values-pl/strings.xml
++++ b/app/src/main/res/values-pl/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: Przeglądarka internetowa dla TV</string>
++  <string name="app_name">HYDE Browser: Przeglądarka internetowa dla TV</string>
+   <string name="error">Błąd</string>
+   <string name="ok">OK</string>
+   <string name="url_prompt">Wpisz zapytanie lub adres URL</string>
+@@ -44,7 +44,7 @@
+   <string name="clear">Wyczyść</string>
+   <string name="install">Zainstaluj</string>
+   <string name="turn_on_unknown_sources">Włącz ustawienie systemowe „Nieznane źródła”</string>
+-  <string name="turn_on_unknown_sources_for_app">Zezwól aplikacji TV Bro na instalowanie aplikacji z „Nieznanych źródeł” w ustawieniach systemu</string>
++  <string name="turn_on_unknown_sources_for_app">Zezwól aplikacji HYDE Browser na instalowanie aplikacji z „Nieznanych źródeł” w ustawieniach systemu</string>
+   <string name="voice_search_not_found">Nie znaleziono wyszukiwania głosowego</string>
+   <string name="new_version_dialog_title">Dostępna nowa wersja!</string>
+   <string name="later">Później</string>
+@@ -78,7 +78,7 @@
+     <item>Ciemny</item>
+   </array>
+   <string name="incognito_mode">Tryb incognito</string>
+-  <string name="incognito_mode_hint">Teraz możesz przeglądać internet prywatnie, a inne osoby, które używają tego urządzenia, nie zobaczą Twojej aktywności. TV Bro nie będzie zapisywać historii przeglądania, plików cookie, danych witryn ani informacji wpisanych w formularzach.\n\nPobrane pliki i zakładki zostaną jednak zapisane. Twoja aktywność może być nadal widoczna dla odwiedzanych witryn, Twojej organizacji lub dostawcy internetu.</string>
++  <string name="incognito_mode_hint">Teraz możesz przeglądać internet prywatnie, a inne osoby, które używają tego urządzenia, nie zobaczą Twojej aktywności. HYDE Browser nie będzie zapisywać historii przeglądania, plików cookie, danych witryn ani informacji wpisanych w formularzach.\n\nPobrane pliki i zakładki zostaną jednak zapisane. Twoja aktywność może być nadal widoczna dla odwiedzanych witryn, Twojej organizacji lub dostawcy internetu.</string>
+   <string name="don_t_show_again">Nie pokazuj ponownie</string>
+   <string name="why_icon_changed">Dlaczego zmieniła się ikona?</string>
+   <string name="block_popups">Blokowanie wyskakujących okienek</string>
+@@ -98,7 +98,7 @@
+   <string name="external_app_open_error">Nie można znaleźć odpowiedniej aplikacji</string>
+   <string name="home_page">Strona główna</string>
+   <string-array name="home_page_modes">
+-    <item>Strona główna TV Bro</item>
++    <item>Strona główna HYDE Browser</item>
+     <item>Wyszukiwarka</item>
+     <item>Niestandardowa</item>
+     <item>Pusta</item>
+diff --git a/app/src/main/res/values-pt-rPT/strings.xml b/app/src/main/res/values-pt-rPT/strings.xml
+index 45a5891..9b0b8dc 100644
+--- a/app/src/main/res/values-pt-rPT/strings.xml
++++ b/app/src/main/res/values-pt-rPT/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro: navegador web para TV</string>
++    <string name="app_name">HYDE Browser: navegador web para TV</string>
+     <string name="error">Erro</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">Introduza o texto de pesquisa ou o URL</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">Limpar</string>
+     <string name="install">Instalar</string>
+     <string name="turn_on_unknown_sources">Ative a definição do sistema \"Fontes desconhecidas\"</string>
+-    <string name="turn_on_unknown_sources_for_app">Permita que o TV Bro instale aplicações de \"Fontes desconhecidas\" nas definições do sistema</string>
++    <string name="turn_on_unknown_sources_for_app">Permita que o HYDE Browser instale aplicações de \"Fontes desconhecidas\" nas definições do sistema</string>
+     <string name="voice_search_not_found">Pesquisa por voz não encontrada</string>
+     <string name="new_version_dialog_title">Nova versão disponível</string>
+     <string name="later">Mais tarde</string>
+@@ -79,7 +79,7 @@
+         <item>Escuro</item>
+     </array>
+     <string name="incognito_mode">Modo de navegação anónima</string>
+-    <string name="incognito_mode_hint">Agora pode navegar de forma privada e as outras pessoas que utilizam este dispositivo não verão a sua atividade. O TV Bro não guardará o seu histórico de navegação, os cookies e dados de sites, nem as informações introduzidas em formulários.\n\nNo entanto, as transferências e os marcadores serão guardados. A sua atividade pode continuar visível para os sites que visita, para a sua organização ou para o seu fornecedor de serviços de internet.</string>
++    <string name="incognito_mode_hint">Agora pode navegar de forma privada e as outras pessoas que utilizam este dispositivo não verão a sua atividade. O HYDE Browser não guardará o seu histórico de navegação, os cookies e dados de sites, nem as informações introduzidas em formulários.\n\nNo entanto, as transferências e os marcadores serão guardados. A sua atividade pode continuar visível para os sites que visita, para a sua organização ou para o seu fornecedor de serviços de internet.</string>
+     <string name="don_t_show_again">Não mostrar novamente</string>
+     <string name="why_icon_changed">Porque é que o ícone mudou?</string>
+     <string name="block_popups">Bloqueio de pop-ups</string>
+@@ -99,7 +99,7 @@
+     <string name="external_app_open_error">Não foi encontrada nenhuma aplicação adequada</string>
+     <string name="home_page">Página inicial</string>
+     <array name="home_page_modes">
+-        <item>Início do TV Bro</item>
++        <item>Início do HYDE Browser</item>
+         <item>Motor de pesquisa</item>
+         <item>Personalizada</item>
+         <item>Em branco</item>
+diff --git a/app/src/main/res/values-pt/strings.xml b/app/src/main/res/values-pt/strings.xml
+index 71792f2..281671b 100644
+--- a/app/src/main/res/values-pt/strings.xml
++++ b/app/src/main/res/values-pt/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro: navegador web para TV</string>
++    <string name="app_name">HYDE Browser: navegador web para TV</string>
+     <string name="error">Erro</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">Digite o texto da pesquisa ou o URL</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">Limpar</string>
+     <string name="install">Instalar</string>
+     <string name="turn_on_unknown_sources">Ative a configuração do sistema \"Fontes desconhecidas\"</string>
+-    <string name="turn_on_unknown_sources_for_app">Permita que o TV Bro instale aplicativos de \"Fontes desconhecidas\" nas configurações do sistema</string>
++    <string name="turn_on_unknown_sources_for_app">Permita que o HYDE Browser instale aplicativos de \"Fontes desconhecidas\" nas configurações do sistema</string>
+     <string name="voice_search_not_found">Pesquisa por voz não encontrada</string>
+     <string name="new_version_dialog_title">Nova versão disponível</string>
+     <string name="later">Mais tarde</string>
+@@ -79,7 +79,7 @@
+         <item>Escuro</item>
+     </array>
+     <string name="incognito_mode">Modo anônimo</string>
+-    <string name="incognito_mode_hint">Agora você pode navegar com privacidade, e outras pessoas que usam este dispositivo não verão sua atividade. O TV Bro não salvará seu histórico de navegação, cookies e dados de sites, nem informações inseridas em formulários.\n\nNo entanto, os downloads e favoritos serão salvos. Sua atividade ainda pode ficar visível para os sites que você visita, sua organização ou seu provedor de internet.</string>
++    <string name="incognito_mode_hint">Agora você pode navegar com privacidade, e outras pessoas que usam este dispositivo não verão sua atividade. O HYDE Browser não salvará seu histórico de navegação, cookies e dados de sites, nem informações inseridas em formulários.\n\nNo entanto, os downloads e favoritos serão salvos. Sua atividade ainda pode ficar visível para os sites que você visita, sua organização ou seu provedor de internet.</string>
+     <string name="don_t_show_again">Não mostrar novamente</string>
+     <string name="why_icon_changed">Por que o ícone mudou?</string>
+     <string name="block_popups">Bloqueio de pop-ups</string>
+@@ -99,7 +99,7 @@
+     <string name="external_app_open_error">Nenhum aplicativo adequado encontrado</string>
+     <string name="home_page">Página inicial</string>
+     <array name="home_page_modes">
+-        <item>Início do TV Bro</item>
++        <item>Início do HYDE Browser</item>
+         <item>Mecanismo de pesquisa</item>
+         <item>Personalizada</item>
+         <item>Em branco</item>
+diff --git a/app/src/main/res/values-ru/hyde.xml b/app/src/main/res/values-ru/hyde.xml
+new file mode 100644
+index 0000000..9ab993a
+--- /dev/null
++++ b/app/src/main/res/values-ru/hyde.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="hyde_about_text">Сделан на исходниках TV Bro, автор Fedir Tsapana: https://github.com/truefedex/tv-bro</string>
++</resources>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index 18347d9..cf6d624 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: браузер для ТВ</string>
++  <string name="app_name">HYDE Browser: браузер для ТВ</string>
+   <string name="add">Добавить</string>
+   <string name="allow">Разрешить</string>
+   <string name="bookmarks">Закладки</string>
+@@ -41,7 +41,7 @@
+   <string name="voice_search">Голосовой поиск</string>
+   <string name="install">Установить</string>
+   <string name="turn_on_unknown_sources">Пожалуйста, включите системную настройку «Неизвестные источники»</string>
+-  <string name="turn_on_unknown_sources_for_app">Пожалуйста, разрешите TV Bro устанавливать приложения из «Неизвестных источников» в настройках системы</string>
++  <string name="turn_on_unknown_sources_for_app">Пожалуйста, разрешите HYDE Browser устанавливать приложения из «Неизвестных источников» в настройках системы</string>
+   <string name="voice_search_not_found">Приложение голосового поиска не найдено</string>
+   <string name="msg_delete_history_all">Удалить всю историю?</string>
+   <string name="downloads">Загрузки</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">Режим прямой навигации</string>
+   <string name="direct_navigation_mode_message">Прямая навигация скрывает курсор на экране и передаёт нажатия с пульта или геймпада прямо на веб-страницу, чтобы сайты с поддержкой фокуса для ТВ или клавиатуры могли выделять ссылки и элементы управления.\n\nЧтобы выйти из этого режима: нажмите «Назад» на пульте телевизора или удерживайте кнопку B на геймпаде.\n\nЭтот режим лучше всего работает с движком WebView: WebView поддерживает перемещение фокуса по странице с помощью D-pad.</string>
+   <string name="incognito_mode">Режим инкогнито</string>
+-  <string name="incognito_mode_hint">Теперь вы можете просматривать сайты конфиденциально, и другие люди, использующие это устройство, не увидят ваших действий. TV Bro не будет сохранять историю посещений, файлы cookie, данные сайтов и информацию, введённую в формы.\n\nОднако загрузки и закладки будут сохранены. Ваши действия по-прежнему могут быть видны сайтам, которые вы посещаете, вашей организации или интернет-провайдеру.</string>
++  <string name="incognito_mode_hint">Теперь вы можете просматривать сайты конфиденциально, и другие люди, использующие это устройство, не увидят ваших действий. HYDE Browser не будет сохранять историю посещений, файлы cookie, данные сайтов и информацию, введённую в формы.\n\nОднако загрузки и закладки будут сохранены. Ваши действия по-прежнему могут быть видны сайтам, которые вы посещаете, вашей организации или интернет-провайдеру.</string>
+   <string name="don_t_show_again">Больше не показывать</string>
+   <string name="why_icon_changed">Почему изменился значок?</string>
+   <string name="no_bookmarks_yet">Закладок пока нет</string>
+@@ -99,7 +99,7 @@
+   </string-array>
+   <string name="home_page">Домашняя страница</string>
+   <string-array name="home_page_modes">
+-    <item>Домашняя страница TV Bro</item>
++    <item>Домашняя страница HYDE Browser</item>
+     <item>Поисковая система</item>
+     <item>Пользовательская</item>
+     <item>Пустая</item>
+diff --git a/app/src/main/res/values-uk/strings.xml b/app/src/main/res/values-uk/strings.xml
+index 644c103..bbdc9cc 100644
+--- a/app/src/main/res/values-uk/strings.xml
++++ b/app/src/main/res/values-uk/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: браузер для ТБ</string>
++  <string name="app_name">HYDE Browser: браузер для ТБ</string>
+   <string name="add">Додати</string>
+   <string name="allow">Дозволити</string>
+   <string name="bookmarks">Закладки</string>
+@@ -41,7 +41,7 @@
+   <string name="voice_search">Голосовий пошук</string>
+   <string name="install">Встановити</string>
+   <string name="turn_on_unknown_sources">Будь ласка, увімкніть системне налаштування «Невідомі джерела»</string>
+-  <string name="turn_on_unknown_sources_for_app">Будь ласка, дозвольте TV Bro встановлювати додатки з «Невідомих джерел» у системних налаштуваннях</string>
++  <string name="turn_on_unknown_sources_for_app">Будь ласка, дозвольте HYDE Browser встановлювати додатки з «Невідомих джерел» у системних налаштуваннях</string>
+   <string name="voice_search_not_found">Додаток голосового пошуку не знайдено</string>
+   <string name="msg_delete_history_all">Видалити усю історію?</string>
+   <string name="new_version_dialog_title">Доступна нова версія</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">Режим прямої навігації</string>
+   <string name="direct_navigation_mode_message">Пряма навігація приховує курсор на екрані й передає натискання з пульта чи геймпада безпосередньо на вебсторінку, щоб сайти з підтримкою фокусу для ТБ або клавіатури могли виділяти посилання та елементи керування.\n\nЩоб вийти з цього режиму: натисніть «Назад» на пульті телевізора або утримуйте кнопку B на геймпаді.\n\nЦей режим найкраще працює з рушієм WebView: WebView підтримує переміщення фокусу сторінкою за допомогою D-pad.</string>
+   <string name="incognito_mode">Режим анонімного перегляду</string>
+-  <string name="incognito_mode_hint">Тепер ви можете переглядати сторінки приватно, і інші люди, які використовують цей пристрій, не бачитимуть ваших дій. TV Bro не зберігатиме історію переглядів, файли cookie, дані сайтів та інформацію, введену у форми.\n\nОднак завантаження та закладки буде збережено. Ваші дії все ще можуть бачити вебсайти, які ви відвідуєте, ваша організація чи інтернет-провайдер.</string>
++  <string name="incognito_mode_hint">Тепер ви можете переглядати сторінки приватно, і інші люди, які використовують цей пристрій, не бачитимуть ваших дій. HYDE Browser не зберігатиме історію переглядів, файли cookie, дані сайтів та інформацію, введену у форми.\n\nОднак завантаження та закладки буде збережено. Ваші дії все ще можуть бачити вебсайти, які ви відвідуєте, ваша організація чи інтернет-провайдер.</string>
+   <string name="don_t_show_again">Не показувати знову</string>
+   <string name="why_icon_changed">Чому змінився значок?</string>
+   <string name="no_bookmarks_yet">Закладок ще немає</string>
+@@ -98,7 +98,7 @@
+   </string-array>
+   <string name="home_page">Домашня сторінка</string>
+   <string-array name="home_page_modes">
+-    <item>Домашня сторінка TV Bro</item>
++    <item>Домашня сторінка HYDE Browser</item>
+     <item>Пошукова система</item>
+     <item>Власна</item>
+     <item>Порожня</item>
+diff --git a/app/src/main/res/values-vi/strings.xml b/app/src/main/res/values-vi/strings.xml
+index 5793e4b..4348a7a 100644
+--- a/app/src/main/res/values-vi/strings.xml
++++ b/app/src/main/res/values-vi/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro: Trình duyệt web TV</string>
++  <string name="app_name">HYDE Browser: Trình duyệt web TV</string>
+   <string name="error">Lỗi</string>
+   <string name="ok">OK</string>
+   <string name="url_prompt">Nhập từ khóa tìm kiếm hoặc URL</string>
+@@ -42,7 +42,7 @@
+   <string name="clear">Xóa</string>
+   <string name="install">Cài đặt</string>
+   <string name="turn_on_unknown_sources">Vui lòng bật cài đặt hệ thống \"Nguồn không xác định\"</string>
+-  <string name="turn_on_unknown_sources_for_app">Vui lòng cho phép TV Bro cài đặt ứng dụng từ \"Nguồn không xác định\" trong cài đặt hệ thống</string>
++  <string name="turn_on_unknown_sources_for_app">Vui lòng cho phép HYDE Browser cài đặt ứng dụng từ \"Nguồn không xác định\" trong cài đặt hệ thống</string>
+   <string name="voice_search_not_found">Không tìm thấy tìm kiếm bằng giọng nói</string>
+   <string name="new_version_dialog_title">Có phiên bản mới</string>
+   <string name="later">Để sau</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">Chế độ điều hướng trực tiếp</string>
+   <string name="direct_navigation_mode_message">Điều hướng trực tiếp ẩn con trỏ trên màn hình và gửi phím từ điều khiển từ xa hoặc tay cầm chơi game thẳng tới trang web, để các trang hỗ trợ tiêu điểm TV hoặc bàn phím có thể làm nổi bật liên kết và điều khiển.\n\nĐể thoát: nhấn Quay lại trên điều khiển TV hoặc giữ nút B trên tay cầm.\n\nChế độ này hoạt động tốt nhất với công cụ WebView: WebView hỗ trợ di chuyển tiêu điểm trong trang bằng D-pad.</string>
+   <string name="incognito_mode">Chế độ ẩn danh</string>
+-  <string name="incognito_mode_hint">Giờ đây, bạn có thể duyệt web một cách riêng tư và những người khác sử dụng thiết bị này sẽ không thấy hoạt động của bạn. TV Bro sẽ không lưu lịch sử duyệt web, cookie, dữ liệu trang web và thông tin bạn đã nhập vào biểu mẫu.\n\nTuy nhiên, các tệp tải xuống và dấu trang vẫn sẽ được lưu. Hoạt động của bạn có thể vẫn hiển thị với các trang web bạn truy cập, tổ chức của bạn hoặc nhà cung cấp dịch vụ internet.</string>
++  <string name="incognito_mode_hint">Giờ đây, bạn có thể duyệt web một cách riêng tư và những người khác sử dụng thiết bị này sẽ không thấy hoạt động của bạn. HYDE Browser sẽ không lưu lịch sử duyệt web, cookie, dữ liệu trang web và thông tin bạn đã nhập vào biểu mẫu.\n\nTuy nhiên, các tệp tải xuống và dấu trang vẫn sẽ được lưu. Hoạt động của bạn có thể vẫn hiển thị với các trang web bạn truy cập, tổ chức của bạn hoặc nhà cung cấp dịch vụ internet.</string>
+   <string name="don_t_show_again">Không hiển thị lại</string>
+   <string name="why_icon_changed">Tại sao biểu tượng thay đổi?</string>
+   <string name="no_bookmarks_yet">Chưa có dấu trang nào</string>
+@@ -98,7 +98,7 @@
+   </string-array>
+   <string name="home_page">Trang chủ</string>
+   <string-array name="home_page_modes">
+-    <item>Trang chủ TV Bro</item>
++    <item>Trang chủ HYDE Browser</item>
+     <item>Công cụ tìm kiếm</item>
+     <item>Tùy chỉnh</item>
+     <item>Trống</item>
+diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
+index 176497c..5425c20 100644
+--- a/app/src/main/res/values-zh-rTW/strings.xml
++++ b/app/src/main/res/values-zh-rTW/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">TV Bro：電視網頁瀏覽器</string>
++    <string name="app_name">HYDE Browser：電視網頁瀏覽器</string>
+     <string name="error">錯誤</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">輸入關鍵字或網址</string>
+@@ -44,7 +44,7 @@
+     <string name="clear">清除</string>
+     <string name="install">安裝</string>
+     <string name="turn_on_unknown_sources">請在系統設定中啟用「未知來源」</string>
+-    <string name="turn_on_unknown_sources_for_app">請在系統設定中允許 TV Bro 安裝來自「未知來源」的應用程式</string>
++    <string name="turn_on_unknown_sources_for_app">請在系統設定中允許 HYDE Browser 安裝來自「未知來源」的應用程式</string>
+     <string name="voice_search_not_found">找不到語音搜尋</string>
+     <string name="new_version_dialog_title">有可用的新版本</string>
+     <string name="later">稍後</string>
+@@ -73,7 +73,7 @@
+     <string name="direct_navigation_mode_message">直接導覽會隱藏螢幕游標，並將遙控器或遊戲手把的按鍵直接傳給網頁，讓支援電視或鍵盤焦點的網站能突顯連結與控制項。\n\n若要離開此模式：在電視遙控器上按「返回」，或在遊戲手把上長按 B 鍵。\n\n此模式以 WebView 引擎效果最佳：WebView 支援用方向鍵在頁面內移動焦點。</string>
+     <string name="theme">主題</string>
+     <string name="incognito_mode">無痕模式</string>
+-    <string name="incognito_mode_hint">您現在可以私密瀏覽，其他使用此裝置的人無法看到您的活動。TV Bro 不會儲存您的歷史紀錄、Cookies、網站資料，以及輸入表單的資訊。\n\n然而，下載和書籤仍會被儲存。您的活動仍可能會被您造訪的網站、您的組織，或是網路服務供應商看到。</string>
++    <string name="incognito_mode_hint">您現在可以私密瀏覽，其他使用此裝置的人無法看到您的活動。HYDE Browser 不會儲存您的歷史紀錄、Cookies、網站資料，以及輸入表單的資訊。\n\n然而，下載和書籤仍會被儲存。您的活動仍可能會被您造訪的網站、您的組織，或是網路服務供應商看到。</string>
+     <string name="don_t_show_again">不再顯示</string>
+     <string name="why_icon_changed">為什麼圖示變了？</string>
+     <string name="block_popups">阻擋彈出式視窗</string>
+@@ -98,7 +98,7 @@
+         <item>最常造訪</item>
+     </string-array>
+     <string-array name="home_page_modes">
+-        <item>TV Bro 首頁</item>
++        <item>HYDE Browser 首頁</item>
+         <item>搜尋引擎</item>
+         <item>自訂</item>
+         <item>空白</item>
+diff --git a/app/src/main/res/values-zh/strings.xml b/app/src/main/res/values-zh/strings.xml
+index 10aa9fa..a3d5474 100644
+--- a/app/src/main/res/values-zh/strings.xml
++++ b/app/src/main/res/values-zh/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version='1.0' encoding='utf-8'?>
+ <resources>
+-  <string name="app_name">TV Bro：电视网页浏览器</string>
++  <string name="app_name">HYDE Browser：电视网页浏览器</string>
+   <string name="error">错误</string>
+   <string name="ok">OK</string>
+   <string name="url_prompt">输入搜索查询文字或网址</string>
+@@ -42,7 +42,7 @@
+   <string name="clear">清除</string>
+   <string name="install">安装</string>
+   <string name="turn_on_unknown_sources">请打开“未知来源”系统设置</string>
+-  <string name="turn_on_unknown_sources_for_app">请允许 TV Bro 在系统设置中从“未知来源”安装应用</string>
++  <string name="turn_on_unknown_sources_for_app">请允许 HYDE Browser 在系统设置中从“未知来源”安装应用</string>
+   <string name="voice_search_not_found">找不到语音搜索</string>
+   <string name="new_version_dialog_title">新版本可用</string>
+   <string name="later">稍后提醒</string>
+@@ -76,7 +76,7 @@
+   <string name="direct_navigation_mode_title">直接导航模式</string>
+   <string name="direct_navigation_mode_message">直接导航会隐藏屏幕光标，并将遥控器或游戏手柄的按键直接传给网页，从而支持电视或键盘焦点模式的网站高亮链接和控件。\n\n退出此模式：在电视遥控器上按“返回”，或在游戏手柄上长按 B 键。\n\n此模式在 WebView 引擎下效果最佳：WebView 支持用方向键在页面内移动焦点。</string>
+   <string name="incognito_mode">隐身模式</string>
+-  <string name="incognito_mode_hint">现在您可以以私密方式浏览，其他使用此设备的人将看不到您的活动。TV Bro 不会保存您的浏览历史记录、Cookie、网站数据以及在表单中输入的信息。\n\n但是，下载内容和书签仍会被保存。您访问的网站、您所在的组织或互联网服务提供商可能仍然可以看到您的活动。</string>
++  <string name="incognito_mode_hint">现在您可以以私密方式浏览，其他使用此设备的人将看不到您的活动。HYDE Browser 不会保存您的浏览历史记录、Cookie、网站数据以及在表单中输入的信息。\n\n但是，下载内容和书签仍会被保存。您访问的网站、您所在的组织或互联网服务提供商可能仍然可以看到您的活动。</string>
+   <string name="don_t_show_again">不再显示</string>
+   <string name="why_icon_changed">为什么图标变了？</string>
+   <string name="no_bookmarks_yet">还没有书签</string>
+@@ -98,7 +98,7 @@
+   <string name="external_app_open_error">找不到合适的应用</string>
+   <string name="home_page">主页</string>
+   <string-array name="home_page_modes">
+-    <item>TV Bro 主页</item>
++    <item>HYDE Browser 主页</item>
+     <item>搜索引擎</item>
+     <item>自定义</item>
+     <item>空白页</item>
+diff --git a/app/src/main/res/values/hyde.xml b/app/src/main/res/values/hyde.xml
+new file mode 100644
+index 0000000..fa47af8
+--- /dev/null
++++ b/app/src/main/res/values/hyde.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- HYDE Browser: условия лицензии TV Bro для изменённой сборки (своё имя, значок, application ID, окно авторства) -->
++<resources>
++    <color name="hyde_icon_background">#FF1E1F24</color>
++    <string name="hyde_about_title" translatable="false">HYDE Browser</string>
++    <string name="hyde_about_text">Built on the TV Bro sources by Fedir Tsapana: https://github.com/truefedex/tv-bro</string>
++</resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 543aa45..7309845 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,6 +1,6 @@
+ <resources>
+-    <string name="app_name">TV Bro: TV Web Browser</string>
+-    <string name="app_name_short" translatable="false">TV Bro</string>
++    <string name="app_name">HYDE Browser: TV Web Browser</string>
++    <string name="app_name_short" translatable="false">HYDE Browser</string>
+     <string name="error">Error</string>
+     <string name="ok">OK</string>
+     <string name="url_prompt">Enter search text or URL</string>
+@@ -208,7 +208,7 @@
+     <string name="clear">Clear</string>
+     <string name="install">Install</string>
+     <string name="turn_on_unknown_sources">Please turn on \"Unknown sources\" system setting</string>
+-    <string name="turn_on_unknown_sources_for_app">Please allow TV Bro to install apps from \"Unknown sources\" in system settings</string>
++    <string name="turn_on_unknown_sources_for_app">Please allow HYDE Browser to install apps from \"Unknown sources\" in system settings</string>
+     <string name="voice_search_not_found">Voice search not found</string>
+     <string name="new_version_dialog_title">New version available</string>
+     <string name="later">Later</string>
+@@ -343,7 +343,7 @@
+         <item>Dark</item>
+     </array>
+     <string name="incognito_mode">Incognito mode</string>
+-    <string name="incognito_mode_hint">Now you can browse privately, and other people who use this device won’t see your activity. TV Bro won’t save your browsing history, cookies and site data, or information entered in forms.\n\nHowever, downloads and bookmarks will be saved. Your activity might still be visible to websites you visit, your organization or internet service provider.</string>
++    <string name="incognito_mode_hint">Now you can browse privately, and other people who use this device won’t see your activity. HYDE Browser won’t save your browsing history, cookies and site data, or information entered in forms.\n\nHowever, downloads and bookmarks will be saved. Your activity might still be visible to websites you visit, your organization or internet service provider.</string>
+     <string name="don_t_show_again">Don\'t show again</string>
+     <string name="why_icon_changed">Why did the icon change?</string>
+     <string name="block_popups">Popup blocking</string>
+@@ -364,7 +364,7 @@
+     <string name="external_app_open_error">Cannot find a suitable app</string>
+     <string name="home_page">Home page</string>
+     <array name="home_page_modes">
+-        <item>TV Bro Home</item>
++        <item>HYDE Browser Home</item>
+         <item>Search engine</item>
+         <item>Custom</item>
+         <item>Blank</item>
+@@ -394,7 +394,7 @@
+     <!-- the row of the ⋮ menu of the TV bar that opens the pairing of phones -->
+     <string name="sync_phone_sync">Phone sync</string>
+     <string name="sync_scan_title">Scan with your phone</string>
+-    <string name="sync_scan_steps">Point the camera of your phone at the code and open the link in TV Bro. You can then send tabs, bookmarks and files from the phone to this TV.</string>
++    <string name="sync_scan_steps">Point the camera of your phone at the code and open the link in HYDE Browser. You can then send tabs, bookmarks and files from the phone to this TV.</string>
+     <!-- %s: the addresses of the TV -->
+     <string name="sync_same_network">The phone must be on the same network as the TV (%s).</string>
+     <string name="sync_no_network">The TV is not connected to a network.</string>
+@@ -426,7 +426,7 @@
+     <string name="sync_send_to_tv">Send to TV</string>
+     <string name="sync_tvs">TVs</string>
+     <string name="sync_no_tvs">No TVs yet</string>
+-    <string name="sync_how_to_pair">On the TV, open TV Bro, choose the phone button of its bar and scan the code with the camera of this phone.</string>
++    <string name="sync_how_to_pair">On the TV, open HYDE Browser, choose the phone button of its bar and scan the code with the camera of this phone.</string>
+     <!-- %s: the name of the TV -->
+     <string name="sync_pairing">Connecting to %s…</string>
+     <string name="sync_paired">%s added</string>
+@@ -447,7 +447,7 @@
+     <string name="sync_bookmarks_same_phone">This phone has the same bookmarks</string>
+     <string name="sync_bookmarks_received">Bookmarks updated on this phone</string>
+     <!-- %s: the name of the TV -->
+-    <string name="sync_tv_too_old">%s needs a newer TV Bro</string>
++    <string name="sync_tv_too_old">%s needs a newer HYDE Browser</string>
+     <string name="sync_send">Send</string>
+     <string name="sync_next">Next</string>
+     <string name="sync_select_all">Select all</string>
+@@ -469,7 +469,7 @@
+     <string name="sync_forget_tv_confirm">Forget %s?</string>
+     <string name="sync_status_checking">Looking for it…</string>
+     <string name="sync_status_found">Ready</string>
+-    <string name="sync_status_not_found">Not found: open TV Bro on it</string>
++    <string name="sync_status_not_found">Not found: open HYDE Browser on it</string>
+     <string name="sync_status_forgot">Does not know this phone any more</string>
+     <!-- %d: the number of chosen tabs -->
+     <string name="sync_send_count">Send (%d)</string>
+@@ -490,7 +490,7 @@
+     <string name="sync_file_unreadable">Cannot read %s</string>
+     <!-- %1$s: the file, %2$s: the TV -->
+     <string name="sync_file_interrupted">%2$s stopped receiving %1$s</string>
+-    <string name="sync_file_need_permission">Allow TV Bro on %s to save files, then send again</string>
++    <string name="sync_file_need_permission">Allow HYDE Browser on %s to save files, then send again</string>
+     <string name="sync_file_storage">%s cannot save the file</string>
+     <string name="sync_file_cancelled_on_tv">The file was cancelled on %s</string>
+     <!-- on the TV; %1$s: the file, %2$s: the phone -->
+@@ -520,7 +520,7 @@
+     <string name="settings_summary_proxy_s">Proxy %s</string>
+     <!-- marks a setting that applies after a restart of the app -->
+     <string name="settings_after_restart">After restart</string>
+-    <string name="settings_restart_message">Restart TV Bro to apply the changes</string>
++    <string name="settings_restart_message">Restart HYDE Browser to apply the changes</string>
+     <string name="settings_restart_now">Restart now</string>
+     <string name="settings_turn_on">Turn on</string>
+     <!-- the state of a switch, for accessibility -->

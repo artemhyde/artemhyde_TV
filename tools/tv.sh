@@ -307,8 +307,9 @@ _home_lost() {
 # что стоит; своё приложение для плитки человек выбирает потом на ТВ («Настройки «Дома»», «Какие приложения открывают плитки»).
 _tile_alts() {
     case "$1" in
-        app.glasstv.browser|com.phlox.tvwebbrowser.foss) echo "com.phlox.tvwebbrowser" ;;
-        com.phlox.tvwebbrowser) echo "com.phlox.tvwebbrowser.foss" ;;
+        app.glasstv.browser) echo "com.phlox.tvwebbrowser.foss com.phlox.tvwebbrowser" ;;
+        com.phlox.tvwebbrowser.foss) echo "app.glasstv.browser com.phlox.tvwebbrowser" ;;
+        com.phlox.tvwebbrowser) echo "app.glasstv.browser com.phlox.tvwebbrowser.foss" ;;
         me.zhanghai.android.files) echo "com.cxinventor.file.explorer" ;;
         com.cxinventor.file.explorer) echo "me.zhanghai.android.files" ;;
         org.smarttube.stable) echo "com.liskovsoft.smarttubetv.beta com.google.android.youtube.tv" ;;

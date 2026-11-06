@@ -1,6 +1,6 @@
 # Ярлыки для главного экрана: имя_плитки|пакет_ярлыка|пакет_приложения|подпись|экран Lampa|экран приложения (оба необязательны)
 # Картинка берётся из banners/<имя_плитки>.png (640x360). Строки с # пропускаются.
-browser|app.glasstv.tile.browser|com.phlox.tvwebbrowser.foss|Браузер
+browser|app.glasstv.tile.browser|app.glasstv.browser|Браузер
 vk|app.glasstv.tile.vk|com.vk.tv|VK Видео
 youtube|app.glasstv.tile.youtube|org.smarttube.stable|YouTube
 lampa|app.glasstv.tile.lampa|top.rootu.lampa|Фильмы|{"component":"category","url":"movie","title":"Фильмы","source":"tmdb","page":1}

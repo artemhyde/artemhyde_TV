@@ -53,7 +53,7 @@ Only what you choose gets installed. The only required third-party app is Key Ma
 | SmartTube | YouTube for TV | easier with a remote than the stock app, sign-in with a code on your phone | optional |
 | Lampa | film and series catalogue | descriptions, ratings and seasons, "Films" and "Series" tiles; details in [docs/lampa.md](docs/lampa.md) | optional |
 | Just Player | video player | hardware playback of heavy 4K HDR files, opens video from other apps | optional |
-| TV Bro | browser for the remote | sites with players, address entry with a remote; our patched build or the regular one from Google Play | optional |
+| HYDE Browser (TV Bro) | browser for the remote | sites with players, address entry with a remote; our patched TV Bro build or the regular TV Bro from Google Play | optional |
 | Material Files | files | video and photos from a USB stick | optional |
 | NewPipe | YouTube in a window | a small window over other apps | optional |
 | Twitch | streams | official, from Google Play only | optional |
@@ -107,7 +107,7 @@ Pills strip on the remote's gear button: Night, Sound, Picture, Volna, Style, TC
 
 "Keyboard" for the remote: digits always in their own row, above them the signs the field needs (domains in one key for mail, password signs for passwords), capitals and erasing by holding a key, nothing resets by itself. No permissions and no internet, one command to go back.
 
-TV Bro browser with our patches (optional, built on your computer): site players, input suggestions, a separate panel for editing the address with a yellow caret and a "Cut the link" button, a flat dark look without extra frames. The screenshot shows the start page with Russian sites; this build has a neutral set there (Bing, Reddit, Wikipedia, IMDb, BBC News, DuckDuckGo).  
+HYDE Browser, TV Bro with our patches (optional, built on your computer): site players, input suggestions, a separate panel for editing the address with a yellow caret and a "Cut the link" button, a flat dark look without extra frames. The screenshot shows the start page with Russian sites; this build has a neutral set there (Bing, Reddit, Wikipedia, IMDb, BBC News, DuckDuckGo).  
 ![Browser](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/browser.png?v=0411b)
 
 Remote buttons: mapped through Key Mapper, any special button can open the app you want.
@@ -139,7 +139,7 @@ More on what is tied to TCL: [docs/tcl.md](docs/tcl.md).
 - Button mapping is done in Key Mapper step by step on the live screen and is tested only on version 4.6.2 foss. The "Send intent" form may not open on your TV: then every action goes through "Launch app", and the long press of the gear stays without the TCL panel.
 - Volna reaches YouTube Music with undocumented requests. This is a grey area of YouTube's terms: optional and at your own risk. The sound is played by a build of the third-party Aura Music player under GPL-3.0; our patches do not change how it gets the stream.
 - The light "Obyom" theme exists but is checked only on a home screen snapshot of one TV. The default is the dark "Graphite".
-- The browser is built from patches to the TV Bro sources. Do not pass the built APK to other people: that would break the TV Bro license.
+- HYDE Browser is built from patches to the TV Bro sources. It has its own name, icon, application ID and an About window linking to TV Bro, as the TV Bro license requires.
 - Weather: Open-Meteo, free for non-commercial use only. National Bank of Belarus rates are enabled separately and are optional.
 - Not tested on a live TV: building and installing on macOS and Linux, work on non-TCL TVs, importing a Key Mapper layout from a file, behaviour after a reboot.
 
@@ -148,7 +148,7 @@ We do not copy or distribute other people's apps, only links. The full list with
 - Key Mapper (GPL-3.0): remote buttons, github.com/keymapperorg/KeyMapper (formerly sds100/KeyMapper), version 4.6.2 foss is installed
 - SmartTube (MIT): YouTube client, github.com/yuliskov/SmartTube
 - Lampa: film catalogue, github.com/lampa-app/LAMPA (no license stated on the page, link only)
-- TV Bro (own license): browser, github.com/truefedex/tv-bro, our changes are kept as patches
+- TV Bro (own license): browser, github.com/truefedex/tv-bro, our changes are kept as patches, our build is called HYDE Browser
 - Aura Music (GPL-3.0): the player for Volna, github.com/TeamAuraMusic/AuraMusic, our changes are patches in the `aura/` folder, which is under GPL-3.0
 - Inter (SIL OFL 1.1): font, github.com/rsms/inter
 - Wikimedia Commons: photos with author and license on screen (CC BY-SA, CC BY, CC0)

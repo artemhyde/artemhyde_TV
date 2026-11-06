@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# build-tvbro.sh: собрать браузер TV Bro с нашими патчами для вашего ТВ и подписать вашим ключом: out/tvbro.apk.
+# build-tvbro.sh: собрать HYDE Browser (TV Bro с нашими патчами) и подписать вашим ключом: out/hyde-browser.apk, пакет app.glasstv.browser.
+# Патч 10-hyde-browser выполняет условия лицензии TV Bro для изменённой сборки: своё имя, значок, application ID и окно авторства,
+# поэтому такой файл можно передавать другим. Без патча 10 получится out/tvbro.apk с прежним пакетом: только для своего ТВ.
 # Запуск: bash tvbro/build-tvbro.sh [--patches-only]
 #   --patches-only: только скачать исходники, наложить патчи и остановиться (быстрая проверка цепочки патчей, без Gradle и без больших загрузок)
 # Что делает: клонирует исходники TV Bro с ключами core.autocrlf=false и core.longpaths=true, переходит на проверенный коммит 52b078f, накладывает tvbro/patches/*.patch
 # по порядку имён (01, 02, 02a, 02b, 03 ...), собирает вариант fossGeckoExcludedRelease на JDK 21, подписывает ключом keys/tv.jks (build/new-key.sh).
 # Нужны: git, JDK 21, Android SDK с платформой и build-tools 36 (лицензию SDK принимает человек), около 2,4 ГБ загрузок Gradle при первой сборке, ключ.
 # Переменные: TVBRO_REPO (откуда клонировать, по умолчанию github.com/truefedex/tv-bro), TVBRO_COMMIT (коммит), TVBRO_PATCHES (папка с патчами), JDK21_HOME, ANDROID_HOME.
-# ВАЖНО: собранный apk другим людям не передавайте. Лицензия TV Bro это запрещает для изменённой сборки с тем же названием (см. tvbro/README.md).
+# Номер выпуска HYDE TV (build/release.sh): HYDE_VERSION_CODE и HYDE_VERSION_NAME уходят в Gradle как -PhydeVersionCode и -PhydeVersionName.
 set -euo pipefail
 source "$(dirname "$0")/../build/env.sh"
 
@@ -67,6 +69,13 @@ while IFS= read -r p; do
     note "  патч $p наложен"
 done <<< "$patch_list"
 note "Патчей наложено: $n, изменённых и новых файлов: $(git -C "$SRC" status --porcelain -uall | wc -l | tr -d ' ')"
+# HYDE Browser (патч 10): старые растровые значки и баннер TV Bro убрать из сборки совсем, остаются свои (mipmap-anydpi)
+hyde=0
+if [ -f "$SRC/app/src/main/res/drawable/hyde_icon_foreground.xml" ]; then
+    hyde=1
+    rm -f "$SRC"/app/src/main/res/mipmap-*dpi/ic_launcher.webp "$SRC"/app/src/main/res/mipmap-*dpi/banner.webp
+    note "HYDE Browser: пакет app.glasstv.browser, значки TV Bro убраны"
+fi
 if [ "$patches_only" = 1 ]; then note "Остановился по --patches-only: исходники в $SRC"; exit 0; fi
 
 # 3. Окружение сборки: JDK 21 и SDK с build-tools 36
@@ -95,11 +104,18 @@ if [ -f "$props" ]; then
 fi
 
 note "Сборка Gradle (при первом запуске долго: качается около 2,4 ГБ)..."
-./gradlew --no-daemon -Porg.gradle.java.installations.auto-download=false assembleFossGeckoExcludedRelease
+ver_props=()
+if [ -n "${HYDE_VERSION_CODE:-}" ]; then ver_props=(-PhydeVersionCode="$HYDE_VERSION_CODE" -PhydeVersionName="$HYDE_VERSION_NAME"); fi
+./gradlew --no-daemon -Porg.gradle.java.installations.auto-download=false ${ver_props[@]+"${ver_props[@]}"} assembleFossGeckoExcludedRelease
 
 unsigned="$(ls app/build/outputs/apk/fossGeckoExcluded/release/*-unsigned.apk 2>/dev/null | head -1)"
 [ -n "$unsigned" ] || die "Gradle не оставил apk в app/build/outputs/apk/fossGeckoExcluded/release/"
 cd "$ROOT"
 # Подпись делает sign.sh на JDK 17 и build-tools из env.sh
-bash "$GT_BUILD_DIR/sign.sh" "$SRC/$unsigned" "$OUT/tvbro.apk"
-note "Готово: out/tvbro.apk. Этот файл только для вашего ТВ: другим не передавайте (лицензия TV Bro)."
+if [ "$hyde" = 1 ]; then
+    bash "$GT_BUILD_DIR/sign.sh" "$SRC/$unsigned" "$OUT/hyde-browser.apk"
+    note "Готово: out/hyde-browser.apk (HYDE Browser, пакет app.glasstv.browser). Условия лицензии TV Bro выполнены: его можно передавать."
+else
+    bash "$GT_BUILD_DIR/sign.sh" "$SRC/$unsigned" "$OUT/tvbro.apk"
+    note "Готово: out/tvbro.apk (без патча 10: прежнее имя и значок TV Bro). Только для вашего ТВ, другим не передавайте (лицензия TV Bro)."
+fi

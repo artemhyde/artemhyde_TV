@@ -55,6 +55,13 @@ while IFS= read -r p; do
     git -C "$SRC" -c core.autocrlf=false apply --whitespace=nowarn "$PATCHES/$p"
     note "  патч $p наложен"
 done <<< "$patch_list"
+# Номер выпуска HYDE TV (build/release.sh): versionCode и versionName плеера те же, что у остальных приложений выпуска
+if [ -n "${HYDE_VERSION_CODE:-}" ]; then
+    gf="$SRC/app/build.gradle.kts"
+    sed -i -E "s/^( *versionCode = ).*/\1$HYDE_VERSION_CODE/; s/^( *versionName = ).*/\1\"$HYDE_VERSION_NAME\"/" "$gf"
+    grep -q "versionCode = $HYDE_VERSION_CODE" "$gf" || die "Не удалось поставить номер выпуска в $gf"
+    note "Номер выпуска: $HYDE_VERSION_NAME ($HYDE_VERSION_CODE)"
+fi
 if [ "$patches_only" = 1 ]; then note "Остановился по --patches-only: исходники в $SRC"; exit 0; fi
 
 # 3. Окружение сборки: JDK 21 и SDK с платформой 36

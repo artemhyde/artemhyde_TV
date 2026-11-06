@@ -96,8 +96,9 @@ public class HomeActivity extends Activity {
     // Тот же список в tools/tv.sh (tiles_install), чтобы мастер ставил такие плитки
     static final Map<String, String[]> ALT = new HashMap<>();
     static {
-        ALT.put("com.phlox.tvwebbrowser.foss", new String[]{"com.phlox.tvwebbrowser"});
-        ALT.put("com.phlox.tvwebbrowser", new String[]{"com.phlox.tvwebbrowser.foss"});
+        ALT.put("app.glasstv.browser", new String[]{"com.phlox.tvwebbrowser.foss", "com.phlox.tvwebbrowser"});
+        ALT.put("com.phlox.tvwebbrowser.foss", new String[]{"app.glasstv.browser", "com.phlox.tvwebbrowser"});
+        ALT.put("com.phlox.tvwebbrowser", new String[]{"app.glasstv.browser", "com.phlox.tvwebbrowser.foss"});
         ALT.put("me.zhanghai.android.files", new String[]{"com.cxinventor.file.explorer"});
         ALT.put("com.cxinventor.file.explorer", new String[]{"me.zhanghai.android.files"});
         ALT.put("org.smarttube.stable", new String[]{"com.liskovsoft.smarttubetv.beta", "com.google.android.youtube.tv"});

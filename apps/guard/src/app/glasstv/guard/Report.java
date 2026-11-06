@@ -28,7 +28,7 @@ final class Report {
     private Report() { }
 
     // Чужие приложения, версии которых важны для разбора (свои app.glasstv.* берутся все)
-    private static final String[] OTHERS = {"top.rootu.lampa", "com.phlox.tvwebbrowser.foss", "org.smarttube.stable",
+    private static final String[] OTHERS = {"top.rootu.lampa", "app.glasstv.browser", "com.phlox.tvwebbrowser.foss", "org.smarttube.stable",
             "com.liskovsoft.smarttubetv.beta", "io.github.sds100.keymapper", "com.google.android.webview", "com.brouken.player",
             "me.zhanghai.android.files", "org.localsend.localsend_app"};
 
