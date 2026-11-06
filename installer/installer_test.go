@@ -233,10 +233,13 @@ func TestPlanGoogleTV(t *testing.T) {
 			t.Fatalf("плитка %s без приложения", tile)
 		}
 	}
-	if _, s := findStep(pl, "pm disable-user"); s != nil {
-		t.Fatal("на чужом ТВ прежний главный экран не отключается")
+	// На Google TV другой марки главный экран Google TV отключается только если «Домой» перехвачен, и после смены роли
+	idis, dis := findStep(pl, "pm disable-user --user 0 com.google.android.apps.tv.launcherx")
+	irole, _ := findStep(pl, "set-home-activity app.glasstv.home")
+	if dis == nil || dis.Kind != "home_disable_if" || idis < irole {
+		t.Fatalf("отключение главного экрана Google TV: %+v (%d, роль %d)", dis, idis, irole)
 	}
-	_, role := findStep(pl, "android.app.role.HOME app.glasstv.home")
+	_, role := findStep(pl, "set-home-activity app.glasstv.home")
 	if role == nil || role.Undo != "cmd role add-role-holder --user 0 android.app.role.HOME com.google.android.apps.tv.launcherx" {
 		t.Fatalf("смена главного экрана: %+v", role)
 	}
@@ -266,7 +269,7 @@ func TestPlanTCLHomeSwitch(t *testing.T) {
 	pl := buildPlan(recipe(t), testManifest(t), p, Choices{Home: yes()}, true)
 	i1, d1 := findStep(pl, "pm disable-user --user 0 com.google.android.apps.tv.launcherx")
 	i2, d2 := findStep(pl, "pm disable-user --user 0 com.google.android.tungsten.setupwraith")
-	ir, role := findStep(pl, "android.app.role.HOME app.glasstv.home")
+	ir, role := findStep(pl, "set-home-activity app.glasstv.home")
 	if d1 == nil || d2 == nil || role == nil || i1 > ir || i2 > ir {
 		t.Fatalf("на TCL сначала отключить launcherx и setupwraith, потом сменить роль: %d %d %d", i1, i2, ir)
 	}

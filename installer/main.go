@@ -44,6 +44,12 @@ func main() {
 		err = cmdInspect(args)
 	case "plan":
 		err = cmdPlan(args)
+	case "apply":
+		err = cmdApply(args)
+	case "verify":
+		err = cmdVerify(args)
+	case "restore":
+		err = cmdRestore(args)
 	case "version":
 		fmt.Println("hyde-install " + toolVersion)
 	case "help", "-h", "--help":
@@ -64,7 +70,11 @@ const usage = `hyde-install: установщик HYDE TV
   hyde-install pair адрес:порт код     сопряжение по коду с экрана ТВ
   hyde-install inspect [--tv адрес] [--json] [--save файл] [--from файл]
   hyde-install plan [--tv адрес] [--release папка] [--with м1,м2] [--without м3] [--home] [--json] [--from файл]
-Модули: guard keymapper home nightmode sound picture clip keyboard volna browser`
+  hyde-install apply [как plan] [--backup папка] [--allow-download] [--tv-free] [--yes]   установка по плану
+  hyde-install verify [--tv адрес] [--backup папка_журнала]          проверка после установки
+  hyde-install restore [--tv адрес] [--backup папка_журнала] [--yes] откат по журналу
+Модули: guard keymapper home nightmode sound picture clip keyboard volna browser
+Повторный apply после обрыва продолжает незаконченную установку этого ТВ с того же места`
 
 func cmdDevices() error {
 	a, err := findADB()
@@ -306,4 +316,214 @@ func printJSON(v any) error {
 	e.SetIndent("", "  ")
 	e.SetEscapeHTML(false)
 	return e.Encode(v)
+}
+
+// backupRoot: где папки журналов. По умолчанию backup рядом с выпуском (папка установщика), иначе ./backup
+func backupRoot(v, rel string) string {
+	if v != "" {
+		return v
+	}
+	if rel != "." {
+		return filepath.Join(rel, "backup")
+	}
+	return "backup"
+}
+
+func connectTV(tvAddr string) (*ADB, TV, error) {
+	a, err := findADB()
+	if err != nil {
+		return nil, nil, err
+	}
+	serial, err := pickSerial(a, tvAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a, &adbTV{a: a, serial: serial}, nil
+}
+
+func printEvent(e Event) {
+	mark := map[string]string{"start": "…", "ok": "ок", "skip": "пропуск", "warn": "ВНИМАНИЕ", "fail": "ОШИБКА", "lost": "СВЯЗЬ ПРОПАЛА", "info": "·"}[e.Status]
+	if e.Status == "start" {
+		return
+	}
+	n := ""
+	if e.N > 0 {
+		n = fmt.Sprintf("[%d/%d] ", e.N, e.Total)
+	}
+	line := fmt.Sprintf("%s %s%s", mark, n, e.What)
+	if e.Group != "" && e.N > 0 {
+		line = fmt.Sprintf("%s %s%s: %s", mark, n, e.Group, e.What)
+	}
+	if e.Detail != "" {
+		line += " (" + e.Detail + ")"
+	}
+	fmt.Println(line)
+}
+
+func confirm(q string) bool {
+	fmt.Print(q + " [y/N] ")
+	var ans string
+	fmt.Scanln(&ans)
+	switch strings.ToLower(strings.TrimSpace(ans)) {
+	case "y", "yes", "д", "да":
+		return true
+	}
+	return false
+}
+
+func cmdApply(args []string) error {
+	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
+	tvAddr := fs.String("tv", "", "адрес ТВ (как в adb devices)")
+	rel := fs.String("release", "", "папка выпуска")
+	with := fs.String("with", "", "добавить модули через запятую")
+	without := fs.String("without", "", "убрать модули через запятую")
+	home := fs.Bool("home", false, "сделать «Дом» главным экраном")
+	root := fs.String("backup", "", "папка журналов (по умолчанию backup рядом с выпуском)")
+	allowDl := fs.Bool("allow-download", false, "разрешить скачать сторонние приложения из описи (Key Mapper с GitHub)")
+	tvFree := fs.Bool("tv-free", false, "ТВ свободен: можно открыть «Дом» и нажать «Домой»")
+	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	rec, err := loadRecipe()
+	if err != nil {
+		return err
+	}
+	rd := releaseDir(*rel)
+	m, err := loadManifest(rd)
+	if err != nil {
+		return err
+	}
+	a, tv, err := connectTV(*tvAddr)
+	if err != nil {
+		return err
+	}
+	ch := Choices{Modules: map[string]bool{}}
+	for _, x := range splitList(*with) {
+		ch.Modules[x] = true
+	}
+	for _, x := range splitList(*without) {
+		ch.Modules[x] = false
+	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "home" {
+			ch.Home = home
+		}
+	})
+	p, _, err := readPassport(a, tv.Serial())
+	if err != nil {
+		return err
+	}
+	pl := buildPlan(rec, m, p, ch, true)
+	fmt.Print(pl.Text())
+	if len(pl.Problems) > 0 {
+		return errors.New("установка невозможна: " + strings.Join(pl.Problems, " "))
+	}
+	if !*yes && !confirm("\nСтавить по этому плану?") {
+		fmt.Println("Отменено, на ТВ ничего не менял.")
+		return nil
+	}
+	res := runApply(tv, a, rec, m, ch, ApplyOpts{AllowDownload: *allowDl, TVFree: *tvFree, BackupRoot: backupRoot(*root, rd), Emit: printEvent})
+	if res.Backup != "" {
+		fmt.Println("Журнал и снимок «до»: " + res.Backup)
+	}
+	if res.Error != "" { // само сообщение уже напечатано событием
+		if res.Lost {
+			os.Exit(3)
+		}
+		os.Exit(1)
+	}
+	return nil
+}
+
+// sessionDir: папка журнала из --backup (это может быть сама папка журнала или папка журналов) или самая свежая этого ТВ
+func sessionDir(tv TV, v, rel string) (string, error) {
+	if v != "" {
+		if _, err := os.Stat(filepath.Join(v, "ledger.tsv")); err == nil {
+			return v, nil
+		}
+	}
+	root := backupRoot(v, releaseDir(rel))
+	id := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
+	if d := latestSession(root, id); d != "" {
+		return d, nil
+	}
+	return "", fmt.Errorf("в %s нет журнала установки для этого ТВ", root)
+}
+
+func cmdVerify(args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+	tvAddr := fs.String("tv", "", "адрес ТВ")
+	dir := fs.String("backup", "", "папка журнала или папка журналов")
+	rel := fs.String("release", "", "папка выпуска")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	_, tv, err := connectTV(*tvAddr)
+	if err != nil {
+		return err
+	}
+	d, err := sessionDir(tv, *dir, *rel)
+	if err != nil {
+		return err
+	}
+	cs, err := runVerify(tv, d)
+	if err != nil {
+		return err
+	}
+	bad := 0
+	for _, c := range cs {
+		mark := "ок"
+		if !c.OK {
+			mark, bad = "НЕТ", bad+1
+		}
+		line := mark + "  " + c.What
+		if c.Detail != "" {
+			line += " (" + c.Detail + ")"
+		}
+		fmt.Println(line)
+	}
+	fmt.Printf("Проверено: %d, не держится: %d (журнал %s)\n", len(cs), bad, d)
+	if bad > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+func cmdRestore(args []string) error {
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
+	tvAddr := fs.String("tv", "", "адрес ТВ")
+	dir := fs.String("backup", "", "папка журнала или папка журналов")
+	rel := fs.String("release", "", "папка выпуска")
+	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	_, tv, err := connectTV(*tvAddr)
+	if err != nil {
+		return err
+	}
+	d, err := sessionDir(tv, *dir, *rel)
+	if err != nil {
+		return err
+	}
+	entries, err := readLedger(filepath.Join(d, "ledger.tsv"))
+	if err != nil {
+		return err
+	}
+	undo, manual := restoreOrder(entries)
+	fmt.Printf("Откат по журналу %s: команд %d, руками %d, потом сверка настроек со снимком «до».\n", d, len(undo), len(manual))
+	if !*yes && !confirm("Выполнить откат на ТВ?") {
+		fmt.Println("Отменено.")
+		return nil
+	}
+	r := runRestore(tv, d, printEvent)
+	fmt.Print(r.Text())
+	switch {
+	case r.Lost || r.Error != "":
+		os.Exit(3)
+	case r.Fail > 0:
+		os.Exit(1)
+	}
+	return nil
 }

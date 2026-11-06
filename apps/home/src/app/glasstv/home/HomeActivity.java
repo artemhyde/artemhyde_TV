@@ -526,6 +526,17 @@ public class HomeActivity extends Activity {
             });
         }
         Drawable volna = cap("app.glasstv.volna");
+        // «Волну» ставят по желанию: без неё капсула «Моя волна» ничего бы не включала (07.11, установка без «Волны»
+        // на виртуальном ТВ). Прячется, как «Продолжить»; появится сама, когда «Волну» поставят (loadApps на установку)
+        if (Now.title.isEmpty() && !installed("app.glasstv.volna")) {
+            if (play.isFocused()) {
+                View back = lastDock != null ? lastDock : (dockTiles.isEmpty() ? null : dockTiles.get(0));
+                if (back != null) back.requestFocus();
+            }
+            play.setVisibility(View.GONE);
+            return;
+        }
+        play.setVisibility(View.VISIBLE);
         if (!Now.title.isEmpty()) {
             // OK открывает плеер «Волны» сразу на весь экран
             play.set(Now.playing ? "Играет" : "На паузе", Now.title + (Now.artist.isEmpty() ? "" : " · " + Now.artist), volna);

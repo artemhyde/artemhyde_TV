@@ -68,6 +68,12 @@
   .step .undo { font-size: 13px; color: var(--muted); }
   .step .note { font-size: 13px; color: var(--warn); }
   details summary { cursor: pointer; color: var(--accent); margin-top: 10px; }
+  .ev { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 5px 0; font-size: 15px; }
+  .ev .m { text-align: center; }
+  .ev.ok .m { color: var(--ok); } .ev.fail .m, .ev.lost .m { color: var(--bad); } .ev.warn .m { color: var(--warn); }
+  .ev .d { color: var(--muted); font-size: 13px; }
+  .consent { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
+  .consent input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -111,6 +117,13 @@
   <section id="s5" class="off">
     <h2><span class="num">5</span>План изменений</h2>
     <div id="plan"></div>
+  </section>
+
+  <section id="s6" class="off">
+    <h2><span class="num">6</span>Установка</h2>
+    <div id="inst"></div>
+    <div id="prog"></div>
+    <div id="after"></div>
   </section>
 </main>
 <script>
@@ -271,7 +284,75 @@ async function plan() {
     html += '<div class="msg">Установка по этому плану: следующий шаг работы над мастером. Сейчас на телевизоре ничего не менялось.</div>';
     $("plan").innerHTML = html;
     $("show-cmd").onchange = (e) => { showCmd = e.target.checked; plan(); };
+    installBox(p);
   } catch (e) { $("plan").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+
+// Шаг 6: согласия, кнопка установки, ход по шагам, итог, проверка и откат
+function installBox(p) {
+  on("s6");
+  if (jobShown) return;
+  const needDl = p.steps.some((s) => s.kind === "download"), needFree = p.steps.some((s) => s.kind === "home_role");
+  if ((p.problems || []).length) { $("inst").innerHTML = '<div class="msg bad">Установка невозможна, пока есть помехи в плане.</div>'; return; }
+  let h = "";
+  if (needDl) h += '<label class="consent"><input type="checkbox" id="ok-dl"><span>Разрешаю скачать Key Mapper 4.6.2 с GitHub. Подпись файла сверяется со списком: чужой файл не встанет.</span></label>';
+  if (needFree) h += '<label class="consent"><input type="checkbox" id="ok-free"><span>Телевизор свободен: установщик откроет «Дом» и нажмёт «Домой», чтобы проверить главный экран.</span></label>';
+  h += '<p class="hint">Перед первым изменением установщик снимет состояние телевизора и дальше пишет каждое изменение в журнал: из него соберётся откат. Обрыв связи не страшен: запустите установку ещё раз, она продолжит с того же места.</p>';
+  h += '<div class="row" style="margin-top:8px"><button id="go">Установить по плану</button></div>';
+  $("inst").innerHTML = h;
+  const boxes = ["ok-dl", "ok-free"].map($).filter(Boolean);
+  const sync = () => { $("go").disabled = boxes.some((b) => !b.checked); };
+  boxes.forEach((b) => (b.onchange = sync));
+  sync();
+  $("go").onclick = async () => {
+    $("go").disabled = true;
+    try {
+      await api("apply", { serial, modules: choice.modules, home: choice.home, allow_download: !!$("ok-dl")?.checked, tv_free: !!$("ok-free")?.checked });
+      jobShown = true; $("after").innerHTML = ""; poll();
+    } catch (e) { $("go").disabled = false; msg("prog", e.message, "bad"); }
+  };
+}
+
+let jobShown = false;
+const MARK = { ok: "✓", skip: "·", warn: "!", fail: "✗", lost: "✗", info: "·" };
+
+async function poll() {
+  let j;
+  try { j = await api("job"); } catch (e) { msg("prog", e.message, "bad"); return; }
+  const evs = (j.events || []).filter((e) => e.status !== "start");
+  const cur = (j.events || []).slice(-1)[0];
+  let h = evs.map((e) => `<div class="ev ${e.status}"><span class="m">${MARK[e.status] || "·"}</span><div>${esc((e.n ? e.n + ". " : "") + (e.group && e.n ? e.group + ": " : "") + e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
+  if (j.running && cur && cur.status === "start") h += `<div class="ev"><span class="m">…</span><div>${esc((cur.group ? cur.group + ": " : "") + cur.what)}</div></div>`;
+  $("prog").innerHTML = h;
+  if (j.running) { setTimeout(poll, 1000); return; }
+  jobShown = false;
+  const r = j.result || {};
+  if (j.kind === "установка") {
+    if (r.error) {
+      $("after").innerHTML = `<div class="msg ${r.lost ? "warn" : "bad"}">${esc(r.error)}</div>` + (r.backup ? `<p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>` : "");
+      if ($("go")) $("go").disabled = false;
+    } else {
+      $("after").innerHTML = `<div class="msg ok">Установлено${r.resumed ? " (продолжение прерванной установки)" : ""}: изменений ${r.done}, уже было ${r.skipped}${r.warnings ? ", предупреждений " + r.warnings : ""}.</div><p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>`;
+    }
+  } else {
+    $("after").innerHTML = `<div class="msg ${r.result && !r.result.fail && !r.result.lost && !r.result.error ? "ok" : "bad"}" style="white-space:pre-line">${esc(r.text || "")}</div>`;
+  }
+  $("after").insertAdjacentHTML("beforeend", '<div class="row" style="margin-top:12px"><button class="ghost" id="chk">Проверить телевизор</button><button class="ghost" id="undo">Откатить всё</button></div><div id="chks"></div>');
+  $("chk").onclick = verify;
+  $("undo").onclick = async () => {
+    if (!confirm("Вернуть телевизор как было до установки? Приложения HYDE удалятся, права и настройки вернутся, главный экран станет прежним.")) return;
+    try { await api("restore", { serial }); jobShown = true; poll(); } catch (e) { msg("chks", e.message, "bad"); }
+  };
+}
+
+async function verify() {
+  $("chks").innerHTML = '<p class="hint">Проверяю…</p>';
+  try {
+    const r = await api("verify", { serial });
+    const bad = r.checks.filter((c) => !c.ok);
+    $("chks").innerHTML = `<div class="msg ${bad.length ? "bad" : "ok"}">Проверено: ${r.checks.length}, не держится: ${bad.length}</div>` +
+      r.checks.map((c) => `<div class="ev ${c.ok ? "ok" : "fail"}"><span class="m">${c.ok ? "✓" : "✗"}</span><div>${esc(c.what)}${c.detail ? `<div class="d">${esc(c.detail)}</div>` : ""}</div></div>`).join("");
+  } catch (e) { msg("chks", e.message, "bad"); }
 }
 
 $("rescan").onclick = scan;

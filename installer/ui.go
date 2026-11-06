@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -34,6 +35,15 @@ type uiServer struct {
 	mu        sync.Mutex
 	last      time.Time
 	passports map[string]Passport
+	job       *uiJob
+}
+
+// uiJob: установка или откат идут в фоне, страница раз в секунду забирает ход (/api/job). Одновременно одна работа
+type uiJob struct {
+	Kind    string  `json:"kind"`
+	Running bool    `json:"running"`
+	Events  []Event `json:"events"`
+	Result  any     `json:"result,omitempty"`
 }
 
 const idleLimit = 30 * time.Minute
@@ -75,6 +85,10 @@ func cmdUI(args []string) error {
 	mux.HandleFunc("POST /api/pair", s.api(s.pair))
 	mux.HandleFunc("POST /api/inspect", s.api(s.inspect))
 	mux.HandleFunc("POST /api/plan", s.api(s.plan))
+	mux.HandleFunc("POST /api/apply", s.api(s.apply))
+	mux.HandleFunc("POST /api/verify", s.api(s.verify))
+	mux.HandleFunc("POST /api/restore", s.api(s.restore))
+	mux.HandleFunc("GET /api/job", s.api(s.jobState))
 	go func() {
 		for range time.Tick(time.Minute) {
 			s.mu.Lock()
@@ -252,4 +266,117 @@ func (s *uiServer) plan(r *http.Request) (any, error) {
 		q.Modules = map[string]bool{}
 	}
 	return buildPlan(s.rec, m, p, Choices{Modules: q.Modules, Home: q.Home}, false), nil
+}
+
+// startJob: одна работа за раз; события копятся, итог в Result
+func (s *uiServer) startJob(kind string, work func(emit func(Event)) any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.job != nil && s.job.Running {
+		return fmt.Errorf("уже идёт: %s", s.job.Kind)
+	}
+	j := &uiJob{Kind: kind, Running: true}
+	s.job = j
+	go func() {
+		emit := func(e Event) {
+			s.mu.Lock()
+			j.Events = append(j.Events, e)
+			s.last = time.Now()
+			s.mu.Unlock()
+		}
+		res := work(emit)
+		s.mu.Lock()
+		j.Result, j.Running = res, false
+		s.mu.Unlock()
+	}()
+	return nil
+}
+
+func (s *uiServer) jobState(r *http.Request) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.job == nil {
+		return map[string]any{"running": false}, nil
+	}
+	b, _ := json.Marshal(s.job)
+	var cp map[string]any
+	_ = json.Unmarshal(b, &cp)
+	return cp, nil
+}
+
+func (s *uiServer) apply(r *http.Request) (any, error) {
+	if err := s.needADB(); err != nil {
+		return nil, err
+	}
+	var q struct {
+		Serial        string          `json:"serial"`
+		Modules       map[string]bool `json:"modules"`
+		Home          *bool           `json:"home"`
+		AllowDownload bool            `json:"allow_download"`
+		TVFree        bool            `json:"tv_free"`
+	}
+	if err := readBody(r, &q); err != nil || q.Serial == "" {
+		return nil, fmt.Errorf("не выбран ТВ")
+	}
+	m, err := loadManifest(s.relDir)
+	if err != nil {
+		return nil, err
+	}
+	if q.Modules == nil {
+		q.Modules = map[string]bool{}
+	}
+	tv := &adbTV{a: s.adb, serial: q.Serial}
+	o := ApplyOpts{AllowDownload: q.AllowDownload, TVFree: q.TVFree, BackupRoot: backupRoot("", s.relDir)}
+	err = s.startJob("установка", func(emit func(Event)) any {
+		o.Emit = emit
+		return runApply(tv, s.adb, s.rec, m, Choices{Modules: q.Modules, Home: q.Home}, o)
+	})
+	return map[string]bool{"started": err == nil}, err
+}
+
+// sessionFor: папка журнала этого ТВ (самая свежая)
+func (s *uiServer) sessionFor(tv TV) (string, error) {
+	root := backupRoot("", s.relDir)
+	id := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
+	if d := latestSession(root, id); d != "" {
+		return d, nil
+	}
+	return "", fmt.Errorf("для этого ТВ ещё нет журнала установки в %s", root)
+}
+
+func (s *uiServer) verify(r *http.Request) (any, error) {
+	if err := s.needADB(); err != nil {
+		return nil, err
+	}
+	var q struct{ Serial string }
+	if err := readBody(r, &q); err != nil || q.Serial == "" {
+		return nil, fmt.Errorf("не выбран ТВ")
+	}
+	tv := &adbTV{a: s.adb, serial: q.Serial}
+	d, err := s.sessionFor(tv)
+	if err != nil {
+		return nil, err
+	}
+	cs, err := runVerify(tv, d)
+	return map[string]any{"checks": cs, "backup": d}, err
+}
+
+func (s *uiServer) restore(r *http.Request) (any, error) {
+	if err := s.needADB(); err != nil {
+		return nil, err
+	}
+	var q struct{ Serial string }
+	if err := readBody(r, &q); err != nil || q.Serial == "" {
+		return nil, fmt.Errorf("не выбран ТВ")
+	}
+	tv := &adbTV{a: s.adb, serial: q.Serial}
+	d, err := s.sessionFor(tv)
+	if err != nil {
+		return nil, err
+	}
+	err = s.startJob("откат", func(emit func(Event)) any {
+		res := runRestore(tv, d, emit)
+		return map[string]any{"result": res, "text": res.Text(), "backup": d}
+	})
+	return map[string]bool{"started": err == nil}, err
 }
