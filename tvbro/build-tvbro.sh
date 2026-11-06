@@ -44,14 +44,10 @@ if [ -d "$SRC/.git" ]; then
     git -C "$SRC" reset -q --hard
     git -C "$SRC" clean -qfd
 else
-    rm -rf "$SRC"
-    note "Скачиваю исходники TV Bro: $REPO"
-    # core.longpaths: самый длинный файл TV Bro 113 символов, и в глубокой папке на Windows путь выходит за 260 (иначе clone падает на «Filename too long»)
-    if ! git -c core.autocrlf=false -c core.longpaths=true clone -q "$REPO" "$SRC"; then
-        rm -rf "$SRC"   # недокачанный клон не оставляем: при повторном запуске его принимали бы за готовый
-        die "Не удалось скачать исходники TV Bro. Если выше написано «Filename too long», перенесите репозиторий ближе к корню диска (например C:/glasstv): на Windows пути длиннее 260 символов не открываются."
-    fi
-    git -C "$SRC" config core.autocrlf false
+    note "Скачиваю исходники TV Bro: $REPO (только коммит $COMMIT)"
+    # core.longpaths: самый длинный файл TV Bro 113 символов, и в глубокой папке на Windows путь выходит за 260 (иначе падает на «Filename too long»)
+    fetch_commit "$REPO" "$COMMIT" "$SRC" \
+        || die "Не удалось скачать исходники TV Bro. Если выше написано «Filename too long», перенесите репозиторий ближе к корню диска (например C:/glasstv): на Windows пути длиннее 260 символов не открываются."
 fi
 git -C "$SRC" config core.longpaths true
 git -C "$SRC" checkout -q -f "$COMMIT" || die "Нет коммита $COMMIT в клоне: исходники TV Bro изменились или клон неполный."

@@ -163,6 +163,24 @@ z.writestr(i, open(sys.argv[2], 'rb').read())
 z.close()" "$(P "$1")" "$(P "$2")"
 }
 
+# Исходники чужого проекта на закреплённом коммите: fetch_commit <откуда> <коммит> <папка>. Сначала только этот коммит
+# без истории (GitHub отдаёт по хэшу, это в разы меньше загрузки), если источник так не умеет (папка на диске), то клон целиком.
+# Ключи для Windows: окончания строк как в источнике (патчи с CRLF иначе не лягут), длинные пути разрешены.
+# Недокачанное не оставляет: при повторном запуске его принимали бы за готовое. Код 1, если скачать не вышло
+fetch_commit() {
+    local repo="$1" commit="$2" dir="$3"
+    rm -rf "$dir"; mkdir -p "$dir"
+    if git -C "$dir" init -q && git -C "$dir" config core.autocrlf false && git -C "$dir" config core.longpaths true \
+        && git -C "$dir" remote add origin "$repo" && git -C "$dir" fetch -q --depth 1 origin "$commit" 2>/dev/null \
+        && git -C "$dir" checkout -q -f FETCH_HEAD; then
+        return 0
+    fi
+    rm -rf "$dir"
+    git -c core.autocrlf=false -c core.longpaths=true clone -q "$repo" "$dir" || { rm -rf "$dir"; return 1; }
+    git -C "$dir" config core.autocrlf false
+    git -C "$dir" config core.longpaths true
+}
+
 # Настройки сборки: у выпуска свои нейтральные (HYDE_SETTINGS, config/release.json), иначе человека, иначе образец
 settings_file() {
     if [ -n "${HYDE_SETTINGS:-}" ] && [ -f "$HYDE_SETTINGS" ]; then printf '%s' "$HYDE_SETTINGS"

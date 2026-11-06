@@ -39,10 +39,8 @@ if [ -d "$SRC/.git" ]; then
     git -C "$SRC" reset -q --hard
     git -C "$SRC" clean -qfd
 else
-    rm -rf "$SRC"
-    note "Скачиваю исходники Aura Music: $REPO"
-    git -c core.autocrlf=false -c core.longpaths=true clone -q "$REPO" "$SRC" || { rm -rf "$SRC"; die "Не удалось скачать исходники Aura Music."; }
-    git -C "$SRC" config core.autocrlf false
+    note "Скачиваю исходники Aura Music: $REPO (только коммит $COMMIT)"
+    fetch_commit "$REPO" "$COMMIT" "$SRC" || die "Не удалось скачать исходники Aura Music."
 fi
 git -C "$SRC" config core.longpaths true
 git -C "$SRC" checkout -q -f "$COMMIT" || die "Нет коммита $COMMIT в клоне."
