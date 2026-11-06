@@ -34,7 +34,18 @@
       "license_checked": true,
       "cert_sha256": "8adaaa27bf99293ec260fe372e77d142ac9166fe339f348f1148a3bf987d9872",
       "cert_subject": "CN=top.rootu",
-      "note": "Ставится только само приложение и меняются только его собственные настройки (docs/lampa.md). Расширения человек добавляет сам."
+      "note": "Ставится только само приложение и меняются только его собственные настройки (docs/lampa.md). Расширения только те, что назвал сам человек, адрес вводит он (docs/lampa.md, «Расширения»)."
+    },
+    {
+      "name": "TorrServe",
+      "package": "ru.yourok.torrserve",
+      "version_seen": "MatriX.143.Client",
+      "releases": "https://github.com/YouROK/TorrServe/releases",
+      "license": "GPL-3.0 (клиент); сервер TorrServer тоже GPL-3.0, github.com/YouROK/TorrServer",
+      "license_checked": true,
+      "cert_sha256": "6cbc24b62d7c7cbcdfa534a863b3612e8abde28af6ab41a566a3a9b879293f4e",
+      "cert_subject": "CN=Yuri Yushkin, L=Russian Federation, C=RU",
+      "note": "Необязательный модуль: клиент сервера торрентов для Lampa (docs/torrserve.md). Сам сервер человек ставит кнопкой в клиенте или запускает на своём устройстве; источников модуль не добавляет. Отпечаток снят 06.11.2026 с MatriX.143.Client, проверенного на TCL 65C6K вместе с сервером MatriX.147."
     },
     {
       "name": "Just Player",
