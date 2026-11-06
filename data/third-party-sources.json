@@ -1,5 +1,34 @@
 {
   "about": "Чужие приложения, которые мастер может скачать по просьбе человека. Мы их не копируем и не раздаём: только ссылки на страницы авторов. Перед установкой скачанный APK проверяется командой apksigner verify --print-certs, SHA-256 сертификата должен совпасть с cert_sha256. Не совпал: не ставить. Отпечатки сняты с копий, установленных на проверенном ТВ (доверие по первой установке). Что подписи новых версий совпадут с записанным отпечатком, не проверено: ставить нужно ту версию, что указана в pinned_version (если она есть), а новее только по явному решению человека. Не совпал отпечаток: не ставить, сказать человеку и остановиться по этому приложению. license_checked равно false значит, что лицензия записана по памяти и её нужно перепроверить на странице автора.",
+  "tools": [
+    {
+      "name": "Android SDK Platform-Tools (adb)",
+      "id": "platform-tools",
+      "version": "37.0.1",
+      "page": "https://developer.android.com/tools/releases/platform-tools",
+      "terms": "https://developer.android.com/studio/terms",
+      "license": "Android SDK License Agreement: раздавать нельзя, поэтому в архив выпуска adb не кладётся, человек скачивает его сам с dl.google.com, приняв условия Google",
+      "checksum_source": "https://dl.google.com/android/repository/repository2-3.xml (официальный список SDK Google, канал stable, снят 07.11.2026)",
+      "files": {
+        "windows": {
+          "url": "https://dl.google.com/android/repository/platform-tools_r37.0.1-win.zip",
+          "size": 8044989,
+          "sha1": "e03e78b1d80b396f1c3358e31251cb31740e1110"
+        },
+        "darwin": {
+          "url": "https://dl.google.com/android/repository/platform-tools_r37.0.1-darwin.zip",
+          "size": 16110554,
+          "sha1": "6ae73f4de6452dc57e62ec02b68eed92a4c21661"
+        },
+        "linux": {
+          "url": "https://dl.google.com/android/repository/platform-tools_r37.0.1-linux.zip",
+          "size": 9054187,
+          "sha1": "477254aa5f903c15cf51001717bdf347fb6b53e0"
+        }
+      },
+      "note": "Нужен adb не старше 30 (сопряжение по коду). Установщик качает только по согласию человека, сверяет размер и SHA-1 из официального списка Google (другой суммы Google не публикует), после распаковки проверяет adb version. Linux: только x86-64, на ARM adb ставится пакетом системы (android-tools-adb или adb)."
+    }
+  ],
   "apps": [
     {
       "name": "Key Mapper",

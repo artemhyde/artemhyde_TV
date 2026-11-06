@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -28,6 +28,7 @@ var webFS embed.FS
 type uiServer struct {
 	adb       *ADB
 	adbErr    string
+	adbErrV   error
 	token     string
 	addr      string
 	rec       Recipe
@@ -61,7 +62,7 @@ func cmdUI(args []string) error {
 	}
 	s := &uiServer{rec: rec, relDir: releaseDir(*rel), passports: map[string]Passport{}, last: time.Now(), token: randHex(16)}
 	if a, err := findADB(); err != nil {
-		s.adbErr = err.Error()
+		s.adbErr, s.adbErrV = err.Error(), err
 	} else {
 		s.adb = a
 	}
@@ -88,6 +89,8 @@ func cmdUI(args []string) error {
 	mux.HandleFunc("POST /api/apply", s.api(s.apply))
 	mux.HandleFunc("POST /api/verify", s.api(s.verify))
 	mux.HandleFunc("POST /api/restore", s.api(s.restore))
+	mux.HandleFunc("POST /api/getadb", s.api(s.getADB))
+	mux.HandleFunc("POST /api/guard", s.api(s.guardAPI))
 	mux.HandleFunc("GET /api/job", s.api(s.jobState))
 	go func() {
 		for range time.Tick(time.Minute) {
@@ -165,20 +168,64 @@ func readBody(r *http.Request, v any) error {
 }
 
 func (s *uiServer) needADB() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.adb == nil {
 		return fmt.Errorf("%s", s.adbErr)
 	}
 	return nil
 }
 
-func (s *uiServer) hello(r *http.Request) (any, error) {
-	out := map[string]any{"version": toolVersion}
-	if s.adb != nil {
-		out["adb"] = s.adb
-	} else {
-		out["adb_error"] = s.adbErr
+// getADB: скачать adb с сайта Google. Только с галочкой согласия на странице (условия Google принимает человек)
+func (s *uiServer) getADB(r *http.Request) (any, error) {
+	var q struct {
+		Accept bool `json:"accept"`
+	}
+	if err := readBody(r, &q); err != nil || !q.Accept {
+		return nil, fmt.Errorf("нужно согласие с условиями Google")
+	}
+	s.mu.Lock()
+	have := s.adb != nil
+	s.mu.Unlock()
+	if have {
+		return map[string]bool{"started": false}, nil
 	}
 	m, err := loadManifest(s.relDir)
+	if err != nil {
+		return nil, err
+	}
+	err = s.startJob("adb", func(emit func(Event)) any {
+		a, err := downloadADB(m, emit)
+		if err != nil {
+			emit(Event{Status: "fail", What: err.Error()})
+			return map[string]string{"error": err.Error()}
+		}
+		s.mu.Lock()
+		s.adb, s.adbErr, s.adbErrV = a, "", nil
+		s.mu.Unlock()
+		return map[string]any{"adb": a}
+	})
+	return map[string]bool{"started": err == nil}, err
+}
+
+func (s *uiServer) hello(r *http.Request) (any, error) {
+	out := map[string]any{"version": toolVersion, "pc": pcInfo()}
+	s.mu.Lock()
+	adb, adbErr := s.adb, s.adbErr
+	s.mu.Unlock()
+	m, err := loadManifest(s.relDir)
+	if adb != nil {
+		out["adb"] = adb
+	} else {
+		out["adb_error"] = adbErr
+		if err == nil && errors.Is(s.adbErrV, errNoADB) {
+			if off, oerr := adbOffer(m); oerr == nil {
+				out["adb_offer"] = off
+			} else {
+				out["adb_error"] = oerr.Error()
+			}
+		}
+	}
 	if err != nil {
 		out["release_error"] = err.Error()
 		return out, nil
@@ -197,8 +244,8 @@ func (s *uiServer) devices(r *http.Request) (any, error) {
 	if err := s.needADB(); err != nil {
 		return nil, err
 	}
-	ms, _ := s.adb.Mdns()
-	ds, _ := s.adb.Devices()
+	ms, _ := s.getA().Mdns()
+	ds, _ := s.getA().Devices()
 	return map[string]any{"mdns": ms, "devices": ds}, nil
 }
 
@@ -210,7 +257,7 @@ func (s *uiServer) connect(r *http.Request) (any, error) {
 	if err := readBody(r, &q); err != nil || q.Addr == "" {
 		return nil, fmt.Errorf("нужен адрес ТВ")
 	}
-	return s.adb.Connect(q.Addr), nil
+	return s.getA().Connect(q.Addr), nil
 }
 
 func (s *uiServer) pair(r *http.Request) (any, error) {
@@ -221,7 +268,7 @@ func (s *uiServer) pair(r *http.Request) (any, error) {
 	if err := readBody(r, &q); err != nil || q.Addr == "" || q.Code == "" {
 		return nil, fmt.Errorf("нужны адрес окна сопряжения и код")
 	}
-	ok, raw := s.adb.Pair(q.Addr, q.Code)
+	ok, raw := s.getA().Pair(q.Addr, q.Code)
 	return map[string]any{"ok": ok, "raw": raw}, nil
 }
 
@@ -233,7 +280,7 @@ func (s *uiServer) inspect(r *http.Request) (any, error) {
 	if err := readBody(r, &q); err != nil || q.Serial == "" {
 		return nil, fmt.Errorf("не выбран ТВ")
 	}
-	p, _, err := readPassport(s.adb, q.Serial)
+	p, _, err := readPassport(s.getA(), q.Serial)
 	if err != nil {
 		return nil, err
 	}
@@ -325,23 +372,39 @@ func (s *uiServer) apply(r *http.Request) (any, error) {
 	if q.Modules == nil {
 		q.Modules = map[string]bool{}
 	}
-	tv := &adbTV{a: s.adb, serial: q.Serial}
-	o := ApplyOpts{AllowDownload: q.AllowDownload, TVFree: q.TVFree, BackupRoot: backupRoot("", s.relDir)}
+	tv := s.adbTVFor(q.Serial)
+	o := ApplyOpts{AllowDownload: q.AllowDownload, TVFree: q.TVFree, BackupRoot: backupRoot("")}
 	err = s.startJob("установка", func(emit func(Event)) any {
 		o.Emit = emit
-		return runApply(tv, s.adb, s.rec, m, Choices{Modules: q.Modules, Home: q.Home}, o)
+		return runApply(tv, tv.a, s.rec, m, Choices{Modules: q.Modules, Home: q.Home}, o)
 	})
 	return map[string]bool{"started": err == nil}, err
 }
 
-// sessionFor: папка журнала этого ТВ (самая свежая)
-func (s *uiServer) sessionFor(tv TV) (string, error) {
-	root := backupRoot("", s.relDir)
-	id := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
-	if d := latestSession(root, id); d != "" {
-		return d, nil
+// guardAPI: выключатели «Сторожа» после установки: {serial, what: adb|notes, set: ""|always|service|on|off}
+func (s *uiServer) guardAPI(r *http.Request) (any, error) {
+	if err := s.needADB(); err != nil {
+		return nil, err
 	}
-	return "", fmt.Errorf("для этого ТВ ещё нет журнала установки в %s", root)
+	var q struct{ Serial, What, Set string }
+	if err := readBody(r, &q); err != nil || q.Serial == "" {
+		return nil, fmt.Errorf("не выбран ТВ")
+	}
+	out, err := guardSwitch(s.adbTVFor(q.Serial), q.What, q.Set)
+	return map[string]string{"text": out}, err
+}
+
+func (s *uiServer) getA() *ADB {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.adb
+}
+
+// adbTVFor: ТВ по адресу из запроса через найденный adb
+func (s *uiServer) adbTVFor(serial string) *adbTV {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return &adbTV{a: s.adb, serial: serial}
 }
 
 func (s *uiServer) verify(r *http.Request) (any, error) {
@@ -352,13 +415,13 @@ func (s *uiServer) verify(r *http.Request) (any, error) {
 	if err := readBody(r, &q); err != nil || q.Serial == "" {
 		return nil, fmt.Errorf("не выбран ТВ")
 	}
-	tv := &adbTV{a: s.adb, serial: q.Serial}
-	d, err := s.sessionFor(tv)
+	tv := s.adbTVFor(q.Serial)
+	ds, err := sessionDirs(tv, "")
 	if err != nil {
 		return nil, err
 	}
-	cs, err := runVerify(tv, d)
-	return map[string]any{"checks": cs, "backup": d}, err
+	cs, err := runVerify(tv, ds...)
+	return map[string]any{"checks": cs, "backup": ds}, err
 }
 
 func (s *uiServer) restore(r *http.Request) (any, error) {
@@ -369,14 +432,14 @@ func (s *uiServer) restore(r *http.Request) (any, error) {
 	if err := readBody(r, &q); err != nil || q.Serial == "" {
 		return nil, fmt.Errorf("не выбран ТВ")
 	}
-	tv := &adbTV{a: s.adb, serial: q.Serial}
-	d, err := s.sessionFor(tv)
+	tv := s.adbTVFor(q.Serial)
+	ds, err := sessionDirs(tv, "")
 	if err != nil {
 		return nil, err
 	}
 	err = s.startJob("откат", func(emit func(Event)) any {
-		res := runRestore(tv, d, emit)
-		return map[string]any{"result": res, "text": res.Text(), "backup": d}
+		ra := runRestoreAll(tv, ds, emit)
+		return map[string]any{"ok": ra.OK(), "code": ra.Code(), "text": ra.Text(), "backup": ds}
 	})
 	return map[string]bool{"started": err == nil}, err
 }

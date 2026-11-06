@@ -1,15 +1,10 @@
 // Установщик HYDE TV (план Codex, этап 2): одна программа без Java, Python и Git у человека, та же для Claude.
-// Заход 1 (07.11.2026): найти ТВ, прочитать паспорт, показать план изменений. На ТВ ничего не меняет.
-//
-//	hyde-install                         окно мастера в браузере (только этот компьютер)
-//	hyde-install devices                 ТВ в сети (mDNS) и уже подключённые
-//	hyde-install connect адрес[:порт]    подключиться (адрес и порт с главного экрана «Беспроводная отладка»)
-//	hyde-install pair адрес:порт код     сопряжение по коду из окна «Подключить устройство с помощью кода»
-//	hyde-install inspect [--tv адрес] [--json] [--save файл] [--from файл]          паспорт ТВ, только чтение
-//	hyde-install plan [--tv адрес] [--release папка] [--with м1,м2] [--without м3] [--home] [--json] [--from файл]
-//	                                     план изменений, только чтение
+// Заход 1 (07.11.2026): найти ТВ, прочитать паспорт, показать план. Заход 2: установка по плану с журналом,
+// продолжение после обрыва, проверка и откат. Заход 3: adb с сайта Google по согласию, архив выпуска для людей,
+// путь Claude через установщик (installer/AGENT.md), откат нескольких установок по очереди. Команды: usage ниже.
 //
 // --from: паспорт из сохранённого ответа ТВ (--save), для проверок без ТВ. Выпуск по умолчанию: папка установщика
+// или папка release рядом с ним (так лежит архив выпуска). Журналы: ~/.glasstv/backup (home.go)
 package main
 
 import (
@@ -22,7 +17,7 @@ import (
 	"strings"
 )
 
-const toolVersion = "0.1 (заход 1: поиск ТВ, паспорт, план)"
+const toolVersion = "0.3"
 
 func main() {
 	args := os.Args[1:]
@@ -50,6 +45,10 @@ func main() {
 		err = cmdVerify(args)
 	case "restore":
 		err = cmdRestore(args)
+	case "get-adb":
+		err = cmdGetADB(args)
+	case "guard":
+		err = cmdGuard(args)
 	case "version":
 		fmt.Println("hyde-install " + toolVersion)
 	case "help", "-h", "--help":
@@ -65,16 +64,20 @@ func main() {
 
 const usage = `hyde-install: установщик HYDE TV
   hyde-install                         окно мастера в браузере
+  hyde-install get-adb [--yes]         скачать adb с сайта Google (с вашего согласия с условиями Google)
   hyde-install devices                 ТВ в сети и уже подключённые
   hyde-install connect адрес[:порт]    подключиться к ТВ
   hyde-install pair адрес:порт код     сопряжение по коду с экрана ТВ
   hyde-install inspect [--tv адрес] [--json] [--save файл] [--from файл]
   hyde-install plan [--tv адрес] [--release папка] [--with м1,м2] [--without м3] [--home] [--json] [--from файл]
   hyde-install apply [как plan] [--backup папка] [--allow-download] [--tv-free] [--yes]   установка по плану
-  hyde-install verify [--tv адрес] [--backup папка_журнала]          проверка после установки
-  hyde-install restore [--tv адрес] [--backup папка_журнала] [--yes] откат по журналу
+  hyde-install verify [--tv адрес] [--backup папка]   проверка после установки
+  hyde-install restore [--tv адрес] [--backup папка] [--yes]   откат всех установок этого ТВ (или одной: --backup папка_журнала)
+  hyde-install guard adb [always|service] [--tv адрес]   отладка по сети: держать всегда или ещё 2 часа, потом выключить
+  hyde-install guard notes [on|off] [--tv адрес]         записки с телефона; без значения: только показать
 Модули: guard keymapper home nightmode sound picture clip keyboard volna browser
-Повторный apply после обрыва продолжает незаконченную установку этого ТВ с того же места`
+Повторный apply после обрыва продолжает незаконченную установку этого ТВ с того же места.
+Журналы и снимки «до»: ~/.glasstv/backup (папка HYDE TV: GLASSTV_HOME)`
 
 func cmdDevices() error {
 	a, err := findADB()
@@ -243,12 +246,19 @@ func capsText(c Caps) string {
 	return b.String()
 }
 
+// releaseDir: папка выпуска: --release, иначе папка установщика или release рядом с ним (архив выпуска), иначе
+// текущая папка или release в ней
 func releaseDir(v string) string {
 	if v != "" {
 		return v
 	}
+	var cands []string
 	if exe, err := os.Executable(); err == nil {
 		d := filepath.Dir(exe)
+		cands = append(cands, d, filepath.Join(d, "release"))
+	}
+	cands = append(cands, ".", "release")
+	for _, d := range cands {
 		if _, err := os.Stat(filepath.Join(d, "manifest.json")); err == nil {
 			return d
 		}
@@ -318,15 +328,12 @@ func printJSON(v any) error {
 	return e.Encode(v)
 }
 
-// backupRoot: где папки журналов. По умолчанию backup рядом с выпуском (папка установщика), иначе ./backup
-func backupRoot(v, rel string) string {
+// backupRoot: где папки журналов: --backup или ~/.glasstv/backup
+func backupRoot(v string) string {
 	if v != "" {
 		return v
 	}
-	if rel != "." {
-		return filepath.Join(rel, "backup")
-	}
-	return "backup"
+	return defaultBackupRoot()
 }
 
 func connectTV(tvAddr string) (*ADB, TV, error) {
@@ -378,7 +385,7 @@ func cmdApply(args []string) error {
 	with := fs.String("with", "", "добавить модули через запятую")
 	without := fs.String("without", "", "убрать модули через запятую")
 	home := fs.Bool("home", false, "сделать «Дом» главным экраном")
-	root := fs.String("backup", "", "папка журналов (по умолчанию backup рядом с выпуском)")
+	root := fs.String("backup", "", "папка журналов (по умолчанию ~/.glasstv/backup)")
 	allowDl := fs.Bool("allow-download", false, "разрешить скачать сторонние приложения из описи (Key Mapper с GitHub)")
 	tvFree := fs.Bool("tv-free", false, "ТВ свободен: можно открыть «Дом» и нажать «Домой»")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
@@ -423,7 +430,7 @@ func cmdApply(args []string) error {
 		fmt.Println("Отменено, на ТВ ничего не менял.")
 		return nil
 	}
-	res := runApply(tv, a, rec, m, ch, ApplyOpts{AllowDownload: *allowDl, TVFree: *tvFree, BackupRoot: backupRoot(*root, rd), Emit: printEvent})
+	res := runApply(tv, a, rec, m, ch, ApplyOpts{AllowDownload: *allowDl, TVFree: *tvFree, BackupRoot: backupRoot(*root), Emit: printEvent})
 	if res.Backup != "" {
 		fmt.Println("Журнал и снимок «до»: " + res.Backup)
 	}
@@ -436,26 +443,29 @@ func cmdApply(args []string) error {
 	return nil
 }
 
-// sessionDir: папка журнала из --backup (это может быть сама папка журнала или папка журналов) или самая свежая этого ТВ
-func sessionDir(tv TV, v, rel string) (string, error) {
+// sessionDirs: журналы, по которым работать: --backup с папкой журнала: только он; иначе все не откаченные установки
+// этого ТВ в папке журналов, от новой к старой
+func sessionDirs(tv TV, v string) ([]string, error) {
 	if v != "" {
 		if _, err := os.Stat(filepath.Join(v, "ledger.tsv")); err == nil {
-			return v, nil
+			return []string{v}, nil
 		}
 	}
-	root := backupRoot(v, releaseDir(rel))
+	root := backupRoot(v)
 	id := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
-	if d := latestSession(root, id); d != "" {
-		return d, nil
+	if ds := sessionsOf(root, id, true); len(ds) > 0 {
+		return ds, nil
 	}
-	return "", fmt.Errorf("в %s нет журнала установки для этого ТВ", root)
+	if len(sessionsOf(root, id, false)) > 0 {
+		return nil, fmt.Errorf("все установки HYDE TV на этом ТВ уже откачены (журналы в %s)", root)
+	}
+	return nil, fmt.Errorf("в %s нет журнала установки для этого ТВ", root)
 }
 
 func cmdVerify(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	tvAddr := fs.String("tv", "", "адрес ТВ")
 	dir := fs.String("backup", "", "папка журнала или папка журналов")
-	rel := fs.String("release", "", "папка выпуска")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -463,11 +473,11 @@ func cmdVerify(args []string) error {
 	if err != nil {
 		return err
 	}
-	d, err := sessionDir(tv, *dir, *rel)
+	ds, err := sessionDirs(tv, *dir)
 	if err != nil {
 		return err
 	}
-	cs, err := runVerify(tv, d)
+	cs, err := runVerify(tv, ds...)
 	if err != nil {
 		return err
 	}
@@ -483,7 +493,7 @@ func cmdVerify(args []string) error {
 		}
 		fmt.Println(line)
 	}
-	fmt.Printf("Проверено: %d, не держится: %d (журнал %s)\n", len(cs), bad, d)
+	fmt.Printf("Проверено: %d, не держится: %d (журналы: %s)\n", len(cs), bad, strings.Join(ds, ", "))
 	if bad > 0 {
 		os.Exit(1)
 	}
@@ -493,8 +503,7 @@ func cmdVerify(args []string) error {
 func cmdRestore(args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	tvAddr := fs.String("tv", "", "адрес ТВ")
-	dir := fs.String("backup", "", "папка журнала или папка журналов")
-	rel := fs.String("release", "", "папка выпуска")
+	dir := fs.String("backup", "", "папка журнала (откатить только её) или папка журналов")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -503,27 +512,101 @@ func cmdRestore(args []string) error {
 	if err != nil {
 		return err
 	}
-	d, err := sessionDir(tv, *dir, *rel)
+	ds, err := sessionDirs(tv, *dir)
 	if err != nil {
 		return err
 	}
-	entries, err := readLedger(filepath.Join(d, "ledger.tsv"))
-	if err != nil {
-		return err
+	fmt.Println("Откат по журналам, от новой установки к старой:")
+	for _, d := range ds {
+		entries, err := readLedger(filepath.Join(d, "ledger.tsv"))
+		if err != nil {
+			return err
+		}
+		undo, manual := restoreOrder(entries)
+		rel := ""
+		if s, err := loadSession(d); err == nil {
+			rel = ", выпуск " + s.Release + ", начата " + s.Started
+		}
+		fmt.Printf("  %s%s: команд %d, руками %d\n", d, rel, len(undo), len(manual))
 	}
-	undo, manual := restoreOrder(entries)
-	fmt.Printf("Откат по журналу %s: команд %d, руками %d, потом сверка настроек со снимком «до».\n", d, len(undo), len(manual))
+	fmt.Println("В конце каждого: сверка настроек со снимком «до».")
 	if !*yes && !confirm("Выполнить откат на ТВ?") {
 		fmt.Println("Отменено.")
 		return nil
 	}
-	r := runRestore(tv, d, printEvent)
-	fmt.Print(r.Text())
-	switch {
-	case r.Lost || r.Error != "":
-		os.Exit(3)
-	case r.Fail > 0:
-		os.Exit(1)
+	ra := runRestoreAll(tv, ds, printEvent)
+	fmt.Print(ra.Text())
+	if c := ra.Code(); c != 0 {
+		os.Exit(c)
 	}
+	return nil
+}
+
+// cmdGuard: выключатели «Сторожа»: hyde-install guard adb|notes [значение] [--tv адрес]
+func cmdGuard(args []string) error {
+	var pos []string
+	tvAddr := ""
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--tv" && i+1 < len(args):
+			tvAddr = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--tv="):
+			tvAddr = strings.TrimPrefix(args[i], "--tv=")
+		default:
+			pos = append(pos, args[i])
+		}
+	}
+	if len(pos) < 1 || len(pos) > 2 {
+		return errors.New("нужно: hyde-install guard adb [always|service] или hyde-install guard notes [on|off]")
+	}
+	set := ""
+	if len(pos) == 2 {
+		set = pos[1]
+	}
+	_, tv, err := connectTV(tvAddr)
+	if err != nil {
+		return err
+	}
+	out, err := guardSwitch(tv, pos[0], set)
+	if err != nil {
+		return err
+	}
+	fmt.Println(out)
+	return nil
+}
+
+// cmdGetADB: скачать adb с сайта Google. Условия Google принимает человек: здесь ответом «y», у Claude словом в чате,
+// после которого Claude запускает с --yes
+func cmdGetADB(args []string) error {
+	fs := flag.NewFlagSet("get-adb", flag.ContinueOnError)
+	rel := fs.String("release", "", "папка выпуска (в описи версия и суммы adb)")
+	yes := fs.Bool("yes", false, "условия Google приняты, не спрашивать")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if a, err := findADB(); err == nil {
+		fmt.Printf("adb уже есть: %s (версия %s), скачивать не нужно\n", a.Path, a.Version)
+		return nil
+	}
+	m, err := loadManifest(releaseDir(*rel))
+	if err != nil {
+		return err
+	}
+	off, err := adbOffer(m)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Нужен adb: через него установщик говорит с телевизором.\n%s %s, %s, с %s\nКуда: %s\nУсловия Google: %s\n",
+		off.Name, off.Version, off.Size, off.Host, off.Dest, off.Terms)
+	if !*yes && !confirm("Принимаете условия Google и разрешаете скачать?") {
+		fmt.Println("Отменено, ничего не скачано.")
+		return nil
+	}
+	a, err := downloadADB(m, printEvent)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Готово: " + a.Path)
 	return nil
 }

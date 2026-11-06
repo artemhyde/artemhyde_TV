@@ -178,22 +178,43 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 
 	// Папка журнала: продолжение незаконченной установки этого ТВ или новая со снимком «до»
 	tvID := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
-	root := nonEmpty(o.BackupRoot, "backup")
+	root := nonEmpty(o.BackupRoot, defaultBackupRoot())
 	dir := findUnfinished(root, tvID)
+	var held []string
 	if dir != "" {
 		res.Resumed = true
 		emit(Event{Status: "info", What: "продолжаю незаконченную установку", Detail: dir})
+		if s, err := loadSession(dir); err == nil {
+			held = s.Held
+		}
 	} else {
-		dir = filepath.Join(root, time.Now().Format("20060102-1504"))
-		if _, err := os.Stat(dir); err == nil {
-			dir += time.Now().Format("05")
+		// Что на ТВ уже так до этой установки (обновление поверх стоящего выпуска): это не выполняется заново и не
+		// пишется в журнал. Запоминается в session.json, чтобы после обрыва знать, что было до начала
+		l := &tvLook{tv: tv}
+		for _, s := range pl.Steps {
+			if s.Kind != "" || s.Run || s.Do == "" {
+				continue
+			}
+			if ok, known, _ := l.holds(s.Do); known && ok {
+				held = append(held, s.Do)
+			}
+		}
+		// Метка с секундами; занята (две установки в одну секунду, бывает в проверках): -2, -3. Новые метки при обратной
+		// сортировке идут первыми, на этом стоят продолжение, проверка и откат от новой установки к старой
+		base := filepath.Join(root, time.Now().Format("20060102-150405"))
+		dir = base
+		for i := 2; ; i++ {
+			if _, err := os.Stat(dir); err != nil {
+				break
+			}
+			dir = fmt.Sprintf("%s-%d", base, i)
 		}
 		emit(Event{Status: "info", What: "снимок ТВ «до» и пустой журнал", Detail: dir})
 		if err := takeSnapshot(tv, dir, raw, a); err != nil {
 			return fail(fmt.Errorf("снимок «до» не сделан, на ТВ ничего не менял: %v", err))
 		}
 		s := &Session{Label: filepath.Base(dir), TVID: tvID, Model: pl.Caps.Model, Release: m.Release, Modules: ch.Modules, Home: ch.Home,
-			Started: time.Now().Format("2006-01-02 15:04:05")}
+			Started: time.Now().Format("2006-01-02 15:04:05"), Held: held}
 		if err := saveSession(dir, s); err != nil {
 			return fail(err)
 		}
@@ -211,6 +232,10 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		}
 		done[e.Do] = true
 		return appendLedger(led, e)
+	}
+	wasHeld := map[string]bool{}
+	for _, d := range held {
+		wasHeld[d] = true
 	}
 
 	// Скачивание до первого изменения на ТВ: не скачалось или подпись чужая, ТВ не тронут
@@ -305,12 +330,42 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 				say("skip", "уже сделано")
 				continue
 			}
+			if wasHeld[s.Do] {
+				if ok, known, _ := (&tvLook{tv: tv}).holds(s.Do); known && ok {
+					res.Skipped++
+					say("skip", "уже так, не меняю")
+					continue
+				}
+				// Было так до установки, а сняли сами по ходу (права администратора перед обновлением): вернуть как было,
+				// в журнал не писать: для отката этой установки это не изменение
+				say("start", "")
+				if _, err := runTVCmd(tv, s.Do); err != nil {
+					return fail(fmt.Errorf("%s: %s: %w", s.Group, s.What, err))
+				}
+				res.Done++
+				say("ok", "вернул как было до установки")
+				continue
+			}
 			say("start", "")
 			if err := journal(LedgerEntry{What: s.Group + ": " + s.What, Do: s.Do, Undo: s.Undo}); err != nil {
 				return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", err))
 			}
 			if _, err := runTVCmd(tv, s.Do); err != nil {
 				return fail(fmt.Errorf("%s: %s: %w", s.Group, s.What, err))
+			}
+			// Команда прошла, а держится ли изменение? Служба «Сторожа» после запуска поднимается не мгновенно, и ответ
+			// «прошло» ещё не значит, что настройка встала: ещё одна попытка, потом честное предупреждение
+			if ok, known, _ := (&tvLook{tv: tv}).holds(s.Do); known && !ok {
+				time.Sleep(retryPause)
+				if _, err := runTVCmd(tv, s.Do); errors.Is(err, errLost) {
+					return fail(err)
+				}
+				if ok, _, detail := (&tvLook{tv: tv}).holds(s.Do); !ok {
+					res.Done++
+					res.Warnings++
+					say("warn", "команда прошла, но изменение не держится: "+detail)
+					continue
+				}
 			}
 			res.Done++
 			say("ok", "")

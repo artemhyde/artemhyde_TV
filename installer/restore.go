@@ -235,6 +235,59 @@ func runRestore(tv TV, dir string, emit func(Event)) (r RestoreResult) {
 	return r
 }
 
+// RestoreAll: откат нескольких установок этого ТВ от новой к старой (обновление, потом установка). Связь пропала или
+// откат не начат: дальше не идём; отдельные непрошедшие команды не останавливают (как restore.sh)
+type RestoreAll struct {
+	Sessions []string        `json:"sessions"`
+	Results  []RestoreResult `json:"results"`
+}
+
+func runRestoreAll(tv TV, dirs []string, emit func(Event)) RestoreAll {
+	if emit == nil {
+		emit = func(Event) {}
+	}
+	var ra RestoreAll
+	for _, d := range dirs {
+		if len(dirs) > 1 {
+			emit(Event{Status: "info", What: "откат установки " + filepath.Base(d)})
+		}
+		r := runRestore(tv, d, emit)
+		ra.Sessions, ra.Results = append(ra.Sessions, d), append(ra.Results, r)
+		if r.Lost || r.Error != "" {
+			break
+		}
+	}
+	return ra
+}
+
+// Code: код выхода как у restore.sh: 0 всё вернулось, 1 часть команд не прошла, 3 связь пропала или откат не начат
+func (ra RestoreAll) Code() int {
+	code := 0
+	for _, r := range ra.Results {
+		switch {
+		case r.Lost || r.Error != "":
+			return 3
+		case r.Fail > 0:
+			code = 1
+		}
+	}
+	return code
+}
+
+// OK: всё вернулось
+func (ra RestoreAll) OK() bool { return len(ra.Results) > 0 && ra.Code() == 0 }
+
+func (ra RestoreAll) Text() string {
+	if len(ra.Results) == 1 {
+		return ra.Results[0].Text()
+	}
+	var b strings.Builder
+	for i, r := range ra.Results {
+		fmt.Fprintf(&b, "Установка %s:\n%s", filepath.Base(ra.Sessions[i]), r.Text())
+	}
+	return b.String()
+}
+
 func (r RestoreResult) Text() string {
 	var b strings.Builder
 	for _, w := range r.Warns {

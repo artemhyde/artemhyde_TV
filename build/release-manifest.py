@@ -139,12 +139,16 @@ for name in sorted(os.listdir(stage)):
 if len(certs) != 1:
     sys.exit('у файлов выпуска разные ключи: %s' % ', '.join(sorted(certs)))
 
-third = []
+third, tools = [], []
 tp = os.path.join(root, 'data', 'third-party-sources.json')
 if os.path.exists(tp):
-    for a in json.load(open(tp, encoding='utf-8')).get('apps', []):
+    src = json.load(open(tp, encoding='utf-8'))
+    for a in src.get('apps', []):
         third.append({k: a[k] for k in ('name', 'package', 'pinned_version', 'version_seen', 'releases', 'download',
                                          'license', 'cert_sha256', 'cert_subject') if k in a})
+    # Инструменты для компьютера (adb): установщик качает их сам по согласию человека и сверяет с этой записью
+    for t in src.get('tools', []):
+        tools.append({k: t[k] for k in ('id', 'name', 'version', 'page', 'terms', 'license', 'checksum_source', 'files') if k in t})
 
 manifest = {
     'product': 'HYDE TV', 'release': ver, 'versionCode': code,
@@ -156,6 +160,7 @@ manifest = {
     'apps': apps,
     'source_archives': archives,
     'third_party': third,
+    'tools': tools,
 }
 json.dump(manifest, open(os.path.join(stage, 'manifest.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False, indent=1)
 open(os.path.join(stage, 'SHA256SUMS'), 'w', encoding='utf-8', newline='\n').write('\n'.join(sums) + '\n')

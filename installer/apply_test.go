@@ -32,6 +32,8 @@ type fakeTV struct {
 	intercept bool   // «Домой» открывает launcherx, пока он включён (Google TV других марок)
 	files     map[string]string
 	grants    map[string]bool // «пакет право», «пакет OP», «+пакет» белого списка, компонент администратора и слушателя
+	guardUp   bool            // служба «Сторожа» уже отвечает
+	nightOff  bool            // ночная подсветка «Сторожа» выключена
 }
 
 func newFakeTV(tcl bool) *fakeTV {
@@ -76,7 +78,13 @@ func (f *fakeTV) passport() string {
 	for k, v := range f.settings {
 		b.WriteString(k + "=" + v + "\n")
 	}
-	b.WriteString("##admins\n##df\nFilesystem 1K-blocks Used Available Use% Mounted on\n/dev/x 100 10 5000000 1% /data\n##end\n")
+	b.WriteString("##admins\n")
+	for k, v := range f.grants {
+		if v && strings.Contains(k, "/.") {
+			b.WriteString("    " + k + ":\n")
+		}
+	}
+	b.WriteString("##df\nFilesystem 1K-blocks Used Available Use% Mounted on\n/dev/x 100 10 5000000 1% /data\n##end\n")
 	return b.String()
 }
 
@@ -162,6 +170,13 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 		return "No activity found\n", nil
 	case strings.HasPrefix(cmd, "am start -n app.glasstv.home"):
 		f.top = "app.glasstv.home"
+	case strings.HasPrefix(cmd, "am start -n ") && strings.Contains(cmd, "--ez unadmin true"):
+		p, _, _ := strings.Cut(w[3], "/")
+		for k := range f.grants {
+			if strings.HasPrefix(k, p+"/.") {
+				delete(f.grants, k)
+			}
+		}
 	case strings.HasPrefix(cmd, "cmd package set-home-activity "):
 		if !f.roleStuck {
 			p, _, _ := strings.Cut(w[3], "/")
@@ -238,6 +253,20 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 		f.settings["secure:default_input_method"] = w[2]
 	case strings.HasPrefix(cmd, "pm compile"):
 		return "Success\n", nil
+	case strings.HasPrefix(cmd, "am broadcast -n app.glasstv.guard/.Cmd --es do nighthours"):
+		if _, ok := f.pkgs["app.glasstv.guard"]; !ok || !f.guardUp {
+			f.guardUp = f.pkgs["app.glasstv.guard"] != 0 // служба поднимается только к следующему запросу, как на ТВ
+			return "Broadcast completed: result=0, data=\"служба «Сторожа» не запущена\"\n", nil
+		}
+		if strings.HasSuffix(cmd, "enabled false") {
+			f.nightOff = true
+		} else if strings.HasSuffix(cmd, "enabled true") {
+			f.nightOff = false
+		}
+		if f.nightOff {
+			return "Broadcast completed: result=0, data=\"ночная подсветка выключена\"\n", nil
+		}
+		return "Broadcast completed: result=0, data=\"ночная подсветка с 22:00 до 7:00\"\n", nil
 	}
 	return "", nil
 }

@@ -10,13 +10,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// ADB: путь к adb и его версия. Ищем по порядку: переменная ADB, рядом с установщиком (platform-tools),
-// ~/.glasstv/tools/platform-tools, PATH. Нужен adb не старше 30: в старом нет pair и mdns (как в tools/lib.sh)
+// ADB: путь к adb и его версия. Где ищем: adbCandidates. Нужен adb не старше 30: в старом нет pair и mdns (как в
+// tools/lib.sh). Нет ни одного: getadb.go скачивает его с сайта Google по согласию человека
 type ADB struct {
 	Path    string `json:"path"`
 	Version string `json:"version"`
@@ -41,7 +42,10 @@ func adbMajor(out string) (int, string) {
 	return n, m[1] + "." + m[2] + "." + m[3]
 }
 
-func findADB() (*ADB, error) {
+// adbCandidates: где искать adb, по порядку: переменная ADB, рядом с установщиком, папка инструментов HYDE (в том числе
+// скачанный установщиком platform-tools-<версия>), Android SDK (ANDROID_HOME, ANDROID_SDK_ROOT и место Android Studio
+// по умолчанию), PATH
+func adbCandidates() []string {
 	var cands []string
 	if p := os.Getenv("ADB"); p != "" {
 		cands = append(cands, p)
@@ -50,12 +54,36 @@ func findADB() (*ADB, error) {
 		d := filepath.Dir(exe)
 		cands = append(cands, filepath.Join(d, "platform-tools", exeName("adb")), filepath.Join(d, exeName("adb")))
 	}
+	cands = append(cands, filepath.Join(toolsDir(), "platform-tools", exeName("adb")))
+	if vs, _ := filepath.Glob(filepath.Join(toolsDir(), "platform-tools-*", exeName("adb"))); len(vs) > 0 {
+		sort.Sort(sort.Reverse(sort.StringSlice(vs)))
+		cands = append(cands, vs...)
+	}
+	for _, env := range []string{"ANDROID_HOME", "ANDROID_SDK_ROOT"} {
+		if p := os.Getenv(env); p != "" {
+			cands = append(cands, filepath.Join(p, "platform-tools", exeName("adb")))
+		}
+	}
 	if h, err := os.UserHomeDir(); err == nil {
-		cands = append(cands, filepath.Join(h, ".glasstv", "tools", "platform-tools", exeName("adb")))
+		switch runtime.GOOS {
+		case "windows":
+			if la := os.Getenv("LOCALAPPDATA"); la != "" {
+				cands = append(cands, filepath.Join(la, "Android", "Sdk", "platform-tools", "adb.exe"))
+			}
+		case "darwin":
+			cands = append(cands, filepath.Join(h, "Library", "Android", "sdk", "platform-tools", "adb"))
+		default:
+			cands = append(cands, filepath.Join(h, "Android", "Sdk", "platform-tools", "adb"))
+		}
 	}
 	if p, err := exec.LookPath(exeName("adb")); err == nil {
 		cands = append(cands, p)
 	}
+	return cands
+}
+
+func findADB() (*ADB, error) {
+	cands := adbCandidates()
 	var old []string
 	for _, c := range cands {
 		if st, err := os.Stat(c); err != nil || st.IsDir() {
@@ -71,8 +99,10 @@ func findADB() (*ADB, error) {
 	if len(old) > 0 {
 		return nil, fmt.Errorf("найден только старый adb (%s): в нём нет сопряжения по коду, нужны свежие platform-tools", strings.Join(old, ", "))
 	}
-	return nil, errors.New("adb не найден: положите папку platform-tools рядом с установщиком или задайте переменную ADB")
+	return nil, errNoADB
 }
+
+var errNoADB = errors.New("adb не найден. Установщик скачает его с сайта Google с вашего согласия: кнопка в окне мастера или команда hyde-install get-adb")
 
 // runCmd: запуск программы с ограничением времени, вывод вместе с ошибками, без символов возврата каретки
 func runCmd(path string, timeout time.Duration, args ...string) (string, error) {

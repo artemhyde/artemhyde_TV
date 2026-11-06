@@ -69,13 +69,19 @@ Only you type passwords, the wizard never sees or types them. Signing in is opti
   - YouTube Premium: the same. Premium is not required for "Volna". YouTube Music gives subscribers higher audio quality (up to 256 kbps instead of 128); whether it reaches you through Aura, we have not checked.
   - A second person with their own taste: a channel inside the same account with the same name as in "Volna". Its likes never reach the main profile. Without an account the second taste lives on the TV only.
 
-**How to install**
-1. Install Claude Code (claude.com/claude-code).
-2. Download this repository (Code button, Download ZIP) and unpack it.
-3. Open the folder in Claude Code and write "let's start". The TV and the computer must be on the same home network.
+**How to install**  
+You need: Google TV or Android TV 12 or newer, and a computer with Windows, macOS or Linux on the same home network.
 
-You need: Google TV on Android 12 or newer, a computer with Windows, macOS or Linux. Disk for build tools: about 0.6 GB for our apps, about 2.4 GB more for the patched browser and about 1.5 GB for Volna. How long it takes depends on the computer, the network and the chosen set: an honest number will come with the ready installer after measurements. Tested on one TV: TCL 65C6K, Android 14.  
-What happens: Claude asks its questions one at a time (theme, remote buttons, which apps, city for the weather), takes a "before" snapshot of your TV, records every change and builds a rollback script from those records, then builds the apps with your own signing key and installs them.
+Ready release (the main way, no Claude and no build tools needed):
+1. On the Releases page download the archive for your system: `HYDE-TV-<version>-Windows.zip`, `-macOS-Apple.zip`, `-macOS-Intel.zip`, `-Linux-x64.tar.gz` or `-Linux-ARM64.tar.gz`.
+2. Unpack it and run `hyde-install` (`hyde-install.exe` on Windows). The wizard opens in your browser: it finds the TV, shows a plan and installs by it. What to do about the Windows or macOS warning about an unsigned program is in README.txt inside the archive.
+3. The wizard downloads adb (the program that talks to the TV) from Google once you accept Google's terms; it may not be redistributed with HYDE TV.
+
+With Claude Code: open the unpacked archive folder in Claude Code and write "let's start". Claude walks you through with the same installer.
+
+Building from source (if you want your own signing key or your own changes): download this repository (Code, Download ZIP), open the folder in Claude Code and write "let's start". Claude asks its questions one at a time, takes a "before" snapshot of the TV, builds the apps with your key, installs them and builds a rollback script. Disk for build tools: about 0.6 GB for our apps, about 2.4 GB more for the patched browser and about 1.5 GB for Volna.
+
+How long installation takes depends on the computer, the network and the chosen set: on a virtual Google TV the installer put everything in place in about half a minute, not counting downloads. Tested on one real TV: TCL 65C6K, Android 14.
 
 **Responsibility**  
 You change your TV and its system at your own risk. This is an unofficial project: there is no guarantee it works on your model or after a firmware update. A snapshot is taken before any change, rollback is described in [docs/rollback.md](docs/rollback.md) (in Russian, like the rest of docs/; your Claude can read and explain them in your language).
@@ -127,7 +133,7 @@ More on what is tied to TCL: [docs/tcl.md](docs/tcl.md).
 - Before working, the wizard takes a snapshot of your TV (it contains the serial number and addresses, stays on your computer only and never goes into git).
 - Every change is recorded, and a rollback script is built from the records. It appears after the first changes (before them there is nothing to roll back): the wizard shows it to you and checks it with a dry run. What is and is not rolled back: [docs/rollback.md](docs/rollback.md).
 - System packages are only disabled, not removed. There is a "do not touch" list (data/tcl-never-touch.txt).
-- Everyone builds the apps with their own key. The repository holds no ready APKs and no other people's keys.
+- The repository holds no ready APKs and no keys. Ready apps come in the release archives, signed with the release key (fingerprint in [docs/release.md](docs/release.md)); when building from source you sign them with your own key.
 - Third-party apps are downloaded from their authors' links and checked against the signature fingerprint.
 - The wizard never enters passwords, never accepts terms for you, and sends nothing out on its own, except the city name to Open-Meteo and downloads from the list. The apps on the TV then reach services on their own: weather by your city's coordinates (Open-Meteo), photos (Wikimedia), optionally exchange rates, YouTube Music and lyrics; the Guard checks GitHub and GitLab for app updates and checks the internet connection and DNS. The full list is in [docs/architecture.md](docs/architecture.md).
 - The wireless debugging you enable on the TV only accepts computers you confirmed, but any device on the home network can send a request. Never press "Allow" without looking. Guard can show notes from a phone (port 8765 on the home network, only with the six-digit code shown on Guard's screen): the wizard checks whether the port is listening and tells you plainly.
@@ -141,7 +147,7 @@ More on what is tied to TCL: [docs/tcl.md](docs/tcl.md).
 - The light "Obyom" theme exists but is checked only on a home screen snapshot of one TV. The default is the dark "Graphite".
 - HYDE Browser is built from patches to the TV Bro sources. It has its own name, icon, application ID and an About window linking to TV Bro, as the TV Bro license requires.
 - Weather: Open-Meteo, free for non-commercial use only. National Bank of Belarus rates are enabled separately and are optional.
-- Not tested on a live TV: building and installing on macOS and Linux, work on non-TCL TVs, importing a Key Mapper layout from a file, behaviour after a reboot.
+- Not tested on a live TV: installing the ready release on a real TCL (the installer was checked there only for the passport and the plan; installing and rolling back were tested on a virtual Google TV), building and installing on macOS and Linux, work on real non-TCL TVs, importing a Key Mapper layout from a file, behaviour after a reboot.
 
 **Other projects and licenses**  
 We do not copy or distribute other people's apps, only links. The full list with licenses: [THIRD-PARTY.md](THIRD-PARTY.md).

@@ -80,7 +80,7 @@
 <body>
 <main>
   <h1>Установка HYDE TV</h1>
-  <p class="sub">Мастер найдёт ваш телевизор, прочитает, что он умеет, и покажет план: что поставит и как всё вернуть. Сейчас на телевизоре ничего не меняется.</p>
+  <p class="sub">Мастер найдёт ваш телевизор, прочитает, что он умеет, покажет план и поставит по нему. До кнопки «Установить» на телевизоре ничего не меняется, а каждое изменение потом пишется в журнал, из которого всё возвращается.</p>
 
   <section id="s1">
     <h2><span class="num">1</span>Компьютер</h2>
@@ -90,6 +90,16 @@
   <section id="s2" class="off">
     <h2><span class="num">2</span>Телевизор</h2>
     <p class="hint" style="margin-top:0">На телевизоре: Настройки, Система, Для разработчиков, включите «Беспроводная отладка». Компьютер и телевизор должны быть в одной сети.</p>
+    <details>
+      <summary>Как включить отладку, если пункта «Для разработчиков» нет</summary>
+      <ol class="hint">
+        <li>Настройки, Система, О системе: семь раз нажмите OK на строке «Сборка ОС Android TV» (на некоторых ТВ «Сборка»). Появится «Вы стали разработчиком».</li>
+        <li>Назад в «Система»: появился пункт «Для разработчиков». В нём включите «Отладка по USB» и «Беспроводная отладка».</li>
+        <li>Беспроводной отладке нужен включённый Wi-Fi, даже если телевизор подключён кабелем (так на TCL).</li>
+        <li>Телевизор спросит, разрешить ли отладку в этой сети: поставьте галочку «Всегда разрешать в этой сети» и нажмите «Разрешить».</li>
+        <li>Откройте сам пункт «Беспроводная отладка»: там адрес и порт телевизора, а кнопка «Подключить устройство с помощью кода» нужна для первого раза.</li>
+      </ol>
+    </details>
     <div id="devs"></div>
     <div class="row" style="margin-top:12px">
       <button class="ghost" id="rescan">Поискать снова</button>
@@ -152,7 +162,17 @@ async function hello() {
   try {
     const h = await api("hello");
     let html = "";
-    html += line("adb", h.adb ? esc("найден, версия " + h.adb.version) : `<span style="color:var(--bad)">${esc(h.adb_error)}</span>`);
+    if (h.pc) {
+      html += line("Компьютер", esc(`${h.pc.os}, ${h.pc.arch}`));
+      if (h.pc.free_mb >= 0) html += line("Свободно на диске", esc(h.pc.free_mb >= 1024 ? (h.pc.free_mb / 1024).toFixed(1).replace(".", ",") + " ГБ" : h.pc.free_mb + " МБ")) + (h.pc.free_mb < 200 ? '<div class="msg warn">Места мало: для adb и журналов нужно около 100 МБ.</div>' : "");
+    }
+    html += line("adb (связь с телевизором)", h.adb ? esc("есть, версия " + h.adb.version) : h.adb_offer ? "нет, можно скачать" : `<span style="color:var(--bad)">${esc(h.adb_error)}</span>`);
+    if (!h.adb && h.adb_offer) {
+      const o = h.adb_offer;
+      html += `<div class="msg">Установщик говорит с телевизором через adb, программу Google. Вместе с HYDE TV её раздавать нельзя, поэтому её нужно скачать с сайта Google: ${esc(o.name)} ${esc(o.version)}, ${esc(o.size)}, с ${esc(o.host)}. Файл сверяется с официальной контрольной суммой Google и ляжет в ${esc(o.dest)}.</div>`
+        + `<label class="consent"><input type="checkbox" id="ok-adb"><span>Принимаю <a href="${esc(o.terms)}" target="_blank" rel="noopener">условия Google для Android SDK</a> и разрешаю скачать adb.</span></label>`
+        + '<div class="row"><button id="getadb" disabled>Скачать adb</button></div><div id="adbprog"></div>';
+    }
     if (h.release) {
       const bad = h.release.problems || [];
       html += line("Выпуск HYDE TV", esc(`${h.release.version}, ${h.release.apps} файлов`) + (bad.length ? "" : ", все целы"));
@@ -161,8 +181,31 @@ async function hello() {
       html += `<div class="msg bad">${esc(h.release_error)}</div>`;
     }
     $("pc").innerHTML = html;
+    if ($("getadb")) {
+      $("ok-adb").onchange = (e) => { $("getadb").disabled = !e.target.checked; };
+      $("getadb").onclick = getADB;
+    }
     if (h.adb) { on("s2"); scan(); }
   } catch (e) { $("pc").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+
+// Скачивание adb: работа в фоне, ход раз в секунду, потом шаг «Компьютер» заново
+async function getADB() {
+  $("getadb").disabled = true;
+  try {
+    await api("getadb", { accept: $("ok-adb").checked });
+  } catch (e) { msg("adbprog", e.message, "bad"); $("getadb").disabled = false; return; }
+  const tick = async () => {
+    let j;
+    try { j = await api("job"); } catch (e) { msg("adbprog", e.message, "bad"); return; }
+    const evs = j.events || [], cur = evs[evs.length - 1];
+    $("adbprog").innerHTML = evs.filter((e, i) => e.status !== "start" || i === evs.length - 1)
+      .map((e) => `<div class="ev ${e.status}"><span class="m">${e.status === "start" ? "…" : MARK[e.status] || "·"}</span><div>${esc(e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
+    if (j.running) { setTimeout(tick, 700); return; }
+    if (j.result && j.result.error) { $("getadb").disabled = false; return; }
+    hello();
+  };
+  tick();
 }
 
 async function scan() {
@@ -239,9 +282,12 @@ function sw(id, checked, disabled) {
   return `<label class="switch"><input type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}><span></span></label>`;
 }
 
+let lastPlan = null;
+
 async function plan() {
   try {
     const p = await api("plan", { serial, modules: choice.modules, home: choice.home });
+    lastPlan = p;
     let mods = "";
     for (const m of p.modules) {
       if (m.module === "aura") continue; // плеер «Волны» ставится вместе с ней
@@ -281,7 +327,6 @@ async function plan() {
       html += `<div class="step"><span class="n">${n}</span><div>${esc(s.what)}${tail}</div></div>`;
     }
     for (const x of p.notes || []) html += `<p class="hint">${esc(x)}</p>`;
-    html += '<div class="msg">Установка по этому плану: следующий шаг работы над мастером. Сейчас на телевизоре ничего не менялось.</div>';
     $("plan").innerHTML = html;
     $("show-cmd").onchange = (e) => { showCmd = e.target.checked; plan(); };
     installBox(p);
@@ -327,22 +372,57 @@ async function poll() {
   if (j.running) { setTimeout(poll, 1000); return; }
   jobShown = false;
   const r = j.result || {};
+  let installed = false;
   if (j.kind === "установка") {
     if (r.error) {
       $("after").innerHTML = `<div class="msg ${r.lost ? "warn" : "bad"}">${esc(r.error)}</div>` + (r.backup ? `<p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>` : "");
       if ($("go")) $("go").disabled = false;
     } else {
-      $("after").innerHTML = `<div class="msg ok">Установлено${r.resumed ? " (продолжение прерванной установки)" : ""}: изменений ${r.done}, уже было ${r.skipped}${r.warnings ? ", предупреждений " + r.warnings : ""}.</div><p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>`;
+      installed = true;
+      $("after").innerHTML = `<div class="msg ok">Установлено${r.resumed ? " (продолжение прерванной установки)" : ""}: изменений ${r.done}, уже было ${r.skipped}${r.warnings ? ", предупреждений " + r.warnings : ""}.</div><p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>` + nextSteps();
     }
   } else {
-    $("after").innerHTML = `<div class="msg ${r.result && !r.result.fail && !r.result.lost && !r.result.error ? "ok" : "bad"}" style="white-space:pre-line">${esc(r.text || "")}</div>`;
+    $("after").innerHTML = `<div class="msg ${r.ok ? "ok" : "bad"}" style="white-space:pre-line">${esc(r.text || "")}</div>`;
   }
   $("after").insertAdjacentHTML("beforeend", '<div class="row" style="margin-top:12px"><button class="ghost" id="chk">Проверить телевизор</button><button class="ghost" id="undo">Откатить всё</button></div><div id="chks"></div>');
   $("chk").onclick = verify;
   $("undo").onclick = async () => {
-    if (!confirm("Вернуть телевизор как было до установки? Приложения HYDE удалятся, права и настройки вернутся, главный экран станет прежним.")) return;
+    if (!confirm("Вернуть телевизор как было до установки HYDE TV? Приложения HYDE удалятся, права и настройки вернутся, главный экран станет прежним. Если HYDE ставили несколько раз (обновления), откат пройдёт по всем установкам от новой к старой.")) return;
     try { await api("restore", { serial }); jobShown = true; poll(); } catch (e) { msg("chks", e.message, "bad"); }
   };
+  if (installed) guardPanel();
+}
+
+// Что сделать руками после установки: то, чего установщик не делает сам
+function nextSteps() {
+  const p = lastPlan || {}, mods = Object.fromEntries((p.modules || []).map((m) => [m.module, m]));
+  const items = [];
+  if (p.home) items.push("Нажмите на пульте «Домой»: должен открыться «Дом». Если открылось другое, нажмите «Откатить всё» или напишите, что видите.");
+  items.push("Город для погоды, цвет стекла, курсы и стихи выбираются на телевизоре: плитка «Настройки «Дома»» в конце ряда.");
+  if (mods.keymapper && mods.keymapper.chosen) items.push("Кнопка пульта для полосы HYDE (на TCL обычно шестерёнка): откройте на телевизоре Key Mapper, «New key map», «Tap to record trigger», нажмите эту кнопку, затем «Add action», «Launch app» (если спросит, «Ignore») и выберите «Дом». Тогда кнопка открывает полосу HYDE, повторное нажатие её закрывает.");
+  items.push("Проверьте настоящим пультом: громкость, вход HDMI, YouTube.");
+  return '<div class="group">Что сделать на телевизоре</div>' + items.map((t, i) => `<div class="step"><span class="n">${i + 1}</span><div>${esc(t)}</div></div>`).join("");
+}
+
+// Выключатели «Сторожа» с фактическим состоянием (шаг 9 мастера из плана): отладка по сети и записки с телефона
+function guardPanel() {
+  $("after").insertAdjacentHTML("beforeend", '<div class="group">«Сторож»</div>'
+    + '<div class="line"><span class="k">Отладка по сети</span><span class="v" id="g-adb">читаю…</span></div>'
+    + '<p class="hint">Нужна, чтобы потом обновлять и откатывать HYDE с этого компьютера. Можно выключить: «Сторож» подержит её ещё 2 часа и выключит. Для следующего обновления включите на телевизоре «Беспроводную отладку» снова.</p>'
+    + '<div class="row"><button class="ghost" id="adb-service">Выключить через 2 часа</button><button class="ghost" id="adb-always">Держать всегда</button></div>'
+    + '<div class="line" style="margin-top:12px"><span class="k">Записки с телефона</span><span class="v" id="g-notes">читаю…</span></div>'
+    + '<p class="hint">Устройство в домашней сети, которое знает код с экрана «Сторожа», может показать на телевизоре текст. Больше ничего записки не умеют.</p>'
+    + '<div class="row"><button class="ghost" id="notes-off">Выключить записки</button><button class="ghost" id="notes-on">Включить</button></div>');
+  const g = async (what, set, el) => {
+    $(el).textContent = "…";
+    try { $(el).textContent = (await api("guard", { serial, what, set })).text; } catch (e) { $(el).textContent = e.message; }
+  };
+  $("adb-service").onclick = () => g("adb", "service", "g-adb");
+  $("adb-always").onclick = () => g("adb", "always", "g-adb");
+  $("notes-off").onclick = () => g("notes", "off", "g-notes");
+  $("notes-on").onclick = () => g("notes", "on", "g-notes");
+  g("adb", "", "g-adb");
+  g("notes", "", "g-notes");
 }
 
 async function verify() {

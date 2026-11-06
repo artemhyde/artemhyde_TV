@@ -77,6 +77,7 @@ type Session struct {
 	Finished  string          `json:"finished,omitempty"`
 	Restored  string          `json:"restored,omitempty"`
 	LastError string          `json:"last_error,omitempty"`
+	Held      []string        `json:"held,omitempty"` // команды, чьё действие на ТВ уже было до этой установки
 }
 
 func loadSession(dir string) (*Session, error) {
@@ -118,11 +119,20 @@ func findUnfinished(root, tvID string) string {
 	return ""
 }
 
-// latestSession: самая свежая папка журнала этого ТВ (для проверки и отката по умолчанию)
+// latestSession: самая свежая папка журнала этого ТВ
 func latestSession(root, tvID string) string {
+	if ss := sessionsOf(root, tvID, false); len(ss) > 0 {
+		return ss[0]
+	}
+	return ""
+}
+
+// sessionsOf: папки журналов этого ТВ от новой к старой; active: только не откаченные (для проверки и полного отката:
+// установка, потом обновление, и откат идёт от обновления к установке)
+func sessionsOf(root, tvID string, active bool) []string {
 	ents, err := os.ReadDir(root)
 	if err != nil {
-		return ""
+		return nil
 	}
 	var names []string
 	for _, e := range ents {
@@ -131,10 +141,13 @@ func latestSession(root, tvID string) string {
 		}
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	var out []string
 	for _, n := range names {
-		if s, err := loadSession(filepath.Join(root, n)); err == nil && (tvID == "" || s.TVID == tvID) {
-			return filepath.Join(root, n)
+		s, err := loadSession(filepath.Join(root, n))
+		if err != nil || (tvID != "" && s.TVID != tvID) || (active && s.Restored != "") {
+			continue
 		}
+		out = append(out, filepath.Join(root, n))
 	}
-	return ""
+	return out
 }

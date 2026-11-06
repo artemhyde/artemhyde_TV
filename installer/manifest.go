@@ -25,7 +25,37 @@ type Manifest struct {
 	} `json:"built_from"`
 	Apps       []ManifestApp `json:"apps"`
 	ThirdParty []ThirdParty  `json:"third_party"`
+	Tools      []Tool        `json:"tools"`
 	Dir        string        `json:"-"`
+}
+
+// Tool: инструмент для компьютера (adb), который установщик качает с официального адреса по согласию человека.
+// Файлы по системам: windows, darwin, linux; размер и SHA-1 из официального списка SDK Google
+type Tool struct {
+	ID             string              `json:"id"`
+	Name           string              `json:"name"`
+	Version        string              `json:"version"`
+	Page           string              `json:"page"`
+	Terms          string              `json:"terms"`
+	License        string              `json:"license"`
+	ChecksumSource string              `json:"checksum_source"`
+	Files          map[string]ToolFile `json:"files"`
+}
+
+type ToolFile struct {
+	URL    string `json:"url"`
+	Size   int64  `json:"size"`
+	SHA1   string `json:"sha1"`
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+func (m *Manifest) Tool(id string) *Tool {
+	for i := range m.Tools {
+		if m.Tools[i].ID == id {
+			return &m.Tools[i]
+		}
+	}
+	return nil
 }
 
 type ManifestApp struct {
