@@ -1,0 +1,77 @@
+##props
+ro.product.manufacturer=Google
+ro.product.brand=google
+ro.product.model=AOSP TV on x86
+ro.boot.product=
+ro.tcl.product_type=
+ro.hardware=ranchu
+ro.product.cpu.abilist=x86,armeabi-v7a,armeabi
+ro.build.version.sdk=34
+ro.build.version.release=14
+ro.build.fingerprint=google/sdk_google_atv_amati_x86/emulator_x86_arm:14/UTT1.240131.001.F1/11825476:user/dev-keys
+##features
+feature:android.hardware.type.television
+feature:android.software.leanback
+feature:android.software.leanback_only
+##libraries
+library:android.ext.adservices
+library:android.ext.shared
+library:android.hidl.base-V1.0-java
+library:android.hidl.manager-V1.0-java
+library:android.net.ipsec.ike
+library:android.test.base
+library:android.test.mock
+library:android.test.runner
+library:androidx.window.extensions
+library:androidx.window.sidecar
+library:com.android.cts.ctsshim.shared_library
+library:com.android.future.usb.accessory
+library:com.android.libraries.tv.tvsystem
+library:com.android.location.provider
+library:com.android.media.remotedisplay
+library:com.android.media.tv.remoteprovider
+library:com.android.mediadrm.signer
+library:com.google.android.gms
+library:com.google.android.trichromelibrary
+library:javax.obex
+library:org.apache.http.legacy
+##packages
+package:com.google.android.tvlauncher versionCode:2100000000
+package:com.google.android.apps.tv.launcherx versionCode:413515
+package:com.google.android.youtube.tv versionCode:218009360
+package:com.android.tv.settings versionCode:1
+package:com.google.android.inputmethod.latin versionCode:110128547
+##disabled
+##home
+com.google.android.apps.tv.launcherx
+##display_service
+Service tcl_tv_display: not found
+##quickpanel
+No services found
+##tkl
+##settings
+secure:screensaver_components=com.google.android.apps.tv.dreamx/.service.Backdrop
+secure:screensaver_enabled=1
+secure:screensaver_activate_on_sleep=0
+secure:screensaver_activate_on_dock=1
+system:screen_off_timeout=2147483647
+secure:enabled_accessibility_services=null
+secure:accessibility_enabled=0
+secure:default_input_method=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+global:private_dns_mode=null
+global:private_dns_specifier=null
+global:adb_wifi_enabled=0
+##admins
+  Enabled Device Admins (User 0, provisioningState: 0):
+  
+    mPasswordOwner=-1
+    mPasswordTokenHandle=0
+    mAppsSuspended=false
+    mUserSetupComplete=true
+    mAffiliationIds={}
+    mNewUserDisclaimer=null
+  
+##df
+Filesystem       1K-blocks   Used Available Use% Mounted on
+/dev/block/dm-38   6082144 410068   5529864   7% /data/user/0
+##end

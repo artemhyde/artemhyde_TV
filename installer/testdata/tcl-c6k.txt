@@ -1,0 +1,138 @@
+##props
+ro.product.manufacturer=TCL
+ro.product.brand=TCL
+ro.product.model=Smart TV Pro
+ro.boot.product=C6K
+ro.tcl.product_type=GTV
+ro.hardware=mt5896
+ro.product.cpu.abilist=armeabi-v7a,armeabi
+ro.build.version.sdk=34
+ro.build.version.release=14
+ro.build.fingerprint=TCL/G08_4K_GB/G08:14/UTT2.250416.001/AU02:user/release-keys
+##features
+feature:android.hardware.type.television
+feature:android.software.leanback
+feature:android.software.leanback_only
+##libraries
+library:android.ext.shared
+library:android.hidl.base-V1.0-java
+library:android.hidl.manager-V1.0-java
+library:android.net.ipsec.ike
+library:android.test.base
+library:android.test.mock
+library:android.test.runner
+library:com.android.cts.ctsshim.shared_library
+library:com.android.future.usb.accessory
+library:com.android.libraries.tv.tvsystem
+library:com.android.location.provider
+library:com.android.media.remotedisplay
+library:com.android.media.tv.remoteprovider
+library:com.android.mediadrm.signer
+library:com.dolby.android.audio
+library:com.google.android.gms
+library:com.google.android.trichromelibrary
+library:com.tcl.ginga.porting
+library:com.tcl.gingad
+library:com.tcl.hbbtv
+library:com.tcl.hdmi
+library:com.tcl.tbrowser
+library:com.tcl.tbrowser_player
+library:com.tcl.tv.display
+library:com.tcl.tvinput
+library:iplayer.webkit
+library:javax.obex
+library:libcom_tcl_hbbtv_jni.tcl.so
+library:libcom_tcl_tbrowser_jni.tcl.so
+library:libcom_tcl_tbrowser_player_jni.tcl.so
+library:libhbbtv_plugin.tcl.so
+library:libhbbtv_plugin_arib.tcl.so
+library:org.apache.http.legacy
+library:tcl.factory.hal
+library:tcl.webkit
+library:tromlib
+##packages
+package:org.example.volna versionCode:5
+package:org.example.tile.files versionCode:5
+package:org.example.nightmode versionCode:13
+package:org.example.tile.lampa versionCode:5
+package:com.vk.tv versionCode:65632
+package:top.rootu.lampa versionCode:581
+package:io.github.sds100.keymapper versionCode:288
+package:org.example.picture versionCode:1
+package:tv.twitch.android.app versionCode:1100000018
+package:org.example.demo versionCode:1
+package:org.example.keyboard versionCode:1
+package:org.example.tile.vk versionCode:5
+package:com.google.android.inputmethod.latin versionCode:175783349
+package:org.example.tile.youtube versionCode:5
+package:me.zhanghai.android.files versionCode:40
+package:com.phlox.tvwebbrowser versionCode:69
+package:org.example.tile.serials versionCode:5
+package:org.example.tile.settings versionCode:5
+package:org.example.sound versionCode:3
+package:org.example.tile.twitch versionCode:5
+package:org.example.tile.browser versionCode:5
+package:org.example.home versionCode:3
+package:org.example.aura versionCode:29
+package:com.dolby.android.audio.service versionCode:34
+package:com.android.tv.settings versionCode:34402
+package:com.cxinventor.file.explorer versionCode:281
+package:org.example.clip versionCode:1
+package:com.google.android.youtube.tv versionCode:530340320
+package:org.smarttube.stable versionCode:2461
+package:com.google.android.apps.tv.launcherx versionCode:831927
+package:org.example.guard versionCode:5
+package:com.google.android.tungsten.setupwraith versionCode:2018123808
+package:com.phlox.tvwebbrowser.foss versionCode:77
+##disabled
+package:com.google.android.inputmethod.latin
+package:com.google.android.tungsten.setupwraith
+package:com.google.android.apps.tv.launcherx
+##home
+org.example.home
+##display_service
+Service tcl_tv_display: found
+##quickpanel
+1 services found:
+  Service #0:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.android.tv.settings/com.tcl.settings.ShowWindowService
+##tkl
+shortcutkey.pb
+shortcutkey.tkl
+##settings
+secure:screensaver_components=org.example.home/.Dream
+secure:screensaver_enabled=0
+secure:screensaver_activate_on_sleep=0
+secure:screensaver_activate_on_dock=0
+system:screen_off_timeout=2147483647
+secure:enabled_accessibility_services=io.github.sds100.keymapper/io.github.sds100.keymapper.system.accessibility.MyAccessibilityService
+secure:accessibility_enabled=1
+secure:default_input_method=org.example.keyboard/.Kbd
+global:private_dns_mode=hostname
+global:private_dns_specifier=one.one.one.one
+global:adb_wifi_enabled=1
+##admins
+  Enabled Device Admins (User 0, provisioningState: 0):
+    io.github.sds100.keymapper/.system.DeviceAdmin:
+      uid=10008
+      testOnlyAdmin=false
+      policies:
+        force-lock
+      passwordQuality=0x0
+      minimumPasswordLength=0
+      passwordHistoryLength=0
+--
+  Enabled Device Admins (User 10, provisioningState: 0):
+  
+    mPasswordOwner=-1
+    mPasswordTokenHandle=0
+    mAppsSuspended=false
+    mUserSetupComplete=false
+    mAffiliationIds={}
+    mNewUserDisclaimer=not_needed
+  
+##df
+Filesystem       1K-blocks    Used Available Use% Mounted on
+/dev/block/dm-27  21523300 4895172  16480672  23% /data/user/0
+##end

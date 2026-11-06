@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "about": "Рецепт установки HYDE TV для установщика: какие приложения, в каком порядке, какие права и как всё вернуть. Те же шаги словами: CLAUDE.md, шаги 7 и 9. Меняется вместе с ними.",
+  "modules": [
+    {
+      "module": "guard",
+      "title": "«Сторож»",
+      "what": "фоновая служба: подсветка в 22:00 и 7:00, таймер простоя, держит отладку по сети",
+      "default": true,
+      "required": true,
+      "steps": [
+        {"what": "право менять защищённые настройки", "do": "pm grant app.glasstv.guard android.permission.WRITE_SECURE_SETTINGS", "undo": "pm revoke app.glasstv.guard android.permission.WRITE_SECURE_SETTINGS"},
+        {"what": "право читать состояние системы (таймер простоя в чужих окнах)", "do": "pm grant app.glasstv.guard android.permission.DUMP", "undo": "pm revoke app.glasstv.guard android.permission.DUMP"},
+        {"what": "окно поверх других приложений", "do": "appops set app.glasstv.guard SYSTEM_ALERT_WINDOW allow", "undo": "appops set app.glasstv.guard SYSTEM_ALERT_WINDOW default"},
+        {"what": "менять настройки экрана", "do": "appops set app.glasstv.guard WRITE_SETTINGS allow", "undo": "appops set app.glasstv.guard WRITE_SETTINGS default"},
+        {"what": "обновлять приложения не из Google Play", "do": "appops set app.glasstv.guard REQUEST_INSTALL_PACKAGES allow", "undo": "appops set app.glasstv.guard REQUEST_INSTALL_PACKAGES default"},
+        {"what": "автозапуск (прошивка TCL)", "do": "appops set app.glasstv.guard AUTO_START allow", "undo": "appops set app.glasstv.guard AUTO_START default", "when": "tcl"},
+        {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +app.glasstv.guard", "undo": "dumpsys deviceidle whitelist -app.glasstv.guard"},
+        {"what": "запустить «Сторожа»", "do": "am broadcast -n app.glasstv.guard/.Boot", "run": true}
+      ]
+    },
+    {
+      "module": "keymapper",
+      "title": "Key Mapper",
+      "what": "кнопки пульта: что открывает шестерёнка и другие кнопки",
+      "default": true,
+      "third_party": "io.github.sds100.keymapper",
+      "steps": [
+        {"what": "право менять защищённые настройки", "do": "pm grant io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS", "undo": "pm revoke io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS"},
+        {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +io.github.sds100.keymapper", "undo": "dumpsys deviceidle whitelist -io.github.sds100.keymapper"},
+        {"kind": "a11y", "what": "служба кнопок в спецвозможностях", "service": "io.github.sds100.keymapper/io.github.sds100.keymapper.system.accessibility.MyAccessibilityService"}
+      ]
+    },
+    {
+      "module": "home",
+      "title": "«Дом»",
+      "what": "главный экран: фото по времени суток, часы, погода, стих, плитки",
+      "default": true,
+      "required": true,
+      "steps": [
+        {"what": "видеть, какие приложения открывали (подсказки на главном экране)", "do": "appops set app.glasstv.home GET_USAGE_STATS allow", "undo": "appops set app.glasstv.home GET_USAGE_STATS default"},
+        {"what": "автозапуск (прошивка TCL)", "do": "appops set app.glasstv.home AUTO_START allow", "undo": "appops set app.glasstv.home AUTO_START default", "when": "tcl"}
+      ]
+    },
+    {
+      "module": "nightmode",
+      "title": "«Ночной режим»",
+      "what": "ползунок яркости и таймер сна; без подсветки TCL затемняет экран вуалью",
+      "default": true,
+      "admin": true,
+      "steps": [
+        {"what": "права администратора (выключать экран по таймеру сна)", "do": "dpm set-active-admin --user 0 app.glasstv.nightmode/.AdminReceiver", "undo": "am start -n app.glasstv.nightmode/.MainActivity --ez unadmin true; sleep 5"},
+        {"what": "окно поверх других приложений", "do": "appops set app.glasstv.nightmode SYSTEM_ALERT_WINDOW allow", "undo": "appops set app.glasstv.nightmode SYSTEM_ALERT_WINDOW default"},
+        {"what": "менять яркость", "do": "appops set app.glasstv.nightmode WRITE_SETTINGS allow", "undo": "appops set app.glasstv.nightmode WRITE_SETTINGS default"},
+        {"what": "уведомления", "do": "pm grant app.glasstv.nightmode android.permission.POST_NOTIFICATIONS", "undo": "pm revoke app.glasstv.nightmode android.permission.POST_NOTIFICATIONS"},
+        {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +app.glasstv.nightmode", "undo": "dumpsys deviceidle whitelist -app.glasstv.nightmode"}
+      ]
+    },
+    {
+      "module": "sound",
+      "title": "«Звук»",
+      "what": "полоса поверх фильма: Dolby, речь, выравнивание громкости, бас",
+      "default": true,
+      "needs": "dolby",
+      "needs_why": "нужна служба Dolby (com.dolby.android.audio.service), на этом ТВ её нет",
+      "steps": []
+    },
+    {
+      "module": "picture",
+      "title": "«Картинка»",
+      "what": "полоса поверх фильма: режимы картинки и ползунки",
+      "default": true,
+      "needs": "display_lib",
+      "needs_why": "работает только с подсветкой TCL (библиотека com.tcl.tv.display), на этом ТВ её нет",
+      "steps": []
+    },
+    {
+      "module": "clip",
+      "title": "«Вставка»",
+      "what": "вставить текст с телефона в поле на ТВ",
+      "default": true,
+      "steps": []
+    },
+    {
+      "module": "keyboard",
+      "title": "Клавиатура HYDE",
+      "what": "клавиатура для пульта: цифры всегда на месте, язык виден",
+      "default": true,
+      "steps": [
+        {"kind": "ime", "what": "клавиатура HYDE вместо прежней", "ime": "app.glasstv.keyboard/.Kbd"}
+      ]
+    },
+    {
+      "module": "aura",
+      "title": "Плеер «Волны»",
+      "what": "Aura Music с нашими правками, играет музыку «Волны»",
+      "default": false,
+      "part_of": "volna",
+      "steps": [
+        {"what": "автозапуск (прошивка TCL)", "do": "appops set app.glasstv.aura AUTO_START allow", "undo": "appops set app.glasstv.aura AUTO_START default", "when": "tcl"},
+        {"what": "запуск другим приложением (прошивка TCL)", "do": "appops set app.glasstv.aura ASSOC_START allow", "undo": "appops set app.glasstv.aura ASSOC_START default", "when": "tcl"}
+      ]
+    },
+    {
+      "module": "volna",
+      "title": "«Волна»",
+      "what": "музыка из YouTube Music без входа: «Моя волна» и «Новое для вас»",
+      "default": false,
+      "steps": [
+        {"what": "читать уведомления плеера", "do": "cmd notification allow_listener app.glasstv.volna/app.glasstv.volna.Listener", "undo": "cmd notification disallow_listener app.glasstv.volna/app.glasstv.volna.Listener"},
+        {"what": "окно поверх других приложений", "do": "appops set app.glasstv.volna SYSTEM_ALERT_WINDOW allow", "undo": "appops set app.glasstv.volna SYSTEM_ALERT_WINDOW default"},
+        {"what": "автозапуск (прошивка TCL)", "do": "appops set app.glasstv.volna AUTO_START allow", "undo": "appops set app.glasstv.volna AUTO_START default", "when": "tcl"}
+      ]
+    },
+    {
+      "module": "browser",
+      "title": "HYDE Browser",
+      "what": "браузер для пульта (TV Bro с нашими правками)",
+      "default": false,
+      "steps": []
+    }
+  ],
+  "tile_alts": {
+    "app.glasstv.browser": ["com.phlox.tvwebbrowser.foss", "com.phlox.tvwebbrowser"],
+    "me.zhanghai.android.files": ["com.cxinventor.file.explorer"],
+    "org.smarttube.stable": ["com.liskovsoft.smarttubetv.beta", "com.google.android.youtube.tv"]
+  },
+  "home_switch": {
+    "title": "«Дом» главным экраном",
+    "what": "кнопка «Домой» открывает «Дом», заставки Android нет, простой ведут «Дом» и «Сторож»",
+    "default": false,
+    "tcl_disable": [
+      {"package": "com.google.android.apps.tv.launcherx", "why": "главный экран Google TV (иначе на TCL роль не меняется)"},
+      {"package": "com.google.android.tungsten.setupwraith", "why": "страховка Google TV, которая возвращает его главный экран"}
+    ],
+    "settings": [
+      {"what": "заставка Android выключена", "ns": "secure", "key": "screensaver_enabled", "value": "0"},
+      {"what": "заставка не включается при засыпании", "ns": "secure", "key": "screensaver_activate_on_sleep", "value": "0"},
+      {"what": "заставка не включается на подставке", "ns": "secure", "key": "screensaver_activate_on_dock", "value": "0"},
+      {"what": "экран не гаснет сам (простой ведут «Дом» и «Сторож»)", "ns": "system", "key": "screen_off_timeout", "value": "2147483647"}
+    ]
+  },
+  "night_off_not_tcl": {"what": "ночная подсветка выключена: без подсветки TCL это была бы вуаль поверх картинки", "do": "am broadcast -n app.glasstv.guard/.Cmd --es do nighthours --ez enabled false", "undo": "am broadcast -n app.glasstv.guard/.Cmd --es do nighthours --ez enabled true"}
+}

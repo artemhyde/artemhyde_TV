@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Установка HYDE TV</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea;
+    --accent: #0071e3; --accent-soft: #e8f1fd; --ok: #1e8e3e; --ok-soft: #e6f4ea; --warn: #b25e00; --warn-soft: #fff4e5;
+    --bad: #c5221f; --bad-soft: #fdecea; --radius: 18px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #000; --card: #1c1c1e; --text: #f5f5f7; --muted: #98989d; --line: #2c2c2e;
+      --accent: #0a84ff; --accent-soft: #0a2a4d; --ok: #30d158; --ok-soft: #0f2e18; --warn: #ffb340; --warn-soft: #3a2a0f;
+      --bad: #ff453a; --bad-soft: #3a1513; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 34px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  section { background: var(--card); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04); }
+  section.off { opacity: .45; pointer-events: none; }
+  h2 { font-size: 20px; letter-spacing: -0.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .line { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); }
+  .line:first-of-type { border-top: 0; }
+  .line .k { color: var(--muted); }
+  .line .v { text-align: right; }
+  button { font: inherit; border: 0; border-radius: 980px; padding: 9px 18px; cursor: pointer; background: var(--accent); color: #fff; }
+  button.ghost { background: var(--accent-soft); color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:active { transform: scale(.97); }
+  input[type=text] { font: inherit; padding: 9px 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); min-width: 0; flex: 1 1 200px; }
+  .msg { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); }
+  .msg.ok { background: var(--ok-soft); color: var(--ok); }
+  .msg.warn { background: var(--warn-soft); color: var(--warn); }
+  .msg.bad { background: var(--bad-soft); color: var(--bad); }
+  .hint { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+  .dev { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .dev:first-child { border-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { padding: 5px 12px; border-radius: 980px; font-size: 14px; background: var(--bg); }
+  .chip.yes { background: var(--ok-soft); color: var(--ok); }
+  .mod { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line); }
+  .mod:first-child { border-top: 0; }
+  .mod .t { font-weight: 600; }
+  .mod .w { color: var(--muted); font-size: 14px; }
+  .mod .why { color: var(--warn); font-size: 14px; }
+  .switch { position: relative; width: 46px; height: 28px; flex: none; margin-top: 2px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; border-radius: 28px; background: var(--line); transition: background .2s; cursor: pointer; }
+  .switch span::after { content: ""; position: absolute; width: 24px; height: 24px; left: 2px; top: 2px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+  .switch input:checked + span { background: var(--ok); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:disabled + span { opacity: .5; cursor: default; }
+  .group { margin-top: 18px; font-weight: 600; }
+  .step { display: grid; grid-template-columns: 28px 1fr; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .step .n { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .step code { font: 12.5px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); word-break: break-all; }
+  .step .undo { font-size: 13px; color: var(--muted); }
+  .step .note { font-size: 13px; color: var(--warn); }
+  details summary { cursor: pointer; color: var(--accent); margin-top: 10px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Установка HYDE TV</h1>
+  <p class="sub">Мастер найдёт ваш телевизор, прочитает, что он умеет, и покажет план: что поставит и как всё вернуть. Сейчас на телевизоре ничего не меняется.</p>
+
+  <section id="s1">
+    <h2><span class="num">1</span>Компьютер</h2>
+    <div id="pc">Проверяю…</div>
+  </section>
+
+  <section id="s2" class="off">
+    <h2><span class="num">2</span>Телевизор</h2>
+    <p class="hint" style="margin-top:0">На телевизоре: Настройки, Система, Для разработчиков, включите «Беспроводная отладка». Компьютер и телевизор должны быть в одной сети.</p>
+    <div id="devs"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="rescan">Поискать снова</button>
+    </div>
+    <details>
+      <summary>Ввести адрес вручную или сопрячь по коду</summary>
+      <p class="hint">Адрес и порт для подключения: главный экран «Беспроводная отладка», строка «IP-адрес и порт».</p>
+      <div class="row"><input type="text" id="addr" placeholder="192.168.1.20:37123"><button id="connect">Подключить</button></div>
+      <p class="hint">Первый раз телевизор не знает этот компьютер. На нём же нажмите «Подключить устройство с помощью кода»: там свои адрес, порт и шестизначный код.</p>
+      <div class="row"><input type="text" id="paddr" placeholder="адрес и порт окна сопряжения"><input type="text" id="pcode" placeholder="код из шести цифр" inputmode="numeric" style="flex:0 1 180px"><button id="pair">Сопрячь</button></div>
+    </details>
+    <div id="cmsg"></div>
+  </section>
+
+  <section id="s3" class="off">
+    <h2><span class="num">3</span>Что умеет телевизор</h2>
+    <div id="pass"></div>
+  </section>
+
+  <section id="s4" class="off">
+    <h2><span class="num">4</span>Что поставим</h2>
+    <div id="mods"></div>
+  </section>
+
+  <section id="s5" class="off">
+    <h2><span class="num">5</span>План изменений</h2>
+    <div id="plan"></div>
+  </section>
+</main>
+<script>
+"use strict";
+const KEY = location.hash.slice(1);
+let serial = "", choice = { modules: {}, home: null }, showCmd = false;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const on = (id, v = true) => $(id).classList.toggle("off", !v);
+
+async function api(path, body) {
+  const r = await fetch("/api/" + path, {
+    method: body ? "POST" : "GET",
+    headers: { "X-Hyde-Key": KEY, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({ error: "установщик не ответил" }));
+  if (!r.ok || j.error) throw new Error(j.error || "ошибка " + r.status);
+  return j;
+}
+const msg = (el, text, kind = "") => { $(el).innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : ""; };
+const line = (k, v) => `<div class="line"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;
+
+async function hello() {
+  try {
+    const h = await api("hello");
+    let html = "";
+    html += line("adb", h.adb ? esc("найден, версия " + h.adb.version) : `<span style="color:var(--bad)">${esc(h.adb_error)}</span>`);
+    if (h.release) {
+      const bad = h.release.problems || [];
+      html += line("Выпуск HYDE TV", esc(`${h.release.version}, ${h.release.apps} файлов`) + (bad.length ? "" : ", все целы"));
+      if (bad.length) html += `<div class="msg bad">${bad.map(esc).join("<br>")}</div>`;
+    } else {
+      html += `<div class="msg bad">${esc(h.release_error)}</div>`;
+    }
+    $("pc").innerHTML = html;
+    if (h.adb) { on("s2"); scan(); }
+  } catch (e) { $("pc").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+
+async function scan() {
+  $("devs").innerHTML = '<p class="hint" style="margin:0">Ищу телевизоры в сети…</p>';
+  try {
+    const d = await api("devices");
+    // Один ТВ бывает подключён дважды (по адресу и через mDNS) и ещё объявлен в сети: показываем его один раз, по адресу
+    const ipOf = (s) => (String(s).match(/^(\d+\.\d+\.\d+\.\d+):\d+$/) || [])[1];
+    const mdnsIp = {};
+    for (const x of d.mdns || []) { const ip = ipOf(x.addr); if (ip) mdnsIp[x.name] = ip; }
+    const devIp = (serial) => ipOf(serial) || mdnsIp[String(serial).replace(/\._adb-tls-connect\._tcp$/, "")];
+    const items = [], seen = new Set();
+    const live = (d.devices || []).filter((x) => x.state === "device").sort((a, b) => (ipOf(b.serial) ? 1 : 0) - (ipOf(a.serial) ? 1 : 0));
+    for (const x of live) {
+      const ip = devIp(x.serial), key = ip || x.serial;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({ label: x.model || x.serial, sub: "уже подключён" + (ip ? ", " + ip : ""), act: "use", val: x.serial });
+    }
+    for (const x of d.mdns || []) {
+      if (x.type === "_adb-tls-connect._tcp" && !seen.has(ipOf(x.addr))) { seen.add(ipOf(x.addr)); items.push({ label: x.addr, sub: "объявил беспроводную отладку", act: "connect", val: x.addr }); }
+      if (x.type === "_adb-tls-pairing._tcp") $("paddr").value = x.addr;
+    }
+    if (!items.length) {
+      $("devs").innerHTML = '<p class="hint" style="margin:0">Пока никого не видно. Включите на телевизоре «Беспроводную отладку» или введите адрес вручную ниже.</p>';
+      return;
+    }
+    $("devs").innerHTML = items.map((i, n) => `<div class="dev"><div><div>${esc(i.label)}</div><div class="hint" style="margin:0">${esc(i.sub)}</div></div><button data-n="${n}">${i.act === "use" ? "Выбрать" : "Подключить"}</button></div>`).join("");
+    $("devs").querySelectorAll("button").forEach((b) => b.onclick = () => {
+      const i = items[+b.dataset.n];
+      if (i.act === "use") pick(i.val); else connect(i.val);
+    });
+  } catch (e) { msg("cmsg", e.message, "bad"); }
+}
+
+async function connect(addr) {
+  msg("cmsg", "Подключаюсь к " + addr + "…");
+  try {
+    const r = await api("connect", { addr });
+    msg("cmsg", r.say, r.result === "ok" ? "ok" : "warn");
+    if (r.result === "ok") pick(r.serial);
+  } catch (e) { msg("cmsg", e.message, "bad"); }
+}
+
+async function pair() {
+  const addr = $("paddr").value.trim(), code = $("pcode").value.trim();
+  if (!addr || !code) return msg("cmsg", "Нужны адрес и порт окна сопряжения и код с экрана телевизора.", "warn");
+  msg("cmsg", "Сопрягаю…");
+  try {
+    const r = await api("pair", { addr, code });
+    msg("cmsg", r.ok ? "Сопряжение прошло. Теперь подключитесь: адрес и порт с главного экрана «Беспроводная отладка»." : "Не вышло: " + r.raw, r.ok ? "ok" : "bad");
+    if (r.ok) scan();
+  } catch (e) { msg("cmsg", e.message, "bad"); }
+}
+
+async function pick(s) {
+  serial = s;
+  on("s3"); $("pass").innerHTML = '<p class="hint" style="margin:0">Читаю паспорт телевизора, это несколько секунд…</p>';
+  try {
+    const r = await api("inspect", { serial });
+    const c = r.caps;
+    const chip = (t, yes) => `<span class="chip ${yes ? "yes" : ""}">${esc(t)}: ${yes ? "есть" : "нет"}</span>`;
+    let html = line("Телевизор", esc(c.model || "?")) + line("Android", esc(`${c.android} (API ${c.sdk})`)) +
+      line("Профиль", esc(c.profile === "tcl-gtv" ? "TCL Google TV" : c.profile === "generic-gtv" ? "Google TV или Android TV" : "не подходит")) +
+      line("Проверка на таком ТВ", esc(c.level)) + line("Главный экран сейчас", esc(c.home_holder || "не определён"));
+    if (c.why) html += `<div class="msg bad">Этот телевизор не подходит: ${esc(c.why)}</div>`;
+    html += `<div class="chips">${chip("Подсветка TCL", c.display_lib)}${chip("Dolby", c.dolby)}${chip("Панель TCL", c.quick_panel)}${chip("Key Mapper", c.keymapper)}</div>`;
+    $("pass").innerHTML = html;
+    if (!c.why) { on("s4"); on("s5"); plan(); }
+  } catch (e) { $("pass").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+
+function sw(id, checked, disabled) {
+  return `<label class="switch"><input type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}><span></span></label>`;
+}
+
+async function plan() {
+  try {
+    const p = await api("plan", { serial, modules: choice.modules, home: choice.home });
+    let mods = "";
+    for (const m of p.modules) {
+      if (m.module === "aura") continue; // плеер «Волны» ставится вместе с ней
+      const note = !m.available ? `<div class="why">Недоступно: ${esc(m.why)}</div>` : m.why ? `<div class="why">${esc(m.why)}</div>` : m.state ? `<div class="w">${esc(m.state)}</div>` : "";
+      mods += `<div class="mod">${sw("m-" + m.module, m.chosen, !m.available || m.required)}<div><div class="t">${esc(m.title)}${m.required ? '<span class="w"> · обязательно</span>' : ""}</div><div class="w">${esc(m.what)}</div>${note}</div></div>`;
+    }
+    mods += `<div class="mod">${sw("m-home-switch", p.home, false)}<div><div class="t">${esc(p.home_title)}</div><div class="w">${esc(p.home_what)}</div></div></div>`;
+    $("mods").innerHTML = mods;
+    for (const m of p.modules) {
+      const el = $("m-" + m.module);
+      if (el) el.onchange = () => { choice.modules[m.module] = el.checked; plan(); };
+    }
+    $("m-home-switch").onchange = (e) => { choice.home = e.target.checked; plan(); };
+
+    let html = "";
+    for (const x of p.problems || []) html += `<div class="msg bad">${esc(x)}</div>`;
+    // Сводка словами: сколько поставим, сколько поменяем, что откат не вернёт
+    const inst = p.steps.filter((s) => s.host && /^adb install/.test(s.do || ""));
+    const tiles = inst.filter((s) => s.group.startsWith("Плитки")).length;
+    const changes = p.steps.filter((s) => !s.run && !s.host).length;
+    const keep = [...new Set(p.steps.filter((s) => s.undo === "-").map((s) => s.group))];
+    html += `<div class="msg">Поставим приложений: ${inst.length - tiles}${tiles ? `, плиток: ${tiles}` : ""}. Прав и настроек изменим: ${changes}. Главный экран: ${p.home ? "станет «Дом»" : "останется прежним"}.<br>`
+      + (keep.length ? `Всё вернёт откат, кроме: ${esc(keep.join(", "))} (подробнее в шагах ниже).` : "Всё это вернёт откат.") + "</div>";
+    html += `<div class="mod" style="border:0">${sw("show-cmd", showCmd, false)}<div><div class="t">Показать команды</div><div class="w">что именно выполнится и чем вернуть</div></div></div>`;
+    let g = "", n = 0;
+    for (const s of p.steps) {
+      if (s.group !== g) { g = s.group; html += `<div class="group">${esc(g)}</div>`; }
+      n++;
+      const where = s.host ? "компьютер" : "телевизор";
+      let tail = "";
+      if (showCmd) {
+        if (s.do) tail += `<div><code>${esc(where + ": " + s.do)}</code></div>`;
+        if (!s.run && s.undo && s.undo !== "-") tail += `<div class="undo">Вернуть: <code>${esc(s.undo)}</code></div>`;
+      }
+      if (!s.run && s.undo === "-") tail += '<div class="undo">Откатом не возвращается</div>';
+      if (s.note) tail += `<div class="note">${esc(s.note)}</div>`;
+      html += `<div class="step"><span class="n">${n}</span><div>${esc(s.what)}${tail}</div></div>`;
+    }
+    for (const x of p.notes || []) html += `<p class="hint">${esc(x)}</p>`;
+    html += '<div class="msg">Установка по этому плану: следующий шаг работы над мастером. Сейчас на телевизоре ничего не менялось.</div>';
+    $("plan").innerHTML = html;
+    $("show-cmd").onchange = (e) => { showCmd = e.target.checked; plan(); };
+  } catch (e) { $("plan").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+
+$("rescan").onclick = scan;
+$("connect").onclick = () => { const a = $("addr").value.trim(); if (a) connect(a); };
+$("pair").onclick = pair;
+if (!KEY) document.querySelector("main").insertAdjacentHTML("afterbegin", '<div class="msg bad">Откройте адрес из окна установщика целиком: в нём ключ после знака #.</div>');
+else hello();
+</script>
+</body>
+</html>
