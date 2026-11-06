@@ -99,7 +99,12 @@ final class Transfer {
         final StringBuilder out = new StringBuilder("Загружено настроек. «Дом»: " + applyHome(app, b.optJSONObject("home")));
         final int[] left = {2};
         final boolean[] fin = {false};
-        final Runnable end = () -> { if (!fin[0]) { fin[0] = true; done.done(out.toString()); } };
+        final Runnable end = () -> {
+            if (fin[0]) return;
+            fin[0] = true;
+            if (ThemeChoice.needsRestart(app)) out.append(". Цвет стекла сменится: «Дом» перезапустится");
+            done.done(out.toString());
+        };
         final Runnable one = () -> { if (--left[0] == 0) end.run(); };
         part(app, b, "guard", GUARD, GUARD_CMD, "«Сторож»", out, one);
         part(app, b, "volna", SetupActivity.VOLNA, SetupActivity.VOLNA_CMD, "«Волна»", out, one);

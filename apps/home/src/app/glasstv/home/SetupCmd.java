@@ -32,7 +32,12 @@ public class SetupCmd extends BroadcastReceiver {
                 finish(r, "ошибка: " + e.getMessage());
                 return;
             }
-            Transfer.apply(app, b, t -> finish(r, t));
+            Transfer.apply(app, b, t -> {
+                finish(r, t);
+                // Новый цвет стекла из копии: процесс «Дома» гасится, главный экран поднимется уже с ним (мастер зовёт «Домой»)
+                if (ThemeChoice.needsRestart(app))
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 500);
+            });
         } else {
             finish(r, "нужно --es do export или --es do import --es file путь");
         }

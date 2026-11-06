@@ -12,7 +12,8 @@ package app.glasstv.home;
 final class Theme {
     private Theme() {}
 
-    static final boolean VOLUME = "volume".equals(Config.THEME);
+    // Выбор человека на ТВ (ThemeChoice), прочитанный при старте процесса; смена темы перезапускает «Дом»
+    static final boolean VOLUME = ThemeChoice.volume();
 
     // Как Color.argb, но без Android: класс остаётся чистой Java, его можно проверять на ПК
     private static int argb(int a, int r, int g, int b) { return (a << 24) | (r << 16) | (g << 8) | b; }

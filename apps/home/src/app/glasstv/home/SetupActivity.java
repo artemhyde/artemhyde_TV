@@ -181,6 +181,10 @@ public class SetupActivity extends Activity {
                 "Стиль главного экрана", "«Графит»: ряд плиток. «Vision»: сферы по центру",
                 new String[]{"Графит", "Vision"}, new String[]{Style.GRAPHITE, Style.V1}, Style.get(this),
                 v -> Style.set(this, v))));
+        row("Цвет стекла", ThemeChoice.title(ThemeChoice.get(this)), () -> open(() -> choice(
+                "Цвет стекла", "Тёмное: дымчатое стекло, как в кинозале. Светлое: матовое стекло. После выбора «Дом» перезапустится",
+                new String[]{"Тёмное", "Светлое"}, new String[]{ThemeChoice.GRAPHITE, ThemeChoice.VOLUME}, ThemeChoice.get(this),
+                v -> { if (!v.equals(ThemeChoice.get(this))) { Setup.put(this, "theme", v); list.postDelayed(() -> Restart.now(this), 400); } })));
         row("Ночью экран темнее", Setup.nightTitle(Setup.night(this)), () -> open(() -> choice(
                 "Ночью экран темнее", "«Сторож» убавляет подсветку вечером и возвращает утром, если яркость за день не меняли",
                 new String[]{"С 22:00 до 7:00", "С 21:00 до 7:00", "С 23:00 до 7:00", "С 22:00 до 8:00", "Не затемнять"},
@@ -267,7 +271,7 @@ public class SetupActivity extends Activity {
             Transfer.apply(this, b, text -> {
                 if (current != me || isFinishing()) return;
                 page("Перенос настроек", text);
-                row("Готово", "", this::toMain);
+                row("Готово", "", () -> { if (ThemeChoice.needsRestart(this)) Restart.now(this); else toMain(); });
                 focusFirst();
             });
         });

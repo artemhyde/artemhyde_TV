@@ -16,7 +16,10 @@ else die "Нет папки приложения: $arg (ожидается apps/
 name="$(basename "$appdir")"
 
 require_build_env
-[ -f "$KEYS/tv.jks" ] || die "Нет ключа подписи. Сначала: bash build/new-key.sh"
+[ -f "${SIGN_KS:-$KEYS/tv.jks}" ] || die "Нет ключа подписи. Сначала: bash build/new-key.sh"
+# Номер выпуска (build/release.sh): один versionCode и versionName у всех приложений и плиток
+ver_args=()
+if [ -n "${HYDE_VERSION_CODE:-}" ]; then ver_args=(--version-code "$HYDE_VERSION_CODE" --version-name "$HYDE_VERSION_NAME" --replace-version); fi
 work="$OUT/work/$name"
 rm -rf "$work"
 mkdir -p "$work/gen" "$work/classes" "$work/dex" "$OUT"
@@ -65,7 +68,7 @@ open(sys.argv[2], 'w', encoding='utf-8', newline='\n').write(t)
 PYT
         "$AAPT2" compile --dir "$(P "$d/res")" -o "$(P "$d/res.zip")"
         "$AAPT2" link -I "$(P "$JAR")" --manifest "$(P "$d/AndroidManifest.xml")" \
-            --min-sdk-version 31 --target-sdk-version 34 -o "$(P "$d/base.apk")" "$(P "$d/res.zip")"
+            --min-sdk-version 31 --target-sdk-version 34 ${ver_args[@]+"${ver_args[@]}"} -o "$(P "$d/base.apk")" "$(P "$d/res.zip")"
         inject_dex "$d/base.apk" "$work/dex/classes.dex"
         bash "$GT_BUILD_DIR/sign.sh" "$d/base.apk" "$OUT/tiles/$tname.apk"
         n=$((n + 1))
@@ -122,7 +125,7 @@ fi
 
 # Ресурсы и манифест
 link_args=(-I "$(P "$JAR")" --manifest "$(P "$appdir/AndroidManifest.xml")" --java "$(P "$work/gen")"
-           --min-sdk-version 31 --target-sdk-version 34)
+           --min-sdk-version 31 --target-sdk-version 34 ${ver_args[@]+"${ver_args[@]}"})
 if [ -d "$work/assets" ]; then link_args+=(-A "$(P "$work/assets")"); fi
 link_args+=(-o "$(P "$work/base.apk")")
 if [ -d "$work/res" ]; then

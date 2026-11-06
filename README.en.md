@@ -130,7 +130,7 @@ More on what is tied to TCL: [docs/tcl.md](docs/tcl.md).
 - Everyone builds the apps with their own key. The repository holds no ready APKs and no other people's keys.
 - Third-party apps are downloaded from their authors' links and checked against the signature fingerprint.
 - The wizard never enters passwords, never accepts terms for you, and sends nothing out on its own, except the city name to Open-Meteo and downloads from the list. The apps on the TV then reach services on their own: weather by your city's coordinates (Open-Meteo), photos (Wikimedia), optionally exchange rates, YouTube Music and lyrics. The full list is in [docs/architecture.md](docs/architecture.md).
-- The wireless debugging you enable on the TV only accepts computers you confirmed, but any device on the home network can send a request. Never press "Allow" without looking. Guard can show notes from a phone (port 8765 on the home network, no password): the wizard checks whether the port is listening and tells you plainly.
+- The wireless debugging you enable on the TV only accepts computers you confirmed, but any device on the home network can send a request. Never press "Allow" without looking. Guard can show notes from a phone (port 8765 on the home network, only with the six-digit code shown on Guard's screen): the wizard checks whether the port is listening and tells you plainly.
 - CLAUDE.md is plain text that your Claude executes. Read it. Download the project only from this repository, and read other people's copies yourself.
 
 **Honest limitations**
@@ -160,6 +160,8 @@ The project is not affiliated with TCL, Google or Dolby. Trademarks belong to th
 - [docs/architecture.md](docs/architecture.md): how it all works
 - [docs/tcl.md](docs/tcl.md): what is tied to TCL and what to do on other TVs
 - [docs/rollback.md](docs/rollback.md): rollback
+- [docs/release.md](docs/release.md): ready-made releases, checking signatures and checksums
+- [docs/settings-file.md](docs/settings-file.md): the settings transfer file
 - [docs/lampa.md](docs/lampa.md): Lampa settings
 - [docs/faq.md](docs/faq.md): frequent questions
 - [docs/publish.md](docs/publish.md): how to publish your own copy on GitHub

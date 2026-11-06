@@ -45,7 +45,8 @@
         android:label="Дом"
         android:icon="@drawable/icon"
         android:allowBackup="false"
-        android:theme="@style/Home">
+        android:theme="@style/Home"
+        android:name=".HomeApp">
 
         <!-- Главный экран: роль «Домой» -->
         <activity
@@ -108,6 +109,10 @@
 
         <!-- «Волна» сообщает, что играет -->
         <receiver android:name=".Now" android:exported="true" android:permission="app.glasstv.permission.HYDE" />
+        <!-- Перезапуск после смены цвета стекла: отдельный процесс гасит основной (Restart.java) -->
+        <activity android:name=".Restart" android:process=":restart" android:exported="false"
+            android:excludeFromRecents="true" android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Перенос настроек с ПК (SetupCmd.java): только adb -->
         <receiver android:name=".SetupCmd" android:exported="true" android:permission="android.permission.DUMP" />
 

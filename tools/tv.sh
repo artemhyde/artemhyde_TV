@@ -365,7 +365,10 @@ settings_load() {
         | tr -d '\r' | grep -m1 'data=' | sed -E 's/.*data="(.*)"$/\1/')"
     tv_sh "rm -f /data/local/tmp/hyde-settings.json" >/dev/null 2>&1
     case "$r" in
-        Загружено*) echo "$r"; [ -s "$before" ] && echo "прежние настройки: $before" ;;
+        Загружено*)
+            echo "$r"; [ -s "$before" ] && echo "прежние настройки: $before"
+            # Новый цвет стекла: «Дом» гасит свой процесс, здесь он поднимается снова уже с новой темой
+            case "$r" in *перезапустится*) sleep 1; tv_sh "am start -a android.intent.action.MAIN -c android.intent.category.HOME" >/dev/null 2>&1 ;; esac ;;
         *) echo "ОШИБКА: ${r:-«Дом» не ответил}"; return 1 ;;
     esac
     return 0

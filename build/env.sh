@@ -9,7 +9,8 @@
 GT_BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$GT_BUILD_DIR/.." && pwd)"
 GT_HOME="${GLASSTV_TOOLS:-$HOME/.glasstv/tools}"
-OUT="$ROOT/out"
+# Папка результата: out/, у выпуска своя (HYDE_OUT задаёт build/release.sh)
+OUT="${HYDE_OUT:-$ROOT/out}"
 KEYS="$ROOT/keys"
 CONFIG_DIR="$ROOT/config"
 # Приложения, которым нужен сгенерированный Config.java (настройки города, курсов, стихов, профилей, темы)
@@ -149,13 +150,23 @@ require_build_env() {
 }
 
 # Положить classes.dex внутрь apk (aapt2 его не кладёт): inject_dex base.apk classes.dex
+# Без сжатия, с постоянной датой и без признаков ОС: тот же код даёт тот же apk байт в байт на любом ПК
+# (воспроизводимая сборка, проверка: bash build/release.sh <версия> --check)
 inject_dex() {
-    $PY -I -X utf8 -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'a'); z.write(sys.argv[2],'classes.dex'); z.close()" "$(P "$1")" "$(P "$2")"
+    $PY -I -X utf8 -c "import zipfile,sys
+z = zipfile.ZipFile(sys.argv[1], 'a')
+i = zipfile.ZipInfo('classes.dex', (1981, 1, 1, 1, 1, 2))
+i.compress_type = zipfile.ZIP_STORED
+i.create_system = 0
+i.external_attr = 0
+z.writestr(i, open(sys.argv[2], 'rb').read())
+z.close()" "$(P "$1")" "$(P "$2")"
 }
 
-# Настройки человека: локальные, иначе образец
+# Настройки сборки: у выпуска свои нейтральные (HYDE_SETTINGS, config/release.json), иначе человека, иначе образец
 settings_file() {
-    if [ -f "$CONFIG_DIR/settings.local.json" ]; then printf '%s' "$CONFIG_DIR/settings.local.json"
+    if [ -n "${HYDE_SETTINGS:-}" ] && [ -f "$HYDE_SETTINGS" ]; then printf '%s' "$HYDE_SETTINGS"
+    elif [ -f "$CONFIG_DIR/settings.local.json" ]; then printf '%s' "$CONFIG_DIR/settings.local.json"
     elif [ -f "$CONFIG_DIR/settings.example.json" ]; then printf '%s' "$CONFIG_DIR/settings.example.json"
     fi
 }

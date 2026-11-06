@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # sign.sh: выровнять (zipalign) и подписать apk вашим ключом keys/tv.jks, затем проверить подпись и показать отпечаток.
 # Запуск: bash build/sign.sh <вход.apk> <выход.apk>
-# Вход: собранный apk без подписи (с classes.dex внутри). Ключ и пароль: keys/tv.jks и keys/tv.pass (создаёт build/new-key.sh).
+# Вход: собранный apk без подписи (с classes.dex внутри). Ключ и пароль: keys/tv.jks и keys/tv.pass (создаёт build/new-key.sh);
+# общий выпуск подменяет их ключом выпуска через SIGN_KS и SIGN_PASS (build/release.sh).
 # Схемы подписи apksigner выбирает сам по minSdk 31 (v2 и выше); v4 (.idsig) отключена: этот файл не нужен.
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
@@ -9,7 +10,8 @@ source "$(dirname "$0")/env.sh"
 in="$1"; out="$2"
 [ -f "$in" ] || die "Нет файла: $in"
 require_build_env
-[ -f "$KEYS/tv.jks" ] && [ -f "$KEYS/tv.pass" ] || die "Нет ключа. Сначала: bash build/new-key.sh"
+ks="${SIGN_KS:-$KEYS/tv.jks}"; kp="${SIGN_PASS:-$KEYS/tv.pass}"
+[ -f "$ks" ] && [ -f "$kp" ] || die "Нет ключа. Сначала: bash build/new-key.sh"
 
 mkdir -p "$(dirname "$out")" "$OUT/work/_sign"
 aligned="$OUT/work/_sign/$(basename "${out%.apk}").aligned.apk"
@@ -18,7 +20,7 @@ rm -f "$aligned" "$out"
 zout="$("$ZIPALIGN" -f -p 4 "$(P "$in")" "$(P "$aligned")" 2>&1)" || { printf '%s\n' "$zout" >&2; die "zipalign не справился с $in"; }
 printf '%s\n' "$zout" | grep -v -e 'header mismatch' -e '^[[:space:]]*$' >&2 || true
 "$JAVA" -jar "$(P "$SIGNERJAR")" sign --v4-signing-enabled false \
-    --ks "$(P "$KEYS/tv.jks")" --ks-pass "file:$(P "$KEYS/tv.pass")" \
+    --ks "$(P "$ks")" --ks-pass "file:$(P "$kp")" \
     --out "$(P "$out")" "$(P "$aligned")"
 rm -f "$aligned" "$out.idsig"
 
