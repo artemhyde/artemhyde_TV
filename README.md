@@ -160,6 +160,13 @@
 Проект не связан с TCL, Google и Dolby. Товарные знаки принадлежат владельцам и используются только для обозначения приложений.
 
 **Документация**
+- [docs/start.md](docs/start.md): с чего начать, какой путь выбрать
+- [docs/install/windows.md](docs/install/windows.md): установка окном мастера по шагам
+- [docs/install/agent.md](docs/install/agent.md): установка с Claude
+- [docs/install/manual.md](docs/install/manual.md): команды установщика, коды выхода, где что лежит
+- [docs/compatibility.md](docs/compatibility.md): какие ТВ подходят и что где работает
+- [docs/troubleshooting.md](docs/troubleshooting.md): если что-то не так
+- [docs/updates.md](docs/updates.md): обновления и переход с личной сборки
 - [docs/guide.md](docs/guide.md): как пользоваться с пульта
 - [docs/architecture.md](docs/architecture.md): как всё устроено
 - [docs/tcl.md](docs/tcl.md): привязки к TCL и что делать на других ТВ

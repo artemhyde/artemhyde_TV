@@ -162,6 +162,13 @@ We do not copy or distribute other people's apps, only links. The full list with
 The project is not affiliated with TCL, Google or Dolby. Trademarks belong to their owners and are used only to name the apps.
 
 **Documentation** (in Russian; ask your Claude to explain any of it in your language)
+- [docs/start.md](docs/start.md): where to start, which way to choose
+- [docs/install/windows.md](docs/install/windows.md): installing with the wizard, step by step
+- [docs/install/agent.md](docs/install/agent.md): installing with Claude
+- [docs/install/manual.md](docs/install/manual.md): installer commands, exit codes, where things live
+- [docs/compatibility.md](docs/compatibility.md): which TVs fit and what works where
+- [docs/troubleshooting.md](docs/troubleshooting.md): when something is wrong
+- [docs/updates.md](docs/updates.md): updates and moving from a personal build
 - [docs/guide.md](docs/guide.md): how to use it with the remote
 - [docs/architecture.md](docs/architecture.md): how it all works
 - [docs/tcl.md](docs/tcl.md): what is tied to TCL and what to do on other TVs

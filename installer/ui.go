@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -289,7 +290,7 @@ func (s *uiServer) inspect(r *http.Request) (any, error) {
 	s.passports[q.Serial] = p
 	delete(s.held, q.Serial)
 	s.mu.Unlock()
-	return map[string]any{"caps": capsOf(p), "text": capsText(capsOf(p))}, nil
+	return map[string]any{"caps": capsOf(p), "text": capsText(capsOf(p)), "installs": installsOf(s.adbTVFor(q.Serial))}, nil
 }
 
 func (s *uiServer) plan(r *http.Request) (any, error) {
@@ -406,6 +407,23 @@ func (s *uiServer) guardAPI(r *http.Request) (any, error) {
 	}
 	out, err := guardSwitch(s.adbTVFor(q.Serial), q.What, q.Set)
 	return map[string]string{"text": out}, err
+}
+
+// installsOf: прежние не откаченные установки этого ТВ на этом компьютере (для «Проверить» и «Откатить всё» без новой
+// установки: человек приходит откатывать через неделю)
+func installsOf(tv TV) []map[string]string {
+	id := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
+	var out []map[string]string
+	for _, d := range sessionsOf(defaultBackupRoot(), id, true) {
+		if ss, err := loadSession(d); err == nil {
+			st := "закончена"
+			if ss.Finished == "" {
+				st = "не закончена"
+			}
+			out = append(out, map[string]string{"label": ss.Label, "release": ss.Release, "started": ss.Started, "state": st})
+		}
+	}
+	return out
 }
 
 func (s *uiServer) getA() *ADB {

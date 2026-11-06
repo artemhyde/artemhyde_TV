@@ -239,7 +239,9 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 	}
 
 	// Главный экран: «Дом» вместо прежнего (по выбору человека, CLAUDE.md, шаг 9)
-	home := rec.HomeSwitch.Default
+	// «Дом» уже главный экран (ставили раньше): по умолчанию так и оставляем, тогда в план попадёт и починка «Домой»
+	// после обновления прошивки TCL
+	home := rec.HomeSwitch.Default || c.HomeHolder == "app.glasstv.home"
 	if ch.Home != nil {
 		home = *ch.Home
 	}
@@ -248,6 +250,16 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 		g := rec.HomeSwitch.Title
 		if c.HomeHolder == "app.glasstv.home" {
 			add(Step{Group: g, What: "«Дом» уже главный экран", Run: true})
+			// TCL после обновления прошивки включает главный экран Google TV и его страховку обратно, роль остаётся у
+			// «Дома», а «Домой» уходит к ним: отключить снова (CLAUDE.md, режим «пройди чистку заново»)
+			if c.TCL {
+				for _, d := range rec.HomeSwitch.TCLDisable {
+					if p.Has(d.Package) && !p.Disabled[d.Package] {
+						add(Step{Group: g, What: "отключить снова " + d.Why + ": прошивка включила его обратно, «Домой» уходит к нему",
+							Do: "pm disable-user --user 0 " + d.Package, Undo: "pm enable --user 0 " + d.Package})
+					}
+				}
+			}
 		} else {
 			// Главный экран Google TV (launcherx) и его страховка забирают кнопку «Домой». На TCL роль даже не меняется,
 			// пока они включены: отключаются до смены. На Google TV других марок роль меняется, но «Домой» всё равно

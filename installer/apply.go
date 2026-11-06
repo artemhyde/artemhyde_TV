@@ -372,6 +372,15 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		}
 	}
 	res.Finished = true
+	// Повторный запуск, где всё уже так: журнал пуст, откатывать нечего. Пустую папку не оставляем, чтобы откат и
+	// проверка не ходили по пустым установкам
+	if es, err := readLedger(led); err == nil && len(es) == 0 && !res.Resumed {
+		if os.RemoveAll(dir) == nil {
+			res.Backup = ""
+			emit(Event{Status: "info", What: fmt.Sprintf("на ТВ всё уже так: изменений нет, журнал не нужен (пропущено %d)", res.Skipped)})
+			return res
+		}
+	}
 	if s, err := loadSession(dir); err == nil {
 		s.Finished, s.LastError = time.Now().Format("2006-01-02 15:04:05"), ""
 		_ = saveSession(dir, s)

@@ -275,6 +275,7 @@ async function pick(s) {
     html += `<div class="chips">${chip("Подсветка TCL", c.display_lib)}${chip("Dolby", c.dolby)}${chip("Панель TCL", c.quick_panel)}${chip("Key Mapper", c.keymapper)}</div>`;
     $("pass").innerHTML = html;
     if (!c.why) { on("s4"); on("s5"); plan(); }
+    installsBox(r.installs);
   } catch (e) { $("pass").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
 
@@ -379,18 +380,34 @@ async function poll() {
       if ($("go")) $("go").disabled = false;
     } else {
       installed = true;
-      $("after").innerHTML = `<div class="msg ok">Установлено${r.resumed ? " (продолжение прерванной установки)" : ""}: изменений ${r.done}, уже было ${r.skipped}${r.warnings ? ", предупреждений " + r.warnings : ""}.</div><p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>` + nextSteps();
+      $("after").innerHTML = (r.backup
+        ? `<div class="msg ok">Установлено${r.resumed ? " (продолжение прерванной установки)" : ""}: изменений ${r.done}, уже было ${r.skipped}${r.warnings ? ", предупреждений " + r.warnings : ""}.</div><p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>`
+        : `<div class="msg ok">На телевизоре всё уже так, как в плане: менять было нечего (проверено шагов: ${r.skipped}).</div>`) + nextSteps();
     }
   } else {
     $("after").innerHTML = `<div class="msg ${r.ok ? "ok" : "bad"}" style="white-space:pre-line">${esc(r.text || "")}</div>`;
   }
+  afterButtons();
+  if (installed) guardPanel();
+}
+
+// «Проверить телевизор» и «Откатить всё»: после установки и сразу после подключения, если HYDE на этом ТВ уже ставили
+function afterButtons() {
   $("after").insertAdjacentHTML("beforeend", '<div class="row" style="margin-top:12px"><button class="ghost" id="chk">Проверить телевизор</button><button class="ghost" id="undo">Откатить всё</button></div><div id="chks"></div>');
   $("chk").onclick = verify;
   $("undo").onclick = async () => {
     if (!confirm("Вернуть телевизор как было до установки HYDE TV? Приложения HYDE удалятся, права и настройки вернутся, главный экран станет прежним. Если HYDE ставили несколько раз (обновления), откат пройдёт по всем установкам от новой к старой.")) return;
     try { await api("restore", { serial }); jobShown = true; poll(); } catch (e) { msg("chks", e.message, "bad"); }
   };
-  if (installed) guardPanel();
+}
+
+// Прежние установки этого ТВ с этого компьютера: показать сразу, чтобы откатить или проверить можно было без новой установки
+function installsBox(list) {
+  if (!list || !list.length || jobShown) return;
+  on("s6");
+  const rows = list.map((x) => esc(`${x.release ? "выпуск " + x.release + ", " : ""}${x.started} (${x.state})`)).join("<br>");
+  $("after").innerHTML = `<div class="msg">На этом телевизоре уже стоит HYDE TV, установки с этого компьютера:<br>${rows}<br>Можно проверить или откатить всё, а можно поставить по плану ниже: это обновит то, что устарело, и не тронет то, что уже так.</div>`;
+  afterButtons();
 }
 
 // Что сделать руками после установки: то, чего установщик не делает сам

@@ -139,3 +139,54 @@ func TestPlanMarksHeld(t *testing.T) {
 		t.Fatalf("пометка «уже так»: Key Mapper %v, «Сторож» остаётся изменением %v", km, guard)
 	}
 }
+
+// TCL после обновления прошивки включил главный экран Google TV обратно, роль осталась у «Дома»: повторная установка
+// отключает его снова, а откат этой установки включает обратно
+func TestApplyTCLFirmwareReenabledLauncher(t *testing.T) {
+	f, m, rec := applyEnv(t, true)
+	root := t.TempDir()
+	if r := runApply(f, nil, rec, m, noKM(true), ApplyOpts{TVFree: true, BackupRoot: root}); !r.Finished {
+		t.Fatalf("установка: %+v", r)
+	}
+	delete(f.disabled, "com.google.android.apps.tv.launcherx") // «прошивка» включила обратно
+	second := runApply(f, nil, rec, m, noKM(true), ApplyOpts{TVFree: true, BackupRoot: root})
+	if !second.Finished || !f.disabled["com.google.android.apps.tv.launcherx"] {
+		t.Fatalf("повторная установка: %+v, отключены %v", second, f.disabled)
+	}
+	es := ledgerOf(t, second.Backup)
+	if len(es) != 1 || es[0].Undo != "pm enable --user 0 com.google.android.apps.tv.launcherx" {
+		t.Fatalf("журнал повторной установки: %+v", es)
+	}
+	if r := runRestore(f, second.Backup, nil); r.Fail != 0 || f.disabled["com.google.android.apps.tv.launcherx"] {
+		t.Fatalf("откат повторной установки: %+v, отключены %v", r, f.disabled)
+	}
+}
+
+// «Дом» уже главный экран: без явного выбора план оставляет его главным (и чинит «Домой» на TCL), а не молчит
+func TestPlanKeepsHomeDefault(t *testing.T) {
+	f, m, rec := applyEnv(t, true)
+	f.home = "app.glasstv.home"
+	f.pkgs["app.glasstv.home"] = 10000
+	pl := buildPlan(rec, m, parsePassport(f.passport()), Choices{}, false)
+	if !pl.Home {
+		t.Fatal("«Дом» уже главный, а план по умолчанию его не держит")
+	}
+	fresh := buildPlan(rec, m, parsePassport(newFakeTV(true).passport()), Choices{}, false)
+	if fresh.Home {
+		t.Fatal("на новом ТВ главный экран по умолчанию меняться не должен")
+	}
+}
+
+// Повторная установка того же выпуска, где всё уже так: пустой журнал не остаётся
+func TestApplyNoopLeavesNoJournal(t *testing.T) {
+	f, m, rec := applyEnv(t, false)
+	root := t.TempDir()
+	first := runApply(f, nil, rec, m, noKM(true), ApplyOpts{TVFree: true, BackupRoot: root})
+	again := runApply(f, nil, rec, m, noKM(true), ApplyOpts{TVFree: true, BackupRoot: root})
+	if !again.Finished || again.Backup != "" || again.Done != 0 {
+		t.Fatalf("повтор: %+v", again)
+	}
+	if ds := sessionsOf(root, "abc123", false); len(ds) != 1 || ds[0] != first.Backup {
+		t.Fatalf("журналы после повтора: %v", ds)
+	}
+}
