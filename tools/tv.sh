@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tv.sh: набор функций для управления ТВ из консоли (кнопки, снимок экрана, разбор экрана, журнал изменений, установка, раскладка Key Mapper).
 # Подключение: LEDGER=backup/<метка>/ledger.tsv TV=192.168.0.10:5555 source tools/tv.sh; затем вызывать функции:
-#   key, shot, dumpui, tapt, focus_texts, dpad_to, goto_tile, ledger, off, inst, tiles_install, play_install, rc_push, rc_press, km_new_map, km_new_long.
-# Переменные задавай в каждом вызове заново: каждый вызов Bash начинается с нового шелла. LEDGER обязателен для всего, что меняет ТВ (off, inst, tiles_install, play_install):
+#   key, shot, dumpui, tapt, focus_texts, dpad_to, goto_tile, ledger, off, inst, home_switch, tiles_install, play_install, rc_push, rc_press, km_new_map, km_new_long.
+# Переменные задавай в каждом вызове заново: каждый вызов Bash начинается с нового шелла. LEDGER обязателен для всего, что меняет ТВ (off, inst, home_switch, tiles_install, play_install):
 # без журнала эти функции отказываются работать, потому что откат строится из журнала.
 # Нужны adb и Python 3 (для разбора экрана). Рабочая папка для снимков и разбора экрана: TV_WORK (по умолчанию backup/.tv-work: backup/ в git не попадает).
 # В разборах экрана бывают названия сетей, аккаунты и адреса: не клади их в папки, которые уходят в репозиторий.
@@ -70,6 +70,30 @@ dpad_to() {
 # dpad_pick "Текст" [макс шагов]: дойти стрелками до элемента и нажать OK. Возвращает 1, если дойти не удалось (OK не нажимается).
 dpad_pick() { dpad_to "$@" || return 1; tv_sh "input keyevent KEYCODE_DPAD_CENTER"; sleep 1.5; }
 
+# Пакет приложения сверху экрана (пусто, если прочитать не удалось)
+_top_pkg() { tv_sh "dumpsys activity activities" 2>/dev/null | tr -d '\r' | grep -m1 topResumedActivity | sed -E 's/.* u[0-9]+ ([^/ ]+)\/.*/\1/'; }
+
+# Владелец главного экрана (роль HOME)
+_home_holder() { tv_sh "cmd role get-role-holders --user 0 android.app.role.HOME" 2>/dev/null | tr -d '\r' | head -1 | tr -d ' '; }
+
+# Версия приложения на ТВ (versionName), пусто, если его нет
+_pkg_ver() { tv_sh "dumpsys package $1" 2>/dev/null | tr -d '\r' | grep -m1 'versionName=' | sed 's/.*versionName=//'; }
+
+# Есть ли у пакета активные права администратора устройства
+_is_admin() {
+    tv_sh "dumpsys device_policy" 2>/dev/null | tr -d '\r' \
+        | awk -v p="$1/" '/Enabled Device Admins/ {s = 1} s && index($1, p) == 1 {f = 1} END {exit !f}'
+}
+
+# Отвечает ли пакет за главный экран: уровень home в data/tcl-packages.tsv или у него есть экран категории HOME
+# (так у главного экрана Google TV, у страховки и у запасного экрана настроек)
+_is_home_pkg() {
+    local p="$1"
+    if awk -F'\t' -v p="$p" '$1 == p && $2 == "home" {f = 1} END {exit !f}' "$GT_ROOT/data/tcl-packages.tsv" 2>/dev/null; then return 0; fi
+    tv_sh "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME" 2>/dev/null | tr -d '\r' \
+        | awk -v p="$p/" '{sub(/^[ \t]+/, "")} index($0, p) == 1 {f = 1} END {exit !f}'
+}
+
 # Проверка по спискам data/: _pkg_in_list файл пакет. Строка списка: имя пакета целиком или начало имени со звёздочкой в конце,
 # дальше через пробел или табуляцию что угодно, после знака решётки пояснение. 0 есть в списке, 1 нет, 2 нет самого файла.
 _pkg_in_list() {
@@ -90,7 +114,8 @@ _pkg_in_list() {
 # off пакет "причина": отключить системный пакет для пользователя 0 (pm disable-user) и записать в журнал.
 # Откажется, если: не задан LEDGER; пакет в data/tcl-never-touch.txt; пакета нет в data/tcl-packages.tsv (вне списка только по прямому решению
 # человека, по одному пакету: OFF_ALLOW_UNLISTED=1 off пакет "причина"). Пакет, который уже был отключён до нас, не трогается и в журнал не пишется,
-# иначе откат включил бы то, что человек отключил сам.
+# иначе откат включил бы то, что человек отключил сам. Пакет, который отвечает за главный экран (уровень home или экран категории HOME),
+# off отдельно не отключает: только внутри home_switch, где смена проверяется и при сбое откатывается.
 off() {
     local p="${1:-}" why="${2:-}" never="$GT_ROOT/data/tcl-never-touch.txt" known="$GT_ROOT/data/tcl-packages.tsv" r
     [ -n "$p" ] || { echo "off: нужен пакет"; return 1; }
@@ -102,6 +127,12 @@ off() {
         return 1
     fi
     if ! tv_sh "pm path $p" 2>/dev/null | grep -q package; then echo "нет на ТВ: $p"; return 0; fi
+    # Главный экран отключается только внутри проверяемой смены главного экрана (home_switch): отдельно отключённый
+    # прежний главный экран без готовой замены уводит кнопку «Домой» в тёмный или служебный экран
+    if [ "${_GT_HOME_TXN:-0}" != 1 ] && _is_home_pkg "$p"; then
+        echo "ОТКАЗ: $p отвечает за главный экран. Отключать его можно только вместе со сменой главного экрана: home_switch <новый главный экран> $p ..."
+        return 1
+    fi
     if tv_sh "pm list packages -d" 2>/dev/null | tr -d '\r' | grep -qx "package:$p"; then
         echo "уже отключён до нас: $p (в журнал не пишу, откат его не включит)"; return 0
     fi
@@ -118,27 +149,123 @@ off() {
 }
 
 # inst файл.apk пакет ["что"]: поставить apk (adb install -r) и записать в журнал обратную команду.
-# Обратная pm uninstall пишется только для app.glasstv.* и для приложений, которых до нас на ТВ не было. Что уже стояло у человека (Lampa, SmartTube,
-# Key Mapper со своей раскладкой), откат не удаляет: обратная команда пустая, запись попадёт в список «делать руками».
-# Key Mapper удаляется только руками всегда: у него права администратора устройства, а удаление при активном админе вешает систему.
+# Установка (приложения до этого на ТВ не было): обратная pm uninstall. Обновление (приложение уже стояло, в том числе наше app.glasstv.*):
+# обратной команды нет. Удалять ради отката обновления нельзя: вместе с приложением пропадут его данные и настройки, а вернуть
+# прежнюю версию поверх Android не даёт. Запись попадёт в список «делать руками» с версиями «было → стало».
+# Key Mapper откатом не удаляется никогда: у него права администратора устройства, удаление при активных правах вешает систему.
+# Обновление поверх приложения с активными правами администратора inst не делает (система виснет на 70 секунд): сначала права снимают.
+# Подпись другая (стоит сборка с другим ключом): установка не идёт, стоящее приложение не удаляется.
 inst() {
-    local apk="${1:-}" p="${2:-}" what="${3:-}" had=0 out inv act
+    local apk="${1:-}" p="${2:-}" what="${3:-}" had=0 out inv act v0="" v1=""
     if [ ! -f "$apk" ] || [ -z "$p" ]; then echo "inst: нужны файл apk и имя пакета"; return 1; fi
     gt_need_ledger || return 1
-    if tv_sh "pm path $p" 2>/dev/null | grep -q package; then had=1; fi
+    if tv_sh "pm path $p" 2>/dev/null | grep -q package; then had=1; v0="$(_pkg_ver "$p")"; fi
+    if [ "$had" = 1 ] && _is_admin "$p"; then
+        echo "ОТКАЗ: у $p включены права администратора устройства. Сначала сними их (шаг 7 мастера, «Правило обновления»), потом обновляй."
+        return 1
+    fi
     out="$(tv_adb install -r "$(gt_native "$apk")" 2>&1 | tr -d '\r')"
-    if ! printf '%s' "$out" | grep -q 'Success'; then echo "ОШИБКА установки $p: $out"; return 1; fi
-    inv="pm uninstall --user 0 $p"
-    case "$p" in
-        app.glasstv.*) ;;
-        io.github.sds100.keymapper) inv="" ;;
-        *) [ "$had" = 1 ] && inv="" ;;
-    esac
-    act="установлен"; [ "$had" = 1 ] && act="обновлён"
+    if ! printf '%s' "$out" | grep -q 'Success'; then
+        case "$out" in
+            *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
+                echo "ОШИБКА $p: на ТВ стоит сборка с другой подписью. Ставить поверх нельзя, а удалять её ради установки не буду: пропадут данные. Переход на другой ключ: docs/rollback.md." ;;
+            *INSTALL_FAILED_VERSION_DOWNGRADE*)
+                echo "ОШИБКА $p: на ТВ версия новее этого файла. Старую поверх Android не ставит; стоящая версия не тронута." ;;
+            *) echo "ОШИБКА установки $p: $out" ;;
+        esac
+        return 1
+    fi
+    v1="$(_pkg_ver "$p")"
+    if [ "$had" = 1 ]; then
+        act="обновлён"; inv=""
+        what="${v0:-?} → ${v1:-?}, откат версии не делается, данные на месте${what:+; $what}"
+    else
+        act="установлен"; inv="pm uninstall --user 0 $p"
+        [ "$p" = io.github.sds100.keymapper ] && inv=""
+    fi
     if ! ledger "$act $p${what:+ ($what)}" "adb install -r $(basename "$apk")" "$inv"; then
         echo "ОШИБКА: $p стоит, но запись в журнал не удалась. Допиши её вручную: ledger \"$act $p\" \"adb install -r\" \"$inv\""; return 1
     fi
-    if [ -n "$inv" ]; then echo "$act: $p (откат: pm uninstall)"; else echo "$act: $p (откат только руками)"; fi
+    if [ -n "$inv" ]; then echo "$act: $p (откат: pm uninstall)"; elif [ "$had" = 1 ]; then echo "$act: $p ($what)"; else echo "$act: $p (откат только руками)"; fi
+}
+
+# home_switch пакет [пакеты, которые отключить вместе со сменой]: сменить главный экран одной проверяемой операцией.
+#   1. новый главный экран стоит и открывается (иначе ничего не меняется);
+#   2. запоминается прежний владелец;
+#   3. перечисленные пакеты отключаются функцией off (на TCL: главный экран Google TV и страховка, уровень home в data/tcl-packages.tsv);
+#   4. в журнал пишется намерение с обратной командой (возврат роли), затем назначается новый главный экран;
+#   5. проверка: владелец роли сменился, а кнопка «Домой» открывает новый главный экран.
+# Любой сбой: отключённое включается обратно в обратном порядке, роль возвращается прежнему, код 1. Связь пропала посреди: код 3 и
+# точные команды возврата на экран (в журнале они тоже есть, restore.sh их выполнит). Отдельно off эти пакеты не отключает.
+home_switch() {
+    local cand="${1:-}" act prev top holder p r
+    local -a done_pk=()
+    [ -n "$cand" ] || { echo "home_switch: нужен пакет нового главного экрана"; return 1; }
+    shift
+    gt_need_ledger || return 1
+    act="$(tv_sh "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $cand" 2>/dev/null \
+        | tr -d '\r' | awk -v p="$cand/" '{sub(/^[ \t]+/, "")} index($0, p) == 1 {c = $0} END {print c}')"
+    if [ -z "$act" ]; then echo "ОТКАЗ: у $cand нет главного экрана (или приложения нет на ТВ). Ничего не менял."; return 1; fi
+    prev="$(_home_holder)"
+    if [ "$prev" = "$cand" ]; then echo "$cand уже главный экран"; return 0; fi
+    tv_sh "am start -n $act" >/dev/null 2>&1
+    sleep "${HOME_WAIT:-3}"
+    top="$(_top_pkg)"
+    if [ "$top" != "$cand" ]; then echo "ОТКАЗ: $cand не открылся (сверху ${top:-неизвестно}). Ничего не менял."; return 1; fi
+    for p in "$@"; do
+        if ! _GT_HOME_TXN=1 off "$p" "вместе со сменой главного экрана на $cand"; then
+            echo "Не удалось отключить $p: возвращаю как было."
+            _home_undo "$prev" "${done_pk[@]}"; return 1
+        fi
+        done_pk+=("$p")
+    done
+    if ! ledger "главный экран: $cand вместо ${prev:-никого}" "cmd package set-home-activity $act" \
+            "${prev:+cmd role add-role-holder --user 0 android.app.role.HOME $prev}"; then
+        echo "Запись в журнал не удалась: главный экран не меняю, возвращаю отключённое."
+        _home_undo "$prev" "${done_pk[@]}"; return 1
+    fi
+    r="$(tv_sh "cmd package set-home-activity $act" 2>&1 | tr -d '\r')"
+    sleep "${HOME_WAIT:-3}"
+    if [ "$(tv_state)" != device ]; then _home_lost "$prev" "${done_pk[@]}"; return 3; fi
+    holder="$(_home_holder)"
+    tv_sh "input keyevent KEYCODE_HOME" >/dev/null 2>&1
+    sleep "${HOME_WAIT:-3}"
+    top="$(_top_pkg)"
+    if [ "$holder" = "$cand" ] && [ "$top" = "$cand" ]; then
+        echo "главный экран: $cand (владелец сменился, «Домой» открывает его)"; return 0
+    fi
+    if [ "$(tv_state)" != device ]; then _home_lost "$prev" "${done_pk[@]}"; return 3; fi
+    echo "НЕ ВЫШЛО: ответ «${r:-пусто}», владелец ${holder:-никто}, «Домой» открывает ${top:-неизвестно}. Возвращаю как было."
+    _home_undo "$prev" "${done_pk[@]}"; return 1
+}
+
+# Возврат после неудачной смены главного экрана: включить отключённое в обратном порядке, роль прежнему, проверить
+_home_undo() {
+    local prev="$1" i n bad=0; shift
+    local -a pk=("$@")
+    n=${#pk[@]}
+    for ((i = n - 1; i >= 0; i--)); do
+        tv_sh "pm enable --user 0 ${pk[i]}" >/dev/null 2>&1 || { echo "  не включился ${pk[i]}"; bad=1; }
+    done
+    if [ -n "$prev" ]; then
+        tv_sh "cmd role add-role-holder --user 0 android.app.role.HOME $prev" >/dev/null 2>&1 || bad=1
+        if [ "$(_home_holder)" != "$prev" ]; then echo "  владелец главного экрана не вернулся к $prev"; bad=1; fi
+    fi
+    if [ "$bad" = 0 ]; then echo "Возвращено как было: главный экран ${prev:-прежний}."; return 0; fi
+    echo "ВНИМАНИЕ: вернуть как было удалось не полностью. Проверь кнопку «Домой»; команды возврата есть в журнале (restore.sh)."
+    return 1
+}
+
+# Связь пропала посреди смены главного экрана: что выполнить после переподключения (по шагу 2 мастера)
+_home_lost() {
+    local prev="$1" i n; shift
+    local -a pk=("$@")
+    n=${#pk[@]}
+    echo "СВЯЗЬ С ТВ ПРОПАЛА посреди смены главного экрана. Ничего не утверждаю: состояние ТВ неизвестно."
+    echo "После переподключения проверь главный экран и, если «Домой» ведёт не туда, выполни по порядку:"
+    for ((i = n - 1; i >= 0; i--)); do echo "  pm enable --user 0 ${pk[i]}"; done
+    [ -n "$prev" ] && echo "  cmd role add-role-holder --user 0 android.app.role.HOME $prev"
+    echo "Эти же команды есть в журнале: restore.sh их выполнит."
 }
 
 # tiles_install: поставить плитки из out/tiles/*.apk, но только те, чьё приложение-цель уже стоит на ТВ: иначе плитка на главном экране молча ничего не откроет.

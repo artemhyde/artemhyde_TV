@@ -13,12 +13,15 @@
 `windows/tv-screen.ps1`, `windows/tv-paste.ps1`, `windows/tv-link.ps1`: то же для Windows без bash (общая часть поиска и подключения в `tv-link.ps1`).
 
 **Помощники для управления экраном (подключаются командой `source tools/tv.sh`)**
-`tv.sh`: функции `key`, `shot`, `dumpui`, `tapt`, `focus_texts`, `dpad_to`, `goto_tile`, `row_names`, `ledger`, `off`, `inst`, `tiles_install`, `play_install`, `rc_push`, `rc_press`, `km_new_map`, `km_new_long`.  
-`off` отключает только пакеты из `data/tcl-packages.tsv` и никогда из `data/tcl-never-touch.txt`; `inst` ставит apk и сама решает, какую обратную команду писать (чужое, что уже стояло, не удаляется); `tiles_install` ставит только плитки, чьё приложение-цель уже стоит; `play_install` жмёт OK, только если фокус на «Установить» и нет цены.  
+`tv.sh`: функции `key`, `shot`, `dumpui`, `tapt`, `focus_texts`, `dpad_to`, `goto_tile`, `row_names`, `ledger`, `off`, `inst`, `home_switch`, `tiles_install`, `play_install`, `rc_push`, `rc_press`, `km_new_map`, `km_new_long`.  
+`off` отключает только пакеты из `data/tcl-packages.tsv` и никогда из `data/tcl-never-touch.txt`, а пакеты главного экрана только внутри `home_switch`; `inst` ставит apk и сама решает, какую обратную команду писать (откат удаляет только то, чего до нас не было; обновление не откатывается удалением, данные остаются); `home_switch` меняет главный экран с проверкой кнопки «Домой» и сама возвращает как было, если не вышло; `tiles_install` ставит только плитки, чьё приложение-цель уже стоит; `play_install` жмёт OK, только если фокус на «Установить» и нет цены.  
 `km_new_map` и `km_new_long` (раскладка Key Mapper) целиком на живом ТВ не проверялись: после каждого вызова сверяйте экран, при сбое функция остановится и скажет шаг.  
 `ui.py`: разбор дерева экрана (`uiautomator dump`): подписи с рамками, координаты нужного элемента или тексты внутри элемента в фокусе (`--focus`).  
 `tvui.py`: управление меню настроек из Python: кнопки, дерево экрана, пункт в фокусе.  
 `row.py`, `rowlist.py`: ряды плиток на главном экране (где фокус, сколько нажатий до нужной плитки). Размеры рассчитаны на экран 1920x1080.
+
+**Проверки без телевизора**
+`tests/test-tv.sh`: `inst`, `off`, `home_switch` и собранный `restore.sh` против подставного ТВ (сбои, обрыв связи, чужая подпись, права администратора). Запуск `bash tools/tests/test-tv.sh`, код 0: всё прошло.
 
 **Измерение плавности**
 `rowbench.sh`: 8 нажатий вправо и влево по плиткам и сводка по пропущенным кадрам (`bash tools/rowbench.sh before`).  
