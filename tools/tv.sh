@@ -208,7 +208,7 @@ home_switch() {
         | tr -d '\r' | awk -v p="$cand/" '{sub(/^[ \t]+/, "")} index($0, p) == 1 {c = $0} END {print c}')"
     if [ -z "$act" ]; then echo "ОТКАЗ: у $cand нет главного экрана (или приложения нет на ТВ). Ничего не менял."; return 1; fi
     prev="$(_home_holder)"
-    if [ "$prev" = "$cand" ]; then echo "$cand уже главный экран"; return 0; fi
+    if [ "$prev" = "$cand" ]; then _home_already "$cand" "$@"; return $?; fi
     tv_sh "am start -n $act" >/dev/null 2>&1
     sleep "${HOME_WAIT:-3}"
     top="$(_top_pkg)"
@@ -241,6 +241,37 @@ home_switch() {
 }
 
 # Возврат после неудачной смены главного экрана: включить отключённое в обратном порядке, роль прежнему, проверить
+# Роль «Домой» уже у нового главного экрана (ставили раньше или не через home_switch). Одной роли мало: проверить кнопку.
+# «Домой» уводит в другой экран (прежний главный экран включён, так бывает на Google TV): доделать отключение перечисленного
+# и проверить снова. Прежний владелец неизвестен, роль не трогаем; не вышло: отключённое включается обратно, код 1
+_home_already() {
+    local cand="$1" p top; shift
+    local -a done_pk=()
+    tv_sh "input keyevent KEYCODE_HOME" >/dev/null 2>&1
+    sleep "${HOME_WAIT:-3}"
+    top="$(_top_pkg)"
+    if [ "$top" = "$cand" ]; then echo "$cand уже главный экран («Домой» открывает его)"; return 0; fi
+    if [ $# -eq 0 ]; then
+        echo "НЕ ВЫШЛО: $cand уже владелец роли, но «Домой» открывает ${top:-неизвестно}, а отключать нечего (на TCL и Google TV нужны launcherx и setupwraith)."
+        return 1
+    fi
+    echo "$cand уже владелец роли, но «Домой» открывает ${top:-неизвестно}: доделываю отключение"
+    for p in "$@"; do
+        if ! _GT_HOME_TXN=1 off "$p" "вместе со сменой главного экрана на $cand"; then
+            echo "Не удалось отключить $p: возвращаю отключённое."
+            _home_undo "" "${done_pk[@]}"; return 1
+        fi
+        done_pk+=("$p")
+    done
+    tv_sh "input keyevent KEYCODE_HOME" >/dev/null 2>&1
+    sleep "${HOME_WAIT:-3}"
+    if [ "$(tv_state)" != device ]; then _home_lost "" "${done_pk[@]}"; return 3; fi
+    top="$(_top_pkg)"
+    if [ "$top" = "$cand" ]; then echo "главный экран: $cand («Домой» открывает его после отключения ${done_pk[*]})"; return 0; fi
+    echo "НЕ ВЫШЛО: «Домой» всё равно открывает ${top:-неизвестно}. Возвращаю отключённое."
+    _home_undo "" "${done_pk[@]}"; return 1
+}
+
 _home_undo() {
     local prev="$1" i n bad=0; shift
     local -a pk=("$@")

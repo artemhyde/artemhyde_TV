@@ -83,7 +83,9 @@ tv_sh() {
             [ "$LOSE_ON_SETHOME" = 1 ] && ss online 0
             echo "Success" ;;
         "input keyevent KEYCODE_HOME")
-            if has "$(sg disabled)" "$(sg holder)"; then ss top com.android.tv.settings; else ss top "$(sg holder)"; fi ;;
+            # HIJACK: прежний главный экран перехватывает «Домой», пока он включён (так ведёт себя Google TV)
+            if [ -n "${HIJACK:-}" ] && ! has "$(sg disabled)" "$HIJACK"; then ss top "$HIJACK"
+            elif has "$(sg disabled)" "$(sg holder)"; then ss top com.android.tv.settings; else ss top "$(sg holder)"; fi ;;
         "dumpsys activity activities") echo "  topResumedActivity=ActivityRecord{1a u0 $(sg top)/.Main t7}" ;;
         "am broadcast -n app.glasstv.home/.SetupCmd --es do export")
             if [ "${NO_HOME:-0}" = 1 ]; then echo "Broadcast completed: result=0"
@@ -150,6 +152,19 @@ call home_switch app.glasstv.home com.google.android.apps.tv.launcherx com.googl
 check "связь пропала посреди: код 3" '[ "$rc" = 3 ]'
 check "связь пропала посреди: подсказка, что делать после переподключения" 'case "$out" in *"СВЯЗЬ С ТВ ПРОПАЛА"*"pm enable --user 0 com.google.android.apps.tv.launcherx"*) true ;; *) false ;; esac'
 check "связь пропала посреди: возврат роли записан в журнал заранее" 'grep -q "add-role-holder" "$LEDGER"'
+
+reset_tv; ss holder app.glasstv.home
+call home_switch app.glasstv.home com.google.android.apps.tv.launcherx com.google.android.tungsten.setupwraith
+check "роль уже наша и «Домой» ведёт к нам: код 0, ничего не отключено" '[ "$rc" = 0 ] && nodis && [ "$(lines)" = 0 ]'
+
+reset_tv; ss holder app.glasstv.home; HIJACK=com.google.android.apps.tv.launcherx
+call home_switch app.glasstv.home com.google.android.apps.tv.launcherx com.google.android.tungsten.setupwraith
+check "роль уже наша, но «Домой» перехвачен: отключение доделано, код 0" '[ "$rc" = 0 ] && has "$(sg disabled)" com.google.android.apps.tv.launcherx && [ "$(sg top)" = app.glasstv.home ]'
+check "роль уже наша, но «Домой» перехвачен: отключения в журнале с возвратом" 'grep -q "pm enable --user 0 com.google.android.apps.tv.launcherx" "$LEDGER"'
+reset_tv; ss holder app.glasstv.home; HIJACK=com.google.android.apps.tv.launcherx
+call home_switch app.glasstv.home
+check "роль уже наша, «Домой» перехвачен, отключать нечего: код 1" '[ "$rc" = 1 ] && nodis'
+HIJACK=
 
 echo "== restore.sh: честный итог"
 # Свой подставной adb для restore.sh: команды из FAILCMD падают, после команды из LOSECMD связь пропадает
