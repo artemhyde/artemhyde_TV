@@ -22,7 +22,7 @@ import android.os.Handler;
 final class Pic {
     private Pic() { }
 
-    static final String GUARD_PKG = "app.glasstv.guard", GUARD_CMD = "app.glasstv.guard.Cmd";
+    static final String GUARD_PKG = "app.glasstv.guard", GUARD_CMD = "app.glasstv.guard.AppCmd";
 
     // Индексы ползунков (порядок везде один)
     static final int BL = 0, BLACK = 1, PEAK = 2, WARM = 3;

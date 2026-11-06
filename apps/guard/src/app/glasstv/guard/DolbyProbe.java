@@ -382,6 +382,7 @@ final class DolbyProbe {
 
     private static Conn open(Context c) throws Exception {
         if (Looper.myLooper() == Looper.getMainLooper()) throw new IllegalStateException("нельзя из главного потока");
+        if (!Caps.tcl()) throw new IllegalStateException("не TCL: закрытая служба Dolby не вызывается");
         Context app = c.getApplicationContext();
         Intent i = new Intent(ACTION).setComponent(new ComponentName(PKG, CLS));
         Conn k = new Conn();
@@ -394,7 +395,40 @@ final class DolbyProbe {
             try { app.unbindService(k); } catch (Exception ignored) { }
             throw new IllegalStateException("служба не отозвалась за 6 с (onNullBinding: действие не то)");
         }
+        try {
+            verify(k.binder);
+        } catch (Exception e) {
+            try { app.unbindService(k); } catch (Exception ignored) { }
+            throw e;
+        }
         return k;
+    }
+
+    // Номера вызовов выше сняты с интерфейса версии 3 (прошивка AU02). Другая версия или хэш: номера могут значить другое,
+    // вплоть до записи вместо чтения, поэтому ни один вызов, кроме версии и хэша, не делаем (план Codex, блок 5)
+    private static volatile boolean verified;
+
+    private static void verify(IBinder b) throws Exception {
+        if (verified) return;
+        int v = ci(b, T_VERSION);
+        String hash = call(b, T_HASH, null, r -> r.readString());
+        if (!CapsRules.dolbyOk(v, hash))
+            throw new IllegalStateException("интерфейс Dolby другой: версия " + v + ", хэш " + hash + " (проверены версия "
+                    + CapsRules.DOLBY_VERSION + " и хэш " + CapsRules.DOLBY_HASH + "), вызовы отключены");
+        verified = true;
+    }
+
+    // Для паспорта ТВ (do caps): отвечает ли служба Dolby и тот ли у неё интерфейс. Не из главного потока
+    static synchronized String check(Context c) {
+        Conn k = null;
+        try {
+            k = open(c);
+            return "служба отвечает, интерфейс версии " + CapsRules.DOLBY_VERSION + " с тем же хэшем";
+        } catch (Throwable e) {
+            return "нет (" + e.getMessage() + ")";
+        } finally {
+            close(c, k);
+        }
     }
 
     private static void close(Context c, Conn k) {

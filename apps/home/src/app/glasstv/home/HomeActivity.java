@@ -40,9 +40,10 @@ public class HomeActivity extends Activity {
             "all", "app.glasstv.tile.settings"};
     // Не показывать: приложения, которые открывают плитки избранного, служебные и старый лаунчер.
     // Key Mapper виден: он чинит кнопки пульта
+    // Приложения, которые открывают плитки-ярлыки, скрываются на лету (loadApps), пока стоит их ярлык: удалили ярлык или
+    // ярлыка нет, приложение видно в сетке как обычное
     static final Set<String> HIDDEN = new HashSet<>(Arrays.asList(
-            "com.phlox.tvwebbrowser.foss", "com.vk.tv", "org.smarttube.stable", "top.rootu.lampa", "com.cxinventor.file.explorer",
-            "tv.twitch.android.app", "app.glasstv.home", "app.glasstv.clip", "app.glasstv.probe", "com.spocky.projengmenu",
+            "app.glasstv.home", "app.glasstv.clip", "app.glasstv.probe", "com.spocky.projengmenu",
             "com.brouken.player", "com.google.android.youtube.tv", "com.neilturner.aerialviews", "com.android.tv.settings",
             "com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx"));
     static final long IDLE_MS = 60_000;
@@ -72,9 +73,28 @@ public class HomeActivity extends Activity {
     TextView flash;   // короткая плашка с названием стиля после переключения
     final View[] gridHead = new View[2];
     long pausedAt;
+    // Правка ряда с пульта (05.11): меню плитки, плитка «в руке», порядок в настройках
+    static final String DOCK_PREFS = "dock", DOCK_KEY = "order";
+    static final long LONG_MS = 600;   // удержание OK: меню плитки
+    FrameLayout menu;                  // меню плитки поверх экрана; null: закрыто
+    View menuScrim;                    // затемнение фона под рядом, пока открыто меню
+    final List<View> menuDimmed = new ArrayList<>();   // соседи плитки с меню: приглушены
+    Tile menuFor, moving, okDown;
+    boolean longFired;
+    String focusPkg;                   // после перестройки ряда фокус на эту плитку
+    // Библиотека приложений (06.11): скрытые, отметка «Новое», ярлыки и их приложения, события установки и удаления
+    static final String HIDE_KEY = "hidden", SEEN_KEY = "seen";
+    static final long NEW_MS = 3L * 24 * 3600_000;   // «Новое»: поставлено за последние 3 дня и ещё не открывалось
+    boolean showHidden;                // сетка показывает скрытые приложения
+    boolean reloadLater;               // пакеты сменились, пока было открыто меню или плитка в руке
+    int gridFocusAt = -1;              // после перестройки сетки фокус на это место
+    final Map<String, String> tileTarget = new HashMap<>();   // плитка-ярлык: приложение, которое она открывает
+    android.content.BroadcastReceiver pkgEvents;
+    int setupRev = -1;                 // номер правки настроек «Дома» (Setup), с которым экран нарисован
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        saverSent = getSharedPreferences("home", MODE_PRIVATE).getBoolean("saverSent", false);
         dp = getResources().getDisplayMetrics().density;
         Fonts.init(this);
         amb = new Ambient(this);
@@ -166,6 +186,7 @@ public class HomeActivity extends Activity {
         // Заставки Android больше нет, и пока открыт «Дом», экран не гаснет сам
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root.getViewTreeObserver().addOnGlobalFocusChangeListener((o, n) -> onFocus(n));
+        watchPackages();
         amb.onNow = this::updateSuggest;
         hideShelf(false);
     }
@@ -212,7 +233,7 @@ public class HomeActivity extends Activity {
         gridHead[0] = title;
         gridLayer.addView(title, Grid.at(title, dp, Grid.MARGIN, 64, false, 0));
         TextView back = Fonts.text(this, Fonts.CAPTION, Fonts.reg18, Fonts.WHITE_60);
-        back.setText("«Назад»: на главный экран");
+        back.setText("Удерживайте OK: меню приложения · «Назад»: выйти");
         gridHead[1] = back;
         gridLayer.addView(back, Grid.at(back, dp, Grid.RIGHT, 64, true, 0));
         // Высота сетки не ограничена экраном: иначе строки за его нижним краем сжимались в ноль и все ложились друг на друга
@@ -234,31 +255,56 @@ public class HomeActivity extends Activity {
     // ===== Приложения =====
 
     void loadApps() {
+        // Пока открыто меню или плитка в руке, ряд и сетку не трогаем: перестроятся, как только меню закроется
+        if (menu != null || moving != null) { reloadLater = true; return; }
         PackageManager pm = getPackageManager();
         Map<String, ResolveInfo> apps = new LinkedHashMap<>();
         for (String cat : new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER}) {
-            for (ResolveInfo r : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(cat), 0)) {
+            for (ResolveInfo r : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(cat), PackageManager.GET_META_DATA)) {
                 String p = r.activityInfo.packageName;
                 if (!apps.containsKey(p)) apps.put(p, r);
             }
         }
+        // Плитки-ярлыки (06.11): какое приложение открывает ярлык, написано в его метаданных (target). Ярлык, чьего приложения
+        // нет на ТВ, не показывается нигде (в ряду его место сохраняется: поставят приложение снова, ярлык вернётся туда же).
+        // Приложение, у которого стоит ярлык, в сетке не повторяется: его открывает ярлык
+        tileTarget.clear();
+        Set<String> covered = new HashSet<>(), orphan = new HashSet<>();
+        for (ResolveInfo r : apps.values()) {
+            android.os.Bundle md = r.activityInfo.metaData;
+            String tg = md == null ? null : md.getString("target");
+            if (tg == null || tg.isEmpty()) continue;
+            String ov = Setup.tileApp(this, r.activityInfo.packageName);   // человек выбрал для ярлыка своё приложение
+            if (ov != null && present(ov)) tg = ov;
+            tileTarget.put(r.activityInfo.packageName, tg);
+            if (present(tg)) covered.add(tg); else orphan.add(r.activityInfo.packageName);
+        }
+        Set<String> hiddenByUser = userHidden();
         // Набор и версии приложений не менялись: плитки не пересобираем, иначе сбивается фокус.
         // Путь к файлу приложения меняется при каждом обновлении, по нему видно новую картинку плитки
         StringBuilder sb = new StringBuilder();
         for (ResolveInfo r : apps.values()) sb.append(r.activityInfo.applicationInfo.sourceDir).append(';');
         boolean round = vision;
+        List<String> order = dockOrder();
         sb.append(styleName);   // сменили стиль в полосе шестерёнки: ряд перестраивается
+        sb.append('|').append(android.text.TextUtils.join(",", order));   // и после правки ряда
+        sb.append('|').append(android.text.TextUtils.join(",", hiddenByUser)).append('|').append(showHidden).append('|').append(Setup.rev(this));
         String sig = sb.toString();
         if (sig.equals(appsSig)) return;
         appsSig = sig;
+        // Перестройка не должна сбивать фокус: в ряду остаёмся на той же плитке, в сетке на том же месте
+        View was = getCurrentFocus();
+        if (focusPkg == null && was instanceof Tile && dockTiles.contains(was)) focusPkg = ((Tile) was).pkg;
+        int gridAt = gridFocusAt >= 0 ? gridFocusAt : state == GRID ? gridIndexOf(was) : -1;
+        gridFocusAt = -1;
         dock.removeAllViews();
         dockTiles.clear();
-        for (String p : FAVORITES) {
+        for (String p : order) {
             Tile t;
             if (p.equals("all")) t = allTile = allAppsTile();
             else {
                 ResolveInfo r = apps.get(p);
-                if (r == null) continue;
+                if (r == null || orphan.contains(p)) continue;
                 t = tile(r, true);
             }
             if (round) t.orb(px(Style.D), px(Style.W), px(Style.H), dp);
@@ -280,19 +326,42 @@ public class HomeActivity extends Activity {
             rowScroll.setLayoutParams(rsl);
             rowScroll.scrollTo(0, 0);
         }
-        // Остальные приложения сеткой по 4 в ряд, по алфавиту
+        // Остальные приложения сеткой по 4 в ряд, по алфавиту. Скрытые человеком в общей сетке не видны, у них свой список
+        // (плитка «Скрытые» в конце); в режиме скрытых сетка показывает только их
         List<ResolveInfo> rest = new ArrayList<>();
-        Set<String> fav = new HashSet<>(Arrays.asList(FAVORITES));
+        Set<String> fav = new HashSet<>(order);
+        int hiddenCount = 0;
         for (ResolveInfo r : apps.values()) {
             String p = r.activityInfo.packageName;
             icons.put(p, r.loadIcon(pm));
-            if (!fav.contains(p) && !HIDDEN.contains(p)) rest.add(r);
+            if (fav.contains(p) || HIDDEN.contains(p) || covered.contains(p) || orphan.contains(p)) continue;
+            boolean h = hiddenByUser.contains(p);
+            if (h) hiddenCount++;
+            if (h == showHidden) rest.add(r);
+        }
+        if (showHidden && hiddenCount == 0) {   // вернули последнее скрытое: обратно ко всем приложениям
+            showHidden = false;
+            appsSig = null;
+            loadApps();
+            return;
         }
         rest.sort((a, c) -> String.valueOf(a.loadLabel(pm)).compareToIgnoreCase(String.valueOf(c.loadLabel(pm))));
         List<View> all = new ArrayList<>();
         // В сетке все приложения одинаково: значок и подпись на тёмной плитке, без чужих баннеров
-        for (ResolveInfo r : rest) all.add(tile(r, false));
-        if (!apps.containsKey("app.glasstv.tile.settings")) all.add(settingsTile());
+        for (ResolveInfo r : rest) {
+            Tile t = tile(r, false);
+            if (!showHidden && isNew(r.activityInfo.packageName)) t.badge("Новое");
+            all.add(t);
+        }
+        if (!showHidden) {
+            all.add(installTile());
+            if (hiddenCount > 0) all.add(hiddenTile(hiddenCount));
+            all.add(setupTile());
+            if (!apps.containsKey("app.glasstv.tile.settings")) all.add(settingsTile());
+        }
+        ((TextView) gridHead[0]).setText(showHidden ? "Скрытые приложения" : "Все приложения");
+        ((TextView) gridHead[1]).setText(showHidden ? "Удерживайте OK: вернуть в список · «Назад»: ко всем приложениям"
+                : "Удерживайте OK: меню приложения · «Назад»: выйти");
         gridBox.removeAllViews();
         LinearLayout row = null;
         for (int i = 0; i < all.size(); i++) {
@@ -309,8 +378,16 @@ public class HomeActivity extends Activity {
             if (row.getChildCount() > 0) lp.leftMargin = px(Grid.GAP);
             row.addView(all.get(i), lp);
         }
-        lastDock = dockTiles.isEmpty() ? null : dockTiles.get(0);
+        Tile want = null;
+        if (focusPkg != null) for (Tile t : dockTiles) if (focusPkg.equals(t.pkg)) want = t;
+        focusPkg = null;
+        lastDock = want != null ? want : dockTiles.isEmpty() ? null : dockTiles.get(0);
         if (lastDock != null && state != GRID) lastDock.post(() -> lastDock.requestFocus());
+        if (state == GRID) {
+            final List<View> g = gridTiles();
+            final int at = Math.max(0, Math.min(g.size() - 1, gridAt < 0 ? 0 : gridAt));
+            if (!g.isEmpty()) gridBox.post(() -> g.get(at).requestFocus());
+        }
         // Новые плитки в простом состоянии не видны, их выведет первое нажатие
         if (state == IDLE) hideShelf(false);
     }
@@ -327,6 +404,33 @@ public class HomeActivity extends Activity {
         Tile t = new Tile(this, a.packageName, label, content, 1.08f);
         if (art) t.row();
         t.setOnClickListener(v -> launch(a.packageName, v));
+        return t;
+    }
+
+    // Плитка «Установить приложение» в конце сетки: откуда можно поставить новое приложение на этом ТВ
+    Tile installTile() {
+        Drawable plus = getDrawable(android.R.drawable.ic_input_add);
+        Tile t = new Tile(this, "install", "Установить", Tile.app(this, plus, "Установить", px(Grid.TILE_W), px(Grid.TILE_H)), 1.08f);
+        t.setOnClickListener(v -> openInstallMenu(t));
+        return t;
+    }
+
+    // Плитка «Настройки «Дома»» в конце сетки: город, курсы, стих, стиль, приложения ярлыков (SetupActivity)
+    Tile setupTile() {
+        Drawable gear = getDrawable(android.R.drawable.ic_menu_preferences);
+        Tile t = new Tile(this, "setup", "Настройки «Дома»", Tile.app(this, gear, "Настройки «Дома»", px(Grid.TILE_W), px(Grid.TILE_H)), 1.08f);
+        t.setOnClickListener(v -> {
+            try { startActivity(new Intent(this, SetupActivity.class)); } catch (Exception ignored) { }
+        });
+        return t;
+    }
+
+    // Плитка «Скрытые: N»: список приложений, которые человек скрыл из сетки
+    Tile hiddenTile(int n) {
+        Drawable eye = getDrawable(android.R.drawable.ic_menu_view);
+        String label = "Скрытые: " + n;
+        Tile t = new Tile(this, "hidden", label, Tile.app(this, eye, label, px(Grid.TILE_W), px(Grid.TILE_H)), 1.08f);
+        t.setOnClickListener(v -> { showHidden = true; gridFocusAt = 0; appsSig = null; loadApps(); });
         return t;
     }
 
@@ -355,6 +459,10 @@ public class HomeActivity extends Activity {
     // Приложение «вырастает» из плитки, на которой нажали. Если ТВ гас после прошлого использования приложения,
     // оно открывается с чистого листа, на своём главном экране (Go.fresh); исключения и подробности там же
     void launch(String pkg, View from) {
+        // Ярлык, для которого на ТВ выбрано другое приложение (Setup): открываем выбранное
+        String ov = tileTarget.containsKey(pkg) ? Setup.tileApp(this, pkg) : null;
+        if (ov != null && present(ov)) pkg = ov;
+        markSeen(pkg);
         PackageManager pm = getPackageManager();
         Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
         if (i == null) i = pm.getLaunchIntentForPackage(pkg);
@@ -471,6 +579,8 @@ public class HomeActivity extends Activity {
 
     void onFocus(View v) {
         if (v == null) return;
+        // Для проверок с ПК: разбор экрана (uiautomator) на «Доме» не снимается из-за постоянных анимаций, фокус видно в журнале
+        if (v instanceof Tile) android.util.Log.d("home", "фокус: " + ((Tile) v).label);
         // Пока фокус на плитках, капсулы приглушены; на капсуле она проявляется, соседняя чуть тише
         // Скрытой капсуле «Продолжить» затухание ни к чему: её проявит showCont по текущему фокусу
         boolean hasCont = cont.getVisibility() == View.VISIBLE;
@@ -575,6 +685,7 @@ public class HomeActivity extends Activity {
     // стоит кадра. Масштаб к тому же заново растеризует весь текст на каждом кадре
     void openGrid() {
         if (state == GRID) return;
+        if (showHidden) { showHidden = false; appsSig = null; loadApps(); }   // сетка всегда открывается со всех приложений
         state = GRID;
         amb.setGrid(true);
         shelf.animate().alpha(0f).translationY(-px(16)).setStartDelay(0).setDuration(M.t(220)).setInterpolator(Ambient.EASE).start();
@@ -615,6 +726,8 @@ public class HomeActivity extends Activity {
 
     // Простой: плитки и капсулы уходят вниз и тают, фон снова резкий, стих возвращается
     void toIdle() {
+        closeMenu(false);
+        endMove();
         if (state == IDLE) return;
         boolean fromGrid = state == GRID;
         if (fromGrid) {
@@ -635,6 +748,8 @@ public class HomeActivity extends Activity {
 
     // Сразу экран блокировки, без анимаций: ТВ выключили, при включении первый же кадр должен быть чистым
     void idleNow() {
+        closeMenu(false);
+        endMove();
         h.removeCallbacks(goIdle);
         if (state == GRID) {
             amb.setGrid(false);
@@ -651,19 +766,25 @@ public class HomeActivity extends Activity {
     }
 
     // Подсветку вдвое убавляет «Сторож» (у него доступ к подсветке TCL), он же возвращает её по команде
+    // Помним и на диске (06.11): «Дом», перезапущенный посреди приглушения, иначе не говорил «Сторожу» вернуть подсветку
     boolean saverSent;
-    final Runnable saverOn = () -> { saverSent = true; guardSaver(true); };
+    final Runnable saverOn = () -> { setSaverSent(true); guardSaver(true); };
 
     void saverOff() {
         h.removeCallbacks(saverOn);
         if (!saverSent) return;
-        saverSent = false;
+        setSaverSent(false);
         guardSaver(false);
+    }
+
+    void setSaverSent(boolean v) {
+        saverSent = v;
+        getSharedPreferences("home", MODE_PRIVATE).edit().putBoolean("saverSent", v).apply();
     }
 
     void guardSaver(boolean on) {
         try {
-            sendBroadcast(new Intent().setClassName("app.glasstv.guard", "app.glasstv.guard.Cmd").putExtra("do", "saver").putExtra("on", on));
+            sendBroadcast(new Intent().setClassName("app.glasstv.guard", "app.glasstv.guard.AppCmd").putExtra("do", "saver").putExtra("on", on));
         } catch (Exception ignored) { }
     }
 
@@ -719,29 +840,47 @@ public class HomeActivity extends Activity {
         int kc = e.getKeyCode();
         boolean arrow = kc == KeyEvent.KEYCODE_DPAD_LEFT || kc == KeyEvent.KEYCODE_DPAD_RIGHT;
         boolean ok = kc == KeyEvent.KEYCODE_DPAD_CENTER || kc == KeyEvent.KEYCODE_ENTER || kc == KeyEvent.KEYCODE_NUMPAD_ENTER;
-        if (vision && state == ACTIVE) {
-            if (arrow) {
-                if (e.getAction() == KeyEvent.ACTION_DOWN) {
-                    keyRepeat = e.getRepeatCount();
-                    Tile.holding = keyRepeat > 0;
-                } else if (e.getAction() == KeyEvent.ACTION_UP) {
-                    boolean was = Tile.holding;
-                    Tile.holding = false;
-                    keyRepeat = 0;
-                    if (was && getCurrentFocus() instanceof Tile) ((Tile) getCurrentFocus()).holdEnded();
-                }
+        if (menu != null) return menuKey(e, ok);
+        if (moving != null) return moveKey(e);
+        if (vision && state == ACTIVE && arrow) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                keyRepeat = e.getRepeatCount();
+                Tile.holding = keyRepeat > 0;
+            } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                boolean was = Tile.holding;
+                Tile.holding = false;
+                keyRepeat = 0;
+                if (was && getCurrentFocus() instanceof Tile) ((Tile) getCurrentFocus()).holdEnded();
             }
-            // OK на сфере: сфера проседает на нажатии и отпружинивает на отпускании, приложение открывается после отскока
-            View fv = getCurrentFocus();
-            if (ok && fv instanceof Tile && dockTiles.contains(fv)) {
+        }
+        // OK на плитке (ряд и «Все приложения»): короткое нажатие открывает, удержание открывает меню плитки.
+        // Сфера «Vision» ещё и проседает на нажатии и отпружинивает на отпускании, приложение открывается после отскока.
+        // Отпускание считается, только если нажатие было на этой же плитке: первое нажатие на экране блокировки
+        // лишь будит экран и ничего не открывает
+        View fv = getCurrentFocus();
+        if (ok && fv instanceof Tile && state != IDLE) {
+            Tile t = (Tile) fv;
+            boolean orbDock = vision && dockTiles.contains(t);
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
                 restartIdle();
-                Tile t = (Tile) fv;
-                if (e.getAction() == KeyEvent.ACTION_DOWN) {
-                    if (e.getRepeatCount() == 0) t.press(true);
-                } else if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
-                    t.press(false);
-                    h.postDelayed(t::performClick, M.t(110));
+                saverOff();
+                if (e.getRepeatCount() == 0) {
+                    okDown = t;
+                    longFired = false;
+                    if (orbDock) t.press(true);
+                    h.removeCallbacks(longPress);
+                    if (editable(t)) h.postDelayed(longPress, LONG_MS);
                 }
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP && okDown == t) {
+                okDown = null;
+                h.removeCallbacks(longPress);
+                if (longFired) { longFired = false; return true; }
+                if (orbDock) t.press(false);
+                if (e.isCanceled()) return true;
+                if (orbDock) h.postDelayed(t::performClick, M.t(110));
+                else t.performClick();
                 return true;
             }
         }
@@ -754,7 +893,12 @@ public class HomeActivity extends Activity {
                 return true;
             }
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-                if (state == GRID) closeGrid();
+                if (state == GRID && showHidden) {
+                    showHidden = false;
+                    gridFocusAt = Integer.MAX_VALUE;   // на плитку «Скрытые» в конце
+                    appsSig = null;
+                    loadApps();
+                } else if (state == GRID) closeGrid();
                 else if (state == ACTIVE) toIdle();
                 return true;
             }
@@ -781,6 +925,19 @@ public class HomeActivity extends Activity {
     // now: ТВ выключили, переход не нужен, при включении сразу чистый кадр
     @Override protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
+        closeMenu(false);
+        endMove();
+        // С ПК (проверка, откат): am start -n app.glasstv.home/.HomeActivity --es dock reset (ряд по умолчанию)
+        // или --es dock <пакеты через запятую>; что стоит сейчас, пишется в журнал с тегом home
+        String dk = i.getStringExtra("dock");
+        if (dk != null) {
+            if ("reset".equals(dk)) getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).edit().remove(DOCK_KEY).apply();
+            else if (!"show".equals(dk)) saveDock(new ArrayList<>(Arrays.asList(dk.split(","))));
+            appsSig = null;
+            loadApps();
+            android.util.Log.i("home", "ряд: " + android.text.TextUtils.join(",", dockOrder()));
+            return;
+        }
         if (i.getBooleanExtra("idle", false)) {
             keepIdle = true;
             if (i.getBooleanExtra("now", false) || !resumed) {
@@ -822,6 +979,12 @@ public class HomeActivity extends Activity {
             showFlash(Style.title(st));
         }
         amb.start();
+        int sr = Setup.rev(this);
+        if (sr != setupRev) {   // вернулись из «Настроек «Дома»» с правками: погода, курсы, стих, ярлыки
+            boolean first = setupRev < 0;
+            setupRev = sr;
+            if (!first) { Data.get(this).setupChanged(); amb.applySetup(); appsSig = null; }
+        }
         loadApps();
         updateSuggest();
         // История использования читается в фоне, не чаще раза в 5 с; когда прочиталась, капсула подпишется заново
@@ -838,6 +1001,10 @@ public class HomeActivity extends Activity {
         resumed = false;
         Tile.holding = false;
         keyRepeat = 0;
+        closeMenu(false);
+        endMove();
+        okDown = null;
+        longFired = false;
         saverOff();
         amb.stop();
         h.removeCallbacksAndMessages(null);
@@ -846,6 +1013,480 @@ public class HomeActivity extends Activity {
     }
 
     @Override public void onBackPressed() { }
+
+    // ===== Правка ряда с пульта (05.11) =====
+    // Удержание OK на плитке открывает её меню. В ряду: «Переместить» (плитка в руке, стрелки двигают, OK кладёт)
+    // и «Убрать с главного экрана» (уходит в «Все приложения»). У плитки «Все приложения» только «Переместить»: без неё
+    // в сетку не попасть. В «Все приложения»: «Добавить на главный экран» (встаёт перед плиткой «Все приложения»).
+    // Порядок хранится в настройках dock, ключ order; записи нет: ряд по умолчанию (FAVORITES)
+
+    List<String> dockOrder() {
+        String s = getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).getString(DOCK_KEY, "");
+        List<String> l = new ArrayList<>();
+        for (String p : s.isEmpty() ? FAVORITES : s.split(",")) if (!p.isEmpty() && !l.contains(p)) l.add(p);
+        if (!l.contains("all")) l.add("all");
+        return l;
+    }
+
+    List<String> currentDock() {
+        List<String> l = new ArrayList<>();
+        for (Tile t : dockTiles) l.add(t.pkg);
+        return l;
+    }
+
+    // Приложения, которых сейчас нет в ряду не по воле человека (удалено, обновляется, ярлык без приложения), место не теряют:
+    // вернутся туда же. Убранное человеком в ряд не возвращается: в момент сохранения оно было на экране
+    void saveDock(List<String> l) {
+        List<String> old = dockOrder(), out = new ArrayList<>(l);
+        Set<String> shown = new HashSet<>(currentDock());
+        for (int i = 0; i < old.size(); i++) {
+            String p = old.get(i);
+            if (out.contains(p) || shown.contains(p)) continue;
+            int at = 0;
+            for (int j = i - 1; j >= 0; j--) {
+                int k = out.indexOf(old.get(j));
+                if (k >= 0) { at = k + 1; break; }
+            }
+            out.add(at, p);
+        }
+        l = out;
+        getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).edit().putString(DOCK_KEY, android.text.TextUtils.join(",", l)).apply();
+        android.util.Log.i("home", "ряд сохранён: " + android.text.TextUtils.join(",", l));
+    }
+
+    // Запасная плитка «Настройки» в сетке (когда нет своей плитки настроек) в ряд не добавляется
+    boolean editable(Tile t) { return t.pkg != null && !"settings".equals(t.pkg) && !"install".equals(t.pkg) && !"hidden".equals(t.pkg) && !"setup".equals(t.pkg); }
+
+    final Runnable longPress = () -> {
+        Tile t = okDown;
+        if (t == null || !t.isFocused() || menu != null) return;
+        longFired = true;
+        if (vision && dockTiles.contains(t)) t.press(false);
+        openMenu(t);
+    };
+
+    boolean menuKey(KeyEvent e, boolean ok) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN) restartIdle();
+        if (ok && longFired) {   // ещё держат OK, которым открыли меню: это не выбор пункта
+            if (e.getAction() == KeyEvent.ACTION_UP) { longFired = false; okDown = null; }
+            return true;
+        }
+        int kc = e.getKeyCode();
+        if (kc == KeyEvent.KEYCODE_BACK) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) closeMenu(true);
+            return true;
+        }
+        if (kc == KeyEvent.KEYCODE_DPAD_LEFT || kc == KeyEvent.KEYCODE_DPAD_RIGHT) return true;
+        return super.dispatchKeyEvent(e);
+    }
+
+    // Меню плитки (06.11). Ряд: «Переместить», «Убрать с главного экрана». Сетка: «Добавить на главный экран», «Скрыть».
+    // Скрытые: «Вернуть в список». Для настоящего приложения ещё «О приложении» (системный экран сведений) и, если его можно
+    // удалить, «Удалить приложение» (системное окно подтверждения). У ярлыка эти два пункта про приложение, которое он открывает.
+    // Убрать и скрыть меняют только расположение: пакет и данные остаются. Удалить можно только то, что ставили не мы и не система
+    void openMenu(Tile t) {
+        boolean inDock = dockTiles.contains(t);
+        List<Object[]> acts = new ArrayList<>();
+        if (inDock) {
+            acts.add(new Object[]{"Переместить", true, (Runnable) () -> startMove(t)});
+            if (!"all".equals(t.pkg)) acts.add(new Object[]{"Убрать с главного экрана", false, (Runnable) () -> removeFromDock(t)});
+        } else if (showHidden) {
+            acts.add(new Object[]{"Вернуть в список", false, (Runnable) () -> setHidden(t, false)});
+        } else {
+            acts.add(new Object[]{"Добавить на главный экран", false, (Runnable) () -> addToDock(t)});
+            acts.add(new Object[]{"Скрыть", false, (Runnable) () -> setHidden(t, true)});
+        }
+        final String real = realPkg(t.pkg);
+        if (real != null) {
+            acts.add(new Object[]{"О приложении", true, (Runnable) () -> appInfo(real)});
+            if (canDelete(real)) acts.add(new Object[]{"Удалить приложение", true, (Runnable) () -> uninstall(real)});
+        }
+        showMenu(t, t.label, acts);
+    }
+
+    // Меню над плиткой по списку пунктов {подпись, вернуть ли фокус на плитку, действие}
+    void showMenu(Tile t, String head, List<Object[]> acts) {
+        boolean inDock = dockTiles.contains(t);
+        menuFor = t;
+        FrameLayout m = new FrameLayout(this);
+        // Как в Apple TV: темнеет фон и соседи, плитка с меню остаётся яркой и крупной
+        View scrim = new View(this);
+        scrim.setBackgroundColor(0x73000000);
+        scrim.setAlpha(0f);
+        root.addView(scrim, root.indexOfChild(shelf), new FrameLayout.LayoutParams(-1, -1));
+        menuScrim = scrim;
+        menuDimmed.clear();
+        if (inDock) {
+            for (Tile o : dockTiles) if (o != t) menuDimmed.add(o);
+            menuDimmed.add(suggestRow);
+        } else {
+            for (int r = 0; r < gridBox.getChildCount(); r++) {
+                android.view.ViewGroup row = (android.view.ViewGroup) gridBox.getChildAt(r);
+                for (int k = 0; k < row.getChildCount(); k++) if (row.getChildAt(k) != t) menuDimmed.add(row.getChildAt(k));
+            }
+        }
+        for (View v : menuDimmed) v.animate().alpha(0.35f).setStartDelay(0).setDuration(M.t(220)).setInterpolator(Ambient.EASE).start();
+        t.keepLit(true);
+        LinearLayout card = new LinearLayout(this) {
+            @Override public boolean hasOverlappingRendering() { return false; }
+        };
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(px(8), px(10), px(8), px(8));
+        card.setMinimumWidth(px(300));
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xF2202024);
+        bg.setCornerRadius(px(22));
+        bg.setStroke(Math.max(1, px(1)), 0x24FFFFFF);
+        card.setBackground(bg);
+        TextView title = Fonts.text(this, Fonts.CAPTION, Fonts.med18, Fonts.WHITE_60);
+        title.setText(head);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        title.setPadding(px(18), px(4), px(18), px(8));
+        card.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        List<TextView> items = new ArrayList<>();
+        for (Object[] a : acts) items.add(menuItem((String) a[0], (Boolean) a[1], (Runnable) a[2]));
+        for (TextView v : items) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = px(2);
+            card.addView(v, lp);
+        }
+        card.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int cw = card.getMeasuredWidth(), ch = card.getMeasuredHeight();
+        int[] loc = new int[2], rl = new int[2];
+        t.getLocationInWindow(loc);
+        root.getLocationInWindow(rl);
+        float tx = loc[0] - rl[0], ty = loc[1] - rl[1];
+        float tw = t.getWidth() * t.getScaleX();
+        float th = (vision && inDock ? px(Style.D) : t.getHeight()) * t.getScaleY();
+        float cx = tx + tw / 2f;
+        int sw = root.getWidth() > 0 ? root.getWidth() : px(Grid.W);
+        int sh = root.getHeight() > 0 ? root.getHeight() : px(540);
+        // Где встать: над плиткой; не влезает, под ней; не влезает и там (длинное меню у плитки посередине экрана),
+        // сбоку от плитки на её высоте, внутри экрана (06.11: четвёртый пункт уходил за нижний край)
+        int x = Math.round(Math.max(px(32), Math.min(sw - px(32) - cw, cx - cw / 2f)));
+        int y = Math.round(ty - px(vision && inDock ? 12 : 6) - px(16) - ch);
+        int side = 0;   // 0 над или под, 1 справа, -1 слева
+        boolean above = y >= px(20);
+        if (!above) {
+            y = Math.round(ty + th + px(16));
+            if (y + ch > sh - px(20)) {
+                side = tx + tw + px(16) + cw <= sw - px(24) ? 1 : -1;
+                x = side > 0 ? Math.round(tx + tw + px(16)) : Math.round(Math.max(px(24), tx - px(16) - cw));
+                y = Math.round(Math.max(px(20), Math.min(sh - px(20) - ch, ty + th / 2f - ch / 2f)));
+            }
+        }
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(cw, ch, Gravity.TOP | Gravity.START);
+        cl.leftMargin = x;
+        cl.topMargin = y;
+        m.addView(card, cl);
+        root.addView(m, new FrameLayout.LayoutParams(-1, -1));
+        menu = m;
+        card.setPivotX(side > 0 ? 0 : side < 0 ? cw : Math.max(0, Math.min(cw, cx - x)));
+        card.setPivotY(side != 0 ? Math.max(0, Math.min(ch, ty + th / 2f - y)) : above ? ch : 0);
+        card.setAlpha(0f);
+        card.setScaleX(0.92f);
+        card.setScaleY(0.92f);
+        if (side != 0) card.setTranslationX(px(side > 0 ? -10 : 10));
+        else card.setTranslationY(px(above ? 10 : -10));
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationX(0).translationY(0).setStartDelay(0).setDuration(M.t(280))
+                .setInterpolator(Ambient.EASE).start();
+        scrim.animate().alpha(1f).setStartDelay(0).setDuration(M.t(220)).start();
+        shelfFocusable(false);
+        gridLayer.setDescendantFocusability(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        items.get(0).requestFocus();
+    }
+
+    TextView menuItem(String text, boolean refocus, Runnable act) {
+        final android.graphics.drawable.GradientDrawable on = new android.graphics.drawable.GradientDrawable();
+        on.setColor(0xFFFFFFFF);
+        on.setCornerRadius(px(14));
+        TextView v = new TextView(this) {
+            @Override public boolean hasOverlappingRendering() { return false; }
+            @Override protected void onFocusChanged(boolean f, int d, android.graphics.Rect r) {
+                super.onFocusChanged(f, d, r);
+                setBackground(f ? on : null);
+                setTextColor(f ? 0xFF141416 : Fonts.WHITE_92);
+                animate().scaleX(f ? 1.03f : 1f).scaleY(f ? 1.03f : 1f).setStartDelay(0).setDuration(M.t(160))
+                        .setInterpolator(Ambient.EASE).start();
+            }
+        };
+        v.setText(text);
+        v.setTextSize(18);
+        v.setTypeface(Fonts.med18);
+        v.setTextColor(Fonts.WHITE_92);
+        v.setIncludeFontPadding(false);
+        v.setSingleLine(true);
+        v.setPadding(px(18), px(13), px(18), px(13));
+        v.setFocusable(true);
+        v.setClickable(true);
+        v.setOnClickListener(x -> { closeMenu(refocus); act.run(); });
+        return v;
+    }
+
+    void closeMenu(boolean back) {
+        if (menu == null) return;
+        final FrameLayout m = menu;
+        menu = null;
+        m.setDescendantFocusability(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        shelfFocusable(state != GRID);
+        gridLayer.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        Tile f = menuFor;
+        menuFor = null;
+        if (back && f != null && f.isAttachedToWindow()) f.requestFocus();
+        if (f != null) f.keepLit(false);
+        final View scrim = menuScrim;
+        menuScrim = null;
+        if (scrim != null) scrim.animate().alpha(0f).setStartDelay(0).setDuration(M.t(180)).withEndAction(() -> root.removeView(scrim)).start();
+        for (View v : menuDimmed) v.animate().alpha(1f).setStartDelay(0).setDuration(M.t(220)).setInterpolator(Ambient.EASE).start();
+        menuDimmed.clear();
+        View card = m.getChildCount() > 0 ? m.getChildAt(0) : null;
+        if (card != null) card.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).setStartDelay(0).setDuration(M.t(180))
+                .setInterpolator(Ambient.EASE).withEndAction(() -> root.removeView(m)).start();
+        else root.removeView(m);
+        if (reloadLater && moving == null) { reloadLater = false; h.post(reloadApps); }
+    }
+
+    // ===== Скрытые, сведения, удаление, установка (06.11) =====
+
+    Set<String> userHidden() {
+        String s = getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).getString(HIDE_KEY, "");
+        Set<String> out = new java.util.TreeSet<>();
+        for (String p : s.split(",")) if (!p.isEmpty()) out.add(p);
+        return out;
+    }
+
+    void setHidden(Tile t, boolean hide) {
+        Set<String> h = userHidden();
+        if (hide) h.add(t.pkg); else h.remove(t.pkg);
+        getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).edit().putString(HIDE_KEY, android.text.TextUtils.join(",", h)).apply();
+        gridFocusAt = gridIndexOf(t);
+        appsSig = null;
+        loadApps();
+        showFlash(hide ? "Скрыто. Вернуть: плитка «Скрытые» в конце списка" : "Вернулось во «Все приложения»");
+    }
+
+    // Приложение за плиткой: у ярлыка то, что он открывает; у служебных плиток нет
+    String realPkg(String p) {
+        if (p == null || "all".equals(p) || "install".equals(p) || "hidden".equals(p) || "settings".equals(p) || "setup".equals(p)) return null;
+        String tg = tileTarget.get(p);
+        return tg != null ? tg : p;
+    }
+
+    // Удалять можно только приложение, которое ставили не мы и не система: свои части «Дома» и Key Mapper (кнопки пульта) не удаляются отсюда
+    boolean canDelete(String p) {
+        if (p.startsWith("app.glasstv.") || "io.github.sds100.keymapper".equals(p)) return false;
+        try {
+            android.content.pm.ApplicationInfo ai = getPackageManager().getApplicationInfo(p, 0);
+            return (ai.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    boolean present(String p) {
+        try { return getPackageManager().getApplicationInfo(p, 0).enabled; } catch (Exception e) { return false; }
+    }
+
+    void appInfo(String p) {
+        try {
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + p))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception e) {
+            showFlash("Сведения о приложении на этом ТВ не открываются");
+        }
+    }
+
+    // Удаление только через системное окно: человек видит, что удаляется, и подтверждает сам
+    void uninstall(String p) {
+        try {
+            startActivity(new Intent(Intent.ACTION_DELETE, android.net.Uri.parse("package:" + p)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception e) {
+            showFlash("Окно удаления не открылось");
+        }
+    }
+
+    // «Новое»: поставлено за последние 3 дня и ещё ни разу не открывалось с «Дома»
+    boolean isNew(String p) {
+        try {
+            long at = getPackageManager().getPackageInfo(p, 0).firstInstallTime;
+            if (System.currentTimeMillis() - at > NEW_MS) return false;
+        } catch (Exception e) {
+            return false;
+        }
+        String s = "," + getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).getString(SEEN_KEY, "") + ",";
+        return !s.contains("," + p + ",");
+    }
+
+    void markSeen(String p) {
+        if (p == null || !isNew(p)) return;
+        String s = getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).getString(SEEN_KEY, "");
+        getSharedPreferences(DOCK_PREFS, MODE_PRIVATE).edit().putString(SEEN_KEY, s.isEmpty() ? p : s + "," + p).apply();
+    }
+
+    // Откуда ставить новое приложение на этом ТВ: показываются только способы, которые здесь есть
+    void openInstallMenu(Tile t) {
+        List<Object[]> acts = new ArrayList<>();
+        addSource(acts, "Google Play", "com.android.vending");
+        addSource(acts, "Aurora Store (без входа в Google)", "com.aurora.store");
+        String files = installed("me.zhanghai.android.files") ? "me.zhanghai.android.files"
+                : installed("com.cxinventor.file.explorer") ? "com.cxinventor.file.explorer" : null;
+        if (files != null) addSource(acts, "Файл APK с флешки", files);
+        addSource(acts, "С телефона или компьютера: LocalSend", "org.localsend.localsend_app");
+        if (acts.isEmpty()) {
+            showFlash("На этом ТВ нет ни магазина, ни файлового менеджера");
+            return;
+        }
+        showMenu(t, "Откуда установить", acts);
+    }
+
+    void addSource(List<Object[]> acts, String label, String pkg) {
+        if (installed(pkg)) acts.add(new Object[]{label, true, (Runnable) () -> launch(pkg, null)});
+    }
+
+    List<View> gridTiles() {
+        List<View> out = new ArrayList<>();
+        for (int r = 0; r < gridBox.getChildCount(); r++) {
+            android.view.ViewGroup row = (android.view.ViewGroup) gridBox.getChildAt(r);
+            for (int k = 0; k < row.getChildCount(); k++) out.add(row.getChildAt(k));
+        }
+        return out;
+    }
+
+    int gridIndexOf(View v) { return v == null ? -1 : gridTiles().indexOf(v); }
+
+    // Установили, обновили или удалили приложение, пока «Дом» открыт: ряд и сетка перестраиваются сами.
+    // Снятие старой версии при обновлении (REMOVED с EXTRA_REPLACING) удалением не считается: следом придёт замена
+    void watchPackages() {
+        pkgEvents = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context c, Intent i) {
+                if (Intent.ACTION_PACKAGE_REMOVED.equals(i.getAction()) && i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
+                h.removeCallbacks(reloadApps);
+                h.postDelayed(reloadApps, 600);
+            }
+        };
+        android.content.IntentFilter f = new android.content.IntentFilter();
+        f.addAction(Intent.ACTION_PACKAGE_ADDED);
+        f.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        f.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        f.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        f.addDataScheme("package");
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(pkgEvents, f, RECEIVER_NOT_EXPORTED);
+        else registerReceiver(pkgEvents, f);
+    }
+
+    final Runnable reloadApps = () -> { if (!isDestroyed()) loadApps(); };
+
+    @Override protected void onDestroy() {
+        if (pkgEvents != null) try { unregisterReceiver(pkgEvents); } catch (Exception ignored) { }
+        super.onDestroy();
+    }
+
+    void startMove(Tile t) {
+        if (!dockTiles.contains(t)) return;
+        moving = t;
+        t.setMoving(true);
+        showHint("Влево и вправо: переставить · OK: готово");
+    }
+
+    boolean moveKey(KeyEvent e) {
+        if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        restartIdle();
+        int kc = e.getKeyCode();
+        if (kc == KeyEvent.KEYCODE_DPAD_LEFT || kc == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            step(kc == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+            return true;
+        }
+        if (e.getRepeatCount() == 0) endMove();   // OK, «Назад», вверх, вниз: положить
+        return true;
+    }
+
+    // Обмен с соседом. Фокус всё время на плитке в руке, поэтому из ряда вынимается сосед, а не она
+    // (вынутая плитка теряла бы фокус). Все сдвинутые доезжают от старых мест на пружине
+    void step(int dir) {
+        int i = dockTiles.indexOf(moving), j = i + dir;
+        if (i < 0) { endMove(); return; }
+        if (j < 0 || j >= dockTiles.size()) {
+            if (vision) edgeBump(dir);
+            return;
+        }
+        final Map<View, Integer> was = new HashMap<>();
+        for (int k = 0; k < dock.getChildCount(); k++) was.put(dock.getChildAt(k), dock.getChildAt(k).getLeft());
+        Tile other = dockTiles.get(j);
+        dock.removeView(other);
+        dock.addView(other, i);
+        java.util.Collections.swap(dockTiles, i, j);
+        for (int k = 0; k < dock.getChildCount(); k++) {
+            View c = dock.getChildAt(k);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) c.getLayoutParams();
+            int want = k == 0 ? 0 : px(vision ? Style.GAP : Grid.GAP);
+            if (lp.leftMargin != want) { lp.leftMargin = want; c.setLayoutParams(lp); }
+        }
+        dock.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                dock.getViewTreeObserver().removeOnPreDrawListener(this);
+                for (int k = 0; k < dock.getChildCount(); k++) {
+                    View c = dock.getChildAt(k);
+                    Integer w = was.get(c);
+                    if (w != null && w != c.getLeft() && c instanceof Tile) ((Tile) c).slide(w - c.getLeft());
+                }
+                if (moving != null) {
+                    scrollDock(moving);
+                    if (vision) makeRoom(moving);
+                }
+                return true;
+            }
+        });
+    }
+
+    void endMove() {
+        if (moving == null) return;
+        Tile t = moving;
+        moving = null;
+        t.setMoving(false);
+        hideHint();
+        saveDock(currentDock());
+        if (reloadLater) { reloadLater = false; h.post(reloadApps); }
+    }
+
+    void addToDock(Tile t) {
+        markSeen(t.pkg);
+        List<String> order = currentDock();
+        if (order.contains(t.pkg)) return;
+        int at = order.indexOf("all");
+        order.add(at < 0 ? order.size() : at, t.pkg);
+        saveDock(order);
+        focusPkg = t.pkg;
+        closeGrid();
+        appsSig = null;
+        loadApps();
+        showFlash("Добавлено на главный экран");
+    }
+
+    void removeFromDock(Tile t) {
+        List<String> order = currentDock();
+        int i = order.indexOf(t.pkg);
+        if (i < 0 || "all".equals(t.pkg)) return;
+        order.remove(i);
+        saveDock(order);
+        focusPkg = order.get(Math.min(i, order.size() - 1));
+        appsSig = null;
+        loadApps();
+        showFlash("Убрано с главного экрана, оно в «Все приложения»");
+    }
+
+    // Подсказка на время перестановки: та же плашка сверху, что и у стиля, но держится, пока плитка в руке
+    void showHint(String s) {
+        flash.setText(s);
+        flash.animate().cancel();
+        flash.animate().alpha(1f).setStartDelay(0).setDuration(M.t(250)).start();
+    }
+
+    void hideHint() {
+        flash.animate().cancel();
+        flash.animate().alpha(0f).setStartDelay(0).setDuration(M.t(300)).start();
+    }
 
     // «Vision»: соседи сферы в фокусе расступаются (на 6 dp ближние, на 2 dp следующие) и тихо возвращаются
     void makeRoom(Tile f) {

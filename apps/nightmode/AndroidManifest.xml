@@ -4,6 +4,9 @@
     android:versionCode="13"
     android:versionName="1.8.1">
 
+    <!-- Команды «Сторожу» (06.11): вход app.glasstv.guard.AppCmd пускает только приложения с тем же ключом подписи -->
+    <permission android:name="app.glasstv.permission.GUARD" android:protectionLevel="signature" />
+    <uses-permission android:name="app.glasstv.permission.GUARD" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 

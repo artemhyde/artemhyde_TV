@@ -7,6 +7,10 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Право слать команды «Сторожу» (06.11): только приложениям с тем же ключом подписи. Объявлено и в отправителях,
+         чтобы порядок установки не мешал -->
+    <permission android:name="app.glasstv.permission.GUARD" android:protectionLevel="signature" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -25,6 +29,11 @@
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <!-- Умный звук: эффект на общий микшер (сессия 0). Обычное право, выдаётся при установке, pm grant не нужен -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Обновления приложений не из магазина (Updates.java). Ставить приложения: с ПК appops set app.glasstv.guard REQUEST_INSTALL_PACKAGES allow.
+         Два других права обычные, выдаются при установке: обновлять без нажатий (если установщик «Сторож») и видеть все приложения -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <!-- Чтобы видеть Key Mapper -->
     <queries>
@@ -96,7 +105,12 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <!-- Команды с ПК для проверки (подсветка TCL) -->
-        <receiver android:name=".Cmd" android:exported="true" />
+        <!-- Команды с ПК (adb shell am broadcast -n app.glasstv.guard/.Cmd ...). Только у кого право DUMP: у adb оно есть,
+             у обычного приложения нет (06.11, план Codex, блок 4: раньше любое приложение могло, например, включить отладку по сети) -->
+        <receiver android:name=".Cmd" android:exported="true" android:permission="android.permission.DUMP" />
+        <!-- Те же команды от своих приложений («Дом», «Ночной режим», «Звук», «Картинка»): только с тем же ключом подписи -->
+        <receiver android:name=".AppCmd" android:exported="true" android:permission="app.glasstv.permission.GUARD" />
+        <!-- Итог установки обновления от системы (Updates.java) -->
+        <receiver android:name=".UpdDone" android:exported="false" />
     </application>
 </manifest>

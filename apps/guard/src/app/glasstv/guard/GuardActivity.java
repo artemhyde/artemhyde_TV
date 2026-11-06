@@ -24,7 +24,7 @@ public class GuardActivity extends Activity {
     private float dp;
     private Typeface regular, medium, semibold;
     private TextView adb, keys, notes, mem, night, log;
-    private TextView soundBtn;
+    private TextView soundBtn, adbBtn, notesBtn, reportRow;
     private int soundColor = 0xFFF5F5F7;
     private final Handler h = new Handler(Looper.getMainLooper());
 
@@ -53,9 +53,12 @@ public class GuardActivity extends Activity {
         notes = row(root, "Записки с телефона");
         mem = row(root, "Память");
         night = row(root, "Ночью подсветка ниже");
+        reportRow = row(root, "Отчёт для помощи");
+        reportRow.setText("кнопка «Отчёт» сохранит его в «Загрузки», без личных данных");
+        reportRow.setTextColor(0xFFF5F5F7);
 
         LinearLayout buttons = new LinearLayout(this);
-        buttons.setPadding(0, px(24), 0, px(24));
+        buttons.setPadding(0, px(24), 0, px(12));
         View check = button(buttons, "Проверить сейчас", v -> {
             GuardService g = GuardService.running;
             if (g != null) { g.keepAdb("вручную"); g.checkKeys.run(); }
@@ -86,6 +89,36 @@ public class GuardActivity extends Activity {
         soundBtn.setOnFocusChangeListener((v, f) -> ((TextView) v).setTextColor(f ? 0xFF0B0B0E : soundColor));
         root.addView(buttons);
 
+        // Выключатели (06.11): отладка по сети по кругу «всегда», «2 часа обслуживания», «выключена»; записки вкл и выкл
+        LinearLayout switches = new LinearLayout(this);
+        switches.setPadding(0, 0, 0, px(24));
+        adbBtn = (TextView) button(switches, "Отладка: всегда", v -> {
+            GuardService g = GuardService.running;
+            if (g == null) return;
+            String m = g.adbMode();
+            g.setAdbMode(GuardService.ADB_ALWAYS.equals(m) ? GuardService.ADB_SERVICE
+                    : GuardService.ADB_SERVICE.equals(m) ? GuardService.ADB_OFF : GuardService.ADB_ALWAYS, "экран «Сторож»");
+            h.removeCallbacksAndMessages(null);
+            h.postDelayed(this::refresh, 500);
+        });
+        notesBtn = (TextView) button(switches, "Записки: вкл", v -> {
+            GuardService g = GuardService.running;
+            if (g != null) g.setNotes(!GuardService.notesEnabled(this));
+            h.removeCallbacksAndMessages(null);
+            h.postDelayed(this::refresh, 500);
+        });
+        // Отчёт для обслуживания (06.11, план Codex, блок 6): версии, права, состояние и журнал без личных данных, файлом в «Загрузки»
+        button(switches, "Отчёт", v -> {
+            reportRow.setText("собираю…");
+            final android.content.Context app = getApplicationContext();
+            new Thread(() -> {
+                String where = Report.save(app, Report.build(app));
+                h.post(() -> reportRow.setText(where.startsWith("Загрузки/")
+                        ? "сохранён: " + where + " · на телефон: LocalSend или «Файлы»" : where));
+            }, "guard-report").start();
+        });
+        root.addView(switches);
+
         TextView logTitle = text("Что делал", 13, 0x80F5F5F7, medium);
         logTitle.setLetterSpacing(0.08f);
         root.addView(logTitle);
@@ -94,7 +127,13 @@ public class GuardActivity extends Activity {
         log.setPadding(0, px(8), 0, 0);
         root.addView(log);
 
-        setContentView(root);
+        // Экран прокручивается (06.11): с выключателями отладки и записок всё не помещалось, нижний ряд сплющивался
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setBackgroundColor(0xFF0B0B0E);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.addView(root, new android.widget.FrameLayout.LayoutParams(-1, -2));
+        setContentView(scroll);
         check.requestFocus();
     }
 
@@ -111,8 +150,13 @@ public class GuardActivity extends Activity {
     private void refresh() {
         GuardService g = GuardService.running;
         boolean adbOn = g != null && g.adbOn();
-        adb.setText(adbOn ? "включена" : "выключена");
+        String mode = g == null ? GuardService.ADB_ALWAYS : g.adbMode();
+        String until = g == null ? "" : new java.text.SimpleDateFormat("H:mm", java.util.Locale.US).format(new java.util.Date(g.adbUntil()));
+        adb.setText((adbOn ? "включена" : "выключена") + (GuardService.ADB_SERVICE.equals(mode) ? " · обслуживание до " + until
+                : GuardService.ADB_OFF.equals(mode) ? " · «Сторож» не включает" : " · держит всегда"));
         adb.setTextColor(adbOn ? 0xFF5ED3B4 : 0xFFFFB454);
+        adbBtn.setText(GuardService.ADB_SERVICE.equals(mode) ? "Отладка: 2 часа" : GuardService.ADB_OFF.equals(mode) ? "Отладка: выключена" : "Отладка: всегда");
+        notesBtn.setText(GuardService.notesEnabled(this) ? "Записки: вкл" : "Записки: выкл");
         String k = getSharedPreferences("guard", MODE_PRIVATE).getString("keys", "проверяю");
         keys.setText(k);
         keys.setTextColor(k.startsWith("не") ? 0xFFFFB454 : 0xFF5ED3B4);
@@ -128,8 +172,8 @@ public class GuardActivity extends Activity {
         int day = sp.getInt("blDay", -1), lvl = sp.getInt("nightLevel", GuardService.NIGHT_LEVEL);
         night.setText(!nightEnabled ? "выключено"
                 : "вуаль".equals(how) ? "сейчас темнее вуалью: подсветку ведёт датчик света"
-                : day > 0 ? "подсветка " + day + " → " + lvl + " до 7:00"
-                : "в 22:00 станет " + lvl + " из 100, если яркость за день не меняли");
+                : day > 0 ? "подсветка " + day + " → " + lvl + " до " + GuardService.nt()
+                : "в " + GuardService.nf() + " станет " + lvl + " из 100, если яркость за день не меняли");
         night.setTextColor(0xFFF5F5F7);
         refreshSound(g);
         log.setText(getSharedPreferences("guard", MODE_PRIVATE).getString("log", ""));

@@ -136,7 +136,9 @@ final class Pq {
 
     // ===== Отражение =====
 
+    // Все менеджеры картинки идут через этот вызов: на другом бренде (план Codex, блок 5) ни одного вызова TCL
     private static Object invokeStatic(String cls, String m) throws Exception {
+        if (!Caps.tcl()) throw new IllegalStateException("не TCL: картинка TCL не вызывается");
         try { return Class.forName(cls).getMethod(m).invoke(null); }
         catch (InvocationTargetException e) { throw unwrap(e); }
     }

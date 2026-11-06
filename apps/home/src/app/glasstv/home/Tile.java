@@ -94,6 +94,7 @@ final class Tile extends View {
         compose();
         setFocusable(true);
         setClickable(true);
+        setContentDescription(label);   // подпись для озвучки экрана и проверок (uiautomator видит, на какой плитке фокус)
         // Тень своя, нарисованная: системная просвечивала бы сквозь стекло. Подъём над соседями только для порядка рисования
         setOutlineProvider(null);
         // Перспектива как в макете (1100 точек): камера View меряется в дюймах по 72 точки
@@ -315,6 +316,7 @@ final class Tile extends View {
             sheenShader.setLocalMatrix(sheenM);
             c.drawCircle(ox + orbD / 2f, orbD / 2f, orbD / 2f - 1f, sheenCircle);
         }
+        drawChevrons(c, getWidth() / 2f, orbD / 2f, orbD / 2f);
     }
 
     // ===== Пружина, ореол, дыхание и блик сферы =====
@@ -440,7 +442,7 @@ final class Tile extends View {
         spring.value = getScaleX();
         spring.velocity -= 1.1f;
         spring.tune(0.5f, 0.32f);
-        spring.to(isFocused() ? ORB_GROW : 1f);
+        spring.to(moving ? ORB_GROW * MOVE_GROW : isFocused() ? ORB_GROW : 1f);
     }
 
     // Отпустили зажатую стрелку: на последней сфере полная посадка
@@ -450,6 +452,101 @@ final class Tile extends View {
         post(landLater);
     }
 
+    // ===== Отметка «Новое» (06.11) =====
+    // Плитка в «Все приложения» для приложения, поставленного за последние 3 дня и ещё не открытого с «Дома»:
+    // маленькая мятная плашка в правом верхнем углу. Рисуется вместе с плиткой, отдельного слоя нет
+    private String badge;
+    private final Paint badgeBg = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private android.text.TextPaint badgeText;
+
+    void badge(String s) {
+        badge = s;
+        invalidate();
+    }
+
+    private void drawBadge(Canvas c) {
+        if (badge == null || orb) return;
+        float d = getResources().getDisplayMetrics().density;
+        if (badgeText == null) {
+            badgeText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+            badgeText.setTypeface(Fonts.med18);
+            badgeText.setTextSize(12f * d);
+            badgeText.setColor(0xFF0E1A16);
+            badgeBg.setColor(Fonts.ACCENT);
+        }
+        float tw = badgeText.measureText(badge), ph = 7f * d, pv = 3.5f * d;
+        float h = badgeText.getTextSize() + 2 * pv, w = tw + 2 * ph;
+        float r = getWidth() - 12f * d, t = 12f * d;
+        c.drawRoundRect(r - w, t, r, t + h, h / 2f, h / 2f, badgeBg);
+        c.drawText(badge, r - w + ph, t + pv + badgeText.getTextSize() * 0.86f, badgeText);
+    }
+
+    // ===== Перестановка ряда (05.11) =====
+    // Плитка «в руке»: крупнее обычного фокуса, по бокам светлые стрелки «‹ ›», дыхание и блик молчат.
+    // Соседи при обмене местами доезжают на пружине от старого места (slide), рывка нет
+    static final float MOVE_GROW = 1.08f;
+    private boolean moving;
+    private float moveA;   // 0..1: проявление стрелок
+    private ValueAnimator moveAnim;
+    private final Paint chevron = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.Path chevPath = new android.graphics.Path();
+
+    void setMoving(boolean m) {
+        if (moving == m) return;
+        moving = m;
+        if (moveAnim != null) moveAnim.cancel();
+        moveAnim = ValueAnimator.ofFloat(moveA, m ? 1f : 0f);
+        moveAnim.setDuration(M.t(m ? 260 : 200));
+        moveAnim.setInterpolator(EASE);
+        moveAnim.addUpdateListener(a -> { moveA = (float) a.getAnimatedValue(); invalidate(); });
+        moveAnim.start();
+        if (orb) {
+            ensureSprings();
+            removeCallbacks(breathTick);
+            removeCallbacks(landLater);
+            breath = 0f;
+            spring.value = getScaleX();
+            spring.tune(0.55f, 0.32f);
+            spring.onRest = m ? null : () -> { if (isFocused()) { breathAt = 0; postDelayed(breathTick, 700); } };
+            spring.to(m ? ORB_GROW * MOVE_GROW : ORB_GROW);
+            setHalo(m ? 0.6f : 0.24f, 220);
+        } else {
+            boolean f = isFocused();
+            float s = m ? grow * 1.06f : f ? grow : 1f;
+            animate().scaleX(s).scaleY(s).rotationX(m || !f ? 0 : TILT_X).rotationY(m || !f ? 0 : TILT_Y)
+                    .setStartDelay(0).setDuration(M.t(260)).setInterpolator(EASE).start();
+        }
+    }
+
+    // Обмен местами: плитка уже стоит на новом месте, рисуем её со сдвига dx и отпускаем пружиной
+    void slide(float dx) {
+        ensureSprings();
+        push.value = getTranslationX() + dx;
+        setTranslationX(push.value);
+        push.to(push.target);
+    }
+
+    private void drawChevrons(Canvas c, float cx, float cy, float half) {
+        if (moveA <= 0.01f) return;
+        float d = getResources().getDisplayMetrics().density;
+        chevron.setStyle(Paint.Style.STROKE);
+        chevron.setStrokeWidth(3f * d);
+        chevron.setStrokeCap(Paint.Cap.ROUND);
+        chevron.setStrokeJoin(Paint.Join.ROUND);
+        chevron.setColor(Color.WHITE);
+        chevron.setAlpha(Math.round(235 * moveA));
+        chevron.setShadowLayer(4f * d, 0, 1f * d, 0x66000000);
+        float gap = half + (10f + 8f * moveA) * d, w = 7f * d, hh = 12f * d;
+        chevPath.reset();
+        chevPath.moveTo(cx - gap + w, cy - hh);
+        chevPath.lineTo(cx - gap, cy);
+        chevPath.lineTo(cx - gap + w, cy + hh);
+        chevPath.moveTo(cx + gap - w, cy - hh);
+        chevPath.lineTo(cx + gap, cy);
+        chevPath.lineTo(cx + gap - w, cy + hh);
+        c.drawPath(chevPath, chevron);
+    }
+
     // Дыхание сферы в фокусе: ±2,2 % за 3,6 с (прошлые 0,9 % глаз не видел) и вместе с ним ореол. Шаг 12,5 раза
     // в секунду: за шаг край шара сдвигается меньше чем на полточки, ступенек не видно, а видеоядру впятеро легче.
     // Через 25 с без нажатий дыхание за 0,8 с затихает, и экран неподвижен. Пока ряд скрыт, дыхание стоит
@@ -457,7 +554,7 @@ final class Tile extends View {
     static final long BREATH_PERIOD = 3600, BREATH_FOR = 25_000;
     private final Runnable breathTick = new Runnable() {
         @Override public void run() {
-            if (!isFocused()) return;
+            if (!isFocused() || moving) return;
             if (quiet || !isShown() || getAlpha() < 0.99f || !hasWindowFocus()) {
                 if (getScaleX() != ORB_GROW) { setScaleX(ORB_GROW); setScaleY(ORB_GROW); }
                 breath = 0f;
@@ -588,6 +685,7 @@ final class Tile extends View {
             // Подпись в фокусе не светлеет до белого, как в макете: второй слой содержимого для этого стоил видеоядру
             // столько, что кадр снова копился до 41 мс (замер 27.10). Разница видна только вблизи
         }
+        drawBadge(c);
         if (sweep > 0f && sweep < 1f && sheenBmp != null && !quiet) {
             // Полоса едет слева направо: входит из-за левого края в первом кадре и уходит за правый в последнем
             int w = getWidth(), bw = sheenBmp.getWidth();
@@ -597,6 +695,7 @@ final class Tile extends View {
             c.drawBitmap(sheenBmp, x, 0, sheen);
             c.restore();
         }
+        drawChevrons(c, getWidth() / 2f, getHeight() / 2f, getWidth() / 2f);
     }
 
     private int full = 1;   // ширина исходной картинки содержимого
@@ -630,7 +729,17 @@ final class Tile extends View {
         invalidate();
     }
 
+    // Открыто меню плитки: фокус ушёл в меню, а плитка остаётся выбранной (крупной и светлой), чтобы было видно, чьё меню
+    private boolean lit;
+
+    void keepLit(boolean on) {
+        if (lit == on) return;
+        lit = on;
+        if (!on && !isFocused()) focus(false);
+    }
+
     private void focus(boolean f) {
+        if (!f && lit) return;
         float k = getWidth() > 0 ? getWidth() / W0 : 1f;
         if (orb) {
             orbFocus(f);   // у сферы рост, стекло и ореол ведёт пружина

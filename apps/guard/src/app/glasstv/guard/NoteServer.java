@@ -16,6 +16,9 @@ final class NoteServer {
     private final GuardService g;
     private final int port;
     private volatile ServerSocket ss;
+    // Защита (06.11): не больше трёх запросов одновременно (лишние сразу закрываются), записка не чаще раза в 3 секунды
+    private final java.util.concurrent.atomic.AtomicInteger busy = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile long lastNoteAt;
 
     NoteServer(GuardService g, int port) { this.g = g; this.port = port; }
 
@@ -25,7 +28,12 @@ final class NoteServer {
                 ss = new ServerSocket(port);
                 while (!ss.isClosed()) {
                     Socket s = ss.accept();
-                    new Thread(() -> handle(s), "note").start();
+                    if (busy.incrementAndGet() > 3) {
+                        busy.decrementAndGet();
+                        try { s.close(); } catch (Exception ignored) { }
+                        continue;
+                    }
+                    new Thread(() -> { try { handle(s); } finally { busy.decrementAndGet(); } }, "note").start();
                 }
             } catch (Exception e) {
                 if (ss == null || !ss.isClosed()) Log.w("guard", "сервер записок остановился", e);
@@ -59,6 +67,9 @@ final class NoteServer {
                 String text = new String(body, 0, got, StandardCharsets.UTF_8).trim();
                 if (text.length() > 200) text = text.substring(0, 200);
                 if (text.isEmpty()) { reply(out, 400, "text/plain", "пусто"); return; }
+                long now = System.currentTimeMillis();
+                if (now - lastNoteAt < 3000) { reply(out, 429, "text/plain", "подождите пару секунд"); return; }
+                lastNoteAt = now;
                 g.showNote(text);
                 reply(out, 200, "text/plain", "ok");
             } else if (method.equals("GET")) {

@@ -36,6 +36,11 @@ final class Style {
         return V1.equals(s) ? "Vision" : "Графит";
     }
 
+    // Выбор на экране «Настройки «Дома»»
+    static void set(Context c, String s) {
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, s).apply();
+    }
+
     static void toggle(Context c) {
         String cur = get(c);
         int i = 0;

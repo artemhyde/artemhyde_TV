@@ -329,7 +329,7 @@ public class NightService extends Service {
     // «Сторож» ночью сам ведёт подсветку: пока мы её меняем, пусть не принимает это за пульт
     static void notifyGuard(Context c, boolean on) {
         try {
-            c.sendBroadcast(new Intent().setClassName("app.glasstv.guard", "app.glasstv.guard.Cmd").putExtra("do", "nm").putExtra("on", on));
+            c.sendBroadcast(new Intent().setClassName("app.glasstv.guard", "app.glasstv.guard.AppCmd").putExtra("do", "nm").putExtra("on", on));
         } catch (Exception ignored) { }
     }
 

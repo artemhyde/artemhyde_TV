@@ -55,10 +55,12 @@ final class Ambient implements Data.Listener {
     private float blurLevel;
     boolean active;
     boolean vision;           // стиль «Vision» (Style): текст по центру, фото чёткое, частиц нет
+    boolean lite;             // облегчённый режим (Setup.lite, план Codex, блок 6): без частиц и наплыва, фото вдвое меньше по сторонам
     private boolean styled;
 
     Ambient(Context c) {
         this.c = c;
+        lite = Setup.lite(c);
         dp = c.getResources().getDisplayMetrics().density;
         Fonts.init(c);
         data = Data.get(c);
@@ -129,7 +131,7 @@ final class Ambient implements Data.Listener {
         rates.setGravity(Gravity.END);
         rates.setAlpha(0f);
         // Без погоды курс встаёт на строку названия места, а не висит ниже пустого места
-        root.addView(rates, Grid.at(rates, dp, Grid.RIGHT, Data.WEATHER_ON ? 148 : 124, true, Grid.span(5)));
+        root.addView(rates, Grid.at(rates, dp, Grid.RIGHT, Setup.weatherOn(c) ? 148 : 124, true, Grid.span(5)));
 
         // Стих растёт вверх от общей нижней линии, ссылка на книгу на самой нижней линии экрана
         for (int i = 0; i < 2; i++) {
@@ -153,10 +155,32 @@ final class Ambient implements Data.Listener {
         root.addView(caption, Grid.at(caption, dp, Grid.RIGHT, Grid.BOTTOM, true, Grid.span(7)));
 
         // Тени у текста нет: читаемость дают подложки сверху и снизу
-        // Настройки сборки (Config): чего нет, того на экране нет совсем, остальное стоит на своих местах
-        if (!Data.WEATHER_ON) for (View v : new View[]{tempRow, place}) v.setVisibility(View.GONE);
-        if (!Data.RATES_ON) rates.setVisibility(View.GONE);
-        if (!Data.VERSES_ON) for (View v : new View[]{verse[0], verse[1], ref}) v.setVisibility(View.GONE);
+        // Настройки на ТВ (Setup): чего нет, того на экране нет совсем, остальное стоит на своих местах
+        applySetup();
+    }
+
+    // Человек поменял настройки «Дома» (город, курсы, стих): показать и спрятать строки, переставить курсы, обновить текст
+    void applySetup() {
+        boolean w = Setup.weatherOn(c), r = Setup.ratesOn(c), v = Setup.versesOn(c);
+        for (View x : new View[]{tempRow, place}) x.setVisibility(w ? View.VISIBLE : View.GONE);
+        rates.setVisibility(r ? View.VISIBLE : View.GONE);
+        for (View x : new View[]{verse[0], verse[1], ref}) x.setVisibility(v ? View.VISIBLE : View.GONE);
+        if (styled) layoutText();
+        boolean l = Setup.lite(c);
+        if (l != lite) {
+            lite = l;
+            showParticles();
+            if (lite) stopDrift();
+            if (shownPhoto != null) showPhoto(shownPhoto, false);   // фото в нужном размере сразу
+        }
+    }
+
+    // Частицы только в «Графите» и не в облегчённом режиме
+    private void showParticles() {
+        boolean off = vision || lite;
+        particles.setVisibility(off ? View.GONE : View.VISIBLE);
+        if (off) particles.stop();
+        else particles.level(active ? 1f : Particles.LOCK, 0);
     }
 
     int px(float v) { return Math.round(v * dp); }
@@ -168,9 +192,7 @@ final class Ambient implements Data.Listener {
         styled = true;
         vision = v;
         layoutText();
-        particles.setVisibility(v ? View.GONE : View.VISIBLE);
-        if (v) particles.stop();
-        else particles.level(active ? 1f : Particles.LOCK, 0);
+        showParticles();
         // Копия фото под ряд у каждого стиля своя: размытая тёмная у «Графита», чёткая с затемнением у «Vision»
         if (shownPhoto != null) showPhoto(shownPhoto, false);
     }
@@ -190,8 +212,9 @@ final class Ambient implements Data.Listener {
         place.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
         place.setLayoutParams(v ? Grid.center(place, dp, V_PLACE) : Grid.at(place, dp, Grid.RIGHT, 124, true, Grid.span(5)));
         rates.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
-        rates.setLayoutParams(v ? Grid.center(rates, dp, Data.WEATHER_ON ? V_RATES : V_PLACE)
-                : Grid.at(rates, dp, Grid.RIGHT, Data.WEATHER_ON ? 148 : 124, true, Grid.span(5)));
+        boolean w = Setup.weatherOn(c);
+        rates.setLayoutParams(v ? Grid.center(rates, dp, w ? V_RATES : V_PLACE)
+                : Grid.at(rates, dp, Grid.RIGHT, w ? 148 : 124, true, Grid.span(5)));
         for (TextView t : verse) {
             t.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.START);
             t.setLayoutParams(v ? Grid.aboveCenter(t, dp, 466, 680) : Grid.above(t, dp, Grid.MARGIN, 472, Grid.span(6)));
@@ -246,7 +269,7 @@ final class Ambient implements Data.Listener {
         onData();
         h.post(tick);
         h.postDelayed(rotate, CHECK_MS);
-        if (!vision) particles.level(active ? 1f : Particles.LOCK, 0);
+        if (!vision && !lite) particles.level(active ? 1f : Particles.LOCK, 0);
     }
 
     void stop() {
@@ -277,6 +300,9 @@ final class Ambient implements Data.Listener {
     static final long CHECK_MS = 60_000;
     private final Runnable rotate = new Runnable() {
         @Override public void run() {
+            // Погода и курсы раз в минуту спрашиваются заново (качаются раз в 30 минут и 3 часа): раньше только при открытии экрана,
+            // и экран блокировки, висевший часами, показывал старую погоду
+            data.refresh();
             if (!active) {
                 data.prefetch();
                 Data.Photo next = data.currentPhoto();
@@ -378,7 +404,7 @@ final class Ambient implements Data.Listener {
         caption.setAlpha(1f);
         rates.animate().cancel();
         rates.setAlpha(0f);
-        if (!vision) particles.level(Particles.LOCK, 0);
+        if (!vision && !lite) particles.level(Particles.LOCK, 0);
         resumeDrift();
     }
 
@@ -442,19 +468,36 @@ final class Ambient implements Data.Listener {
     // ===== Данные =====
 
     @Override public void onData() {
-        if (Data.WEATHER_ON) {
-            icon.set(data.code, data.day);
-            temp.setText(Data.deg(data.temp));
-            String w = data.weatherText();
-            // Город из Config; пустой город: только погода, без названия
-            place.setText(Config.CITY.isEmpty() ? w : w.isEmpty() ? Config.CITY : Config.CITY + " · " + w);
+        long now = System.currentTimeMillis();
+        if (Setup.weatherOn(c)) {
+            String w = data.weatherText(), city = Setup.city(c);
+            int st = data.weatherState(now);
+            if (st == Fresh.NO_LINK) {
+                // Без связи давно: градусы полусуточной давности хуже, чем честное «нет связи» (план Codex, блок 6)
+                icon.set(-1, true);
+                temp.setText("");
+                place.setText(city.isEmpty() ? "Погода: нет связи" : city + " · нет связи");
+            } else {
+                icon.set(data.code, data.day);
+                temp.setText(Data.deg(data.temp));
+                // Город из настроек на ТВ; пустой город: только погода, без названия
+                String s = city.isEmpty() ? w : w.isEmpty() ? city : city + " · " + w;
+                if (st == Fresh.SHOW_WITH_TIME)
+                    s += " · на " + new SimpleDateFormat("H:mm", Locale.forLanguageTag("ru")).format(new Date(data.weatherAt()));
+                place.setText(s);
+            }
         }
-        if (Data.RATES_ON) {
+        if (Setup.ratesOn(c)) {
             // Один шаблон для всех трёх: знак и курс к белорусскому рублю, рубль за сотню
-            rates.setText("$\u2009" + Data.rate2(data.usd) + "  ·  €\u2009" + Data.rate2(data.eur)
-                    + "  ·  ₽\u2009" + Data.rate2(data.rub) + " за\u00A0100");
+            String r = "$\u2009" + Data.rate2(data.usd) + "  ·  €\u2009" + Data.rate2(data.eur)
+                    + "  ·  ₽\u2009" + Data.rate2(data.rub) + " за\u00A0100";
+            int st = data.ratesState(now);
+            if (st == Fresh.NO_LINK) r = "Курсы: нет связи";
+            else if (st == Fresh.SHOW_WITH_TIME)
+                r += "  ·  на " + new SimpleDateFormat("d.MM", Locale.forLanguageTag("ru")).format(new Date(data.ratesAt()));
+            rates.setText(r);
         }
-        if (Data.VERSES_ON && verse[0].getText().length() == 0 && verse[1].getText().length() == 0) {
+        if (Setup.versesOn(c) && verse[0].getText().length() == 0 && verse[1].getText().length() == 0) {
             verse[vis].setText(Typo.fix(data.verse));
             ref.setText(Typo.ref(data.verseRef));
         }
@@ -468,12 +511,12 @@ final class Ambient implements Data.Listener {
     private void showPhoto(Data.Photo ph, boolean fade) {
         if (ph == null) return;
         if (!fade) {   // первый кадр нужен сразу, без чёрного экрана
-            Bitmap bm = Data.decode(ph.file);
+            Bitmap bm = Data.decode(ph.file, lite ? 2 : 1);
             if (bm != null) applyPhoto(ph, bm, softOf(bm), false);
             return;
         }
         DECODE.execute(() -> {
-            Bitmap bm = Data.decode(ph.file);
+            Bitmap bm = Data.decode(ph.file, lite ? 2 : 1);
             if (bm == null) return;
             Bitmap blurred = softOf(bm);
             h.post(() -> applyPhoto(ph, bm, blurred, true));
@@ -531,6 +574,7 @@ final class Ambient implements Data.Listener {
 
     private void drift(View f) {
         stopDrift();
+        if (lite) return;   // облегчённый режим: фото стоит, экран не перерисовывается
         driftView = f;
         float from = f.getScaleX();
         driftA = from;

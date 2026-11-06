@@ -246,12 +246,6 @@ final class KeyView extends View {
         float limit = after.isEmpty() ? room - 6 * dp : room * 0.7f;
         float shift = Math.max(0, wb + ws - limit);
         float px = textLeft - shift;
-        // Знак, который сотрёт OK на строке с текстом
-        if (focus && selected.isEmpty() && !before.isEmpty()) {
-            fill.setColor(0x808FB8FF);
-            float last = text.measureText(before, before.length() - 1, before.length());
-            cv.drawRect(px + wb - last, y + 6 * dp, px + wb, y + h - 6 * dp, fill);
-        }
         text.setColor(0xFFFFFFFF);
         cv.drawText(before, px, baseline, text);
         px += wb;

@@ -1,0 +1,15 @@
+# Приложения не из магазина, которые «Сторож» обновляет сам (Updates.java). Google Play свои обновляет без нас.
+# Строка: пакет, источник, имя файла в выпуске (регулярное выражение) для 32 бит, по желанию для 64 бит.
+# Источник gh:владелец/проект берёт последний выпуск GitHub (без предварительных) и сверяет файл с его контрольной суммой.
+# Источник gl:группа/проект берёт номер выпуска с GitLab, а файл качает по адресу, где {tag} заменяется номером.
+# Нет приложения на ТВ: строка пропускается. Своё приложение с особой версией (например, клавиатура или
+# переназначение кнопок, проверенное на одной версии) сюда не вписывать: «Сторож» поставит поверх последнюю.
+top.rootu.lampa                 gh:lampa-app/LAMPA                    app-lite-release\.apk
+org.smarttube.stable            gh:yuliskov/SmartTube                 SmartTube_stable_.*_armeabi-v7a\.apk   SmartTube_stable_.*_arm64-v8a\.apk
+ru.yourok.torrserve             gh:YouROK/TorrServe                   TorrServe_.*\.apk
+org.schabi.newpipe              gh:TeamNewPipe/NewPipe                NewPipe_.*\.apk
+org.localsend.localsend_app     gh:localsend/localsend                LocalSend-.*-android-arm32v7\.apk      LocalSend-.*-android-arm64v8\.apk
+me.zhanghai.android.files       gh:zhanghai/MaterialFiles             app-release-universal\.apk
+com.limelight                   gh:moonlight-stream/moonlight-android app-nonRoot-release\.apk
+io.gh.reisxd.tizentube.cobalt   gh:reisxd/TizenTubeCobalt             cobalt-arm\.apk                        cobalt-arm64\.apk
+com.aurora.store                gl:AuroraOSS/AuroraStore              https://auroraoss.com/downloads/AuroraStore/Release/AuroraStore-{tag}.apk

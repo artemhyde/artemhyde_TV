@@ -41,7 +41,10 @@ public class GuardService extends Service {
     static final int NOTE_PORT = 8765;
 
     // Слушать ли порт записок: значение по умолчанию лежит в ресурсе res/values/config.xml
-    static boolean notesEnabled(Context c) { return c.getResources().getBoolean(R.bool.notes_enabled_default); }
+    // Слушать ли порт записок: выбор на экране «Сторожа» (06.11), а пока не выбирали, значение из res/values/config.xml
+    static boolean notesEnabled(Context c) {
+        return c.getSharedPreferences("guard", MODE_PRIVATE).getBoolean("notesOn", c.getResources().getBoolean(R.bool.notes_enabled_default));
+    }
     static GuardService running;
 
     final Handler h = new Handler(Looper.getMainLooper());
@@ -63,14 +66,36 @@ public class GuardService extends Service {
 
         card = new NoteCard(this);
         server = new NoteServer(this, NOTE_PORT);
-        if (notesEnabled(this)) server.start();   // включено ли, решает res/values/config.xml (notes_enabled_default)
+        if (notesEnabled(this)) server.start();   // включено ли, решает выключатель на экране «Сторожа» (по умолчанию config.xml)
+        loadNightHours(p);   // часы ночи до первых таймеров ночи и картинки
+        watchAdb();
         keepAdb("запуск");
+        // Прошивка сменилась: закрытые функции TCL и Dolby проверяются заново, итог в журнал и запиской (план Codex, блок 5)
+        final String fw = Caps.firmwareNews(p);
+        if (fw != null) new Thread(() -> {
+            String rep = Caps.report(this);
+            h.post(() -> {
+                log(fw);
+                log(rep);
+                showNote("Прошивка ТВ обновилась. Функции TCL и Dolby проверены заново, итог на экране «Сторож»");
+            });
+        }, "guard-caps").start();
         // Сразу после загрузки службы спецвозможностей ещё поднимаются: Key Mapper смотрим через минуту
         h.postDelayed(checkKeys, SystemClock.elapsedRealtime() < 5 * 60_000 ? 60_000 : 3_000);
         h.postDelayed(periodic, 15 * 60_000);
         h.postDelayed(nightTick, 10_000);
         h.postDelayed(idleTick, 60_000);
         h.postDelayed(svcTick, 90_000);
+        dns = new DnsWatch(getContentResolver(), p, new DnsWatch.Out() {
+            @Override public void log(String s) { h.post(() -> GuardService.this.log(s)); }
+            @Override public void note(String s) { showNote(s); }
+        });
+        h.postDelayed(dnsTick, 60_000);
+        upd = new Updates(this, new Updates.Out() {
+            @Override public void log(String s) { h.post(() -> GuardService.this.log(s)); }
+            @Override public void note(String s) { showNote(s); }
+        });
+        h.postDelayed(updTick, 3 * 60_000);
         noDream();
         new VolumeHold(this);
         // Умный звук: если пользователь включал, эффект встанет сам (после загрузки ТВ и после перезапуска службы)
@@ -84,7 +109,13 @@ public class GuardService extends Service {
         f.addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
         registerReceiver(events, f, RECEIVER_NOT_EXPORTED);
         netCb = new ConnectivityManager.NetworkCallback() {
-            @Override public void onAvailable(Network net) { h.postDelayed(() -> keepAdb("сеть сменилась"), 4_000); }
+            @Override public void onAvailable(Network net) {
+                netEventAt = SystemClock.elapsedRealtime();
+                h.postDelayed(() -> keepAdb("сеть сменилась"), 4_000);
+                h.removeCallbacks(dnsTick);
+                h.postDelayed(dnsTick, 20_000);
+            }
+            @Override public void onLost(Network net) { netEventAt = SystemClock.elapsedRealtime(); }
         };
         try { getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(netCb); } catch (Exception ignored) { }
         log("Сторож запущен");
@@ -113,6 +144,7 @@ public class GuardService extends Service {
         try { unregisterReceiver(events); } catch (Exception ignored) { }
         try { getSystemService(ConnectivityManager.class).unregisterNetworkCallback(netCb); } catch (Exception ignored) { }
         if (server != null) server.stop();
+        if (adbWatch != null) try { getContentResolver().unregisterContentObserver(adbWatch); } catch (Exception ignored) { }
         if (veil != null) try { getSystemService(android.view.WindowManager.class).removeView(veil); } catch (Exception ignored) { }
         if (sound != null) { sound.shutdown(); sound = null; }
         super.onDestroy();
@@ -124,12 +156,15 @@ public class GuardService extends Service {
                 if (saverActive) setSaver(false);
                 homeOnScreenOff();
             } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
+                netEventAt = SystemClock.elapsedRealtime();   // после сна сеть и отладка поднимаются заново
                 homeCancel();
                 // Телевизор включили: через пару секунд проверить пульт и отладку
                 h.removeCallbacks(checkKeys);
                 h.postDelayed(checkKeys, 4_000);
                 h.postDelayed(() -> keepAdb("включение экрана"), 4_000);
                 h.postDelayed(svcTick, 20_000);   // сеть после сна поднимается не сразу
+                h.removeCallbacks(dnsTick);
+                h.postDelayed(dnsTick, 25_000);
                 // Звук выключили на время проверки, пока ТВ спал: вернуть, как только экран включился
                 if (p.getBoolean("unmuteOnWake", false)) h.postDelayed(() -> {
                     p.edit().remove("unmuteOnWake").apply();
@@ -266,31 +301,124 @@ public class GuardService extends Service {
         }
     };
 
-    private void checkIdle() {
+    // Lampa держит экран включённым всегда, в меню тоже (KEEP_SCREEN_ON у окна), поэтому её замок о просмотре ничего не говорит.
+    // У таких приложений просмотр видно по занятому видеодекодеру. 06.11: в меню Lampa простой не наступал никогда, и через
+    // 10 минут шла её собственная заставка с часами («снова стоковая»). Заставку Lampa выключили в её настройках: если её снова
+    // включат, она займёт декодер, и «Сторож» уступит ей, как фильму
+    static final java.util.Set<String> KEEPS_SCREEN_ON = new java.util.HashSet<>(java.util.Collections.singletonList("top.rootu.lampa"));
+    private static final java.util.regex.Pattern LOCK_WS = java.util.regex.Pattern.compile("ws=WorkSource\\{([^}]*)\\}");
+
+    // Что видит простой. why пустое: ничего не мешает открыть экран блокировки (если нажатий не было 10 минут)
+    static final class IdleState {
         long last = -1, ago = -1;
-        boolean keepOn = false;
+        String why = "";
+    }
+
+    // full false: при нажатиях меньше 10 минут назад остальное не проверяем (раз в минуту, лишний dumpsys ни к чему)
+    IdleState readIdle(boolean full) {
+        IdleState st = new IdleState();
+        StringBuilder hard = new StringBuilder();
+        String soft = null;
         try {
             Process pr = new ProcessBuilder("dumpsys", "power").redirectErrorStream(true).start();
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(pr.getInputStream()))) {
                 for (String s; (s = r.readLine()) != null; ) {
-                    if (last < 0) {
+                    if (st.last < 0) {
                         java.util.regex.Matcher m = LAST_USER.matcher(s);
-                        if (m.find()) { last = Long.parseLong(m.group(1)); ago = Long.parseLong(m.group(2)); }
+                        if (m.find()) { st.last = Long.parseLong(m.group(1)); st.ago = Long.parseLong(m.group(2)); }
                     }
-                    if (s.contains("SCREEN_BRIGHT_WAKE_LOCK") || s.contains("SCREEN_DIM_WAKE_LOCK") || s.contains("FULL_WAKE_LOCK")) keepOn = true;
+                    if (s.contains("SCREEN_BRIGHT_WAKE_LOCK") || s.contains("SCREEN_DIM_WAKE_LOCK") || s.contains("FULL_WAKE_LOCK")) {
+                        String owner = alwaysOnOwner(s);
+                        if (owner != null) soft = owner;
+                        else hard.append(hard.length() > 0 ? ", " : "").append(lockName(s));
+                    }
                 }
             }
             pr.waitFor();
         } catch (Exception e) {
-            ago = -1;
+            st.ago = -1;
         }
+        if (st.ago < 0) { st.why = "простой не виден (нет права DUMP)"; return st; }
+        if (!full && st.ago < IDLE_APP_MS) return st;
+        if (hard.length() > 0) { st.why = "экран держит " + hard; return st; }
+        if (soft != null) {
+            Boolean video = videoDecoding();
+            if (video == null) { st.why = "экран держит " + soft + ", декодер не виден: считаю, что идёт видео"; return st; }
+            if (video) { st.why = "идёт видео (декодер занят), экран держит " + soft; return st; }
+        }
+        String playing = playingVideo();
+        if (playing != null) st.why = "играет " + playing;
+        return st;
+    }
+
+    // Пакет из KEEPS_SCREEN_ON, если замок экрана держат только такие приложения (замок окна: ws=WorkSource{uid пакет}), иначе null
+    static String alwaysOnOwner(String line) {
+        java.util.regex.Matcher m = LOCK_WS.matcher(line);
+        if (!m.find()) return null;
+        String owner = null;
+        for (String part : m.group(1).split(",")) {
+            String[] w = part.trim().split(" ");
+            String pkg = w[w.length - 1];
+            if (!KEEPS_SCREEN_ON.contains(pkg)) return null;
+            owner = pkg;
+        }
+        return owner;
+    }
+
+    static String lockName(String line) {
+        java.util.regex.Matcher m = LOCK_WS.matcher(line);
+        if (m.find()) return m.group(1).replaceAll("\\b\\d+ ", "");
+        int a = line.indexOf('\''), b = a < 0 ? -1 : line.indexOf('\'', a + 1);
+        return b > a ? line.substring(a + 1, b) : "замок экрана";
+    }
+
+    // Идёт ли сейчас видео хоть в одном процессе (раздел Processes в dumpsys media.resource_manager, право DUMP).
+    // Декодер, пока видео на паузе или элемент страницы ещё жив, остаётся выделенным (non-secure-codec/video-codec), а отметка
+    // battery/video-codec есть только на время самого показа: она и признак. Если прошивка такой отметки не ведёт вовсе,
+    // считаем по выделенному декодеру. null: отчёт не прочитался, тогда простой считает, что видео идёт, и фильм не перебивает
+    static Boolean videoDecoding() {
+        try {
+            Process pr = new ProcessBuilder("dumpsys", "media.resource_manager").redirectErrorStream(true).start();
+            boolean in = false, seen = false, held = false, active = false, batteryKnown = false;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(pr.getInputStream()))) {
+                for (String s; (s = r.readLine()) != null; ) {
+                    String t = s.trim();
+                    if (t.equals("Processes:")) { in = true; seen = true; continue; }
+                    if (in && (t.startsWith("Process Pid override") || t.startsWith("Events logs"))) in = false;
+                    if (t.contains("battery/video-codec")) batteryKnown = true;
+                    if (in && t.startsWith("battery/video-codec")) active = true;
+                    else if (in && t.contains("video-codec")) held = true;
+                }
+            }
+            pr.waitFor();
+            if (!seen) return null;
+            return batteryKnown ? active : held || active;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // Для команды с ПК (do idle): что сейчас видит простой
+    String idleReport() {
+        IdleState st = readIdle(true);
+        if (st.ago < 0) return st.why;
+        long min = st.ago / 60_000;
+        String head = "без нажатий " + min + " мин; ";
+        if (!st.why.isEmpty()) return head + "экран блокировки не откроется: " + st.why;
+        if (st.ago < IDLE_APP_MS) return head + "ничего не мешает, экран блокировки через " + (IDLE_APP_MS - st.ago + 59_999) / 60_000 + " мин";
+        return head + (st.last == idleSentFor ? "экран блокировки уже открывали после этого нажатия" : "экран блокировки откроется на ближайшей проверке");
+    }
+
+    private void checkIdle() {
+        IdleState st = readIdle(false);
+        long last = st.last, ago = st.ago;
         if (ago < 0) {
             if (!idleDenied) h.post(() -> log("Простой не виден: выдать с ПК pm grant app.glasstv.guard android.permission.DUMP"));
             idleDenied = true;
             return;
         }
         idleDenied = false;
-        if (ago < IDLE_APP_MS || keepOn || last == idleSentFor || playingVideo() != null) return;
+        if (ago < IDLE_APP_MS || !st.why.isEmpty() || last == idleSentFor) return;
         idleSentFor = last;
         h.post(() -> {
             try {
@@ -342,7 +470,30 @@ public class GuardService extends Service {
     // (проверено 02.11), поэтому границу можно пройти и во сне, при включении ничего догонять не надо.
     // Если включена «Адаптивная регулировка яркости» или службы TCL нет, вместо подсветки на ночь ложится тёмная вуаль
 
-    static final int NIGHT_FROM = 22, NIGHT_TO = 7;
+    // Часы ночи (06.11, план Codex, блок 3: «расписание ночи» с пульта). По умолчанию 22 и 7, выбираются в «Настройках «Дома»»
+    // или командой do night. Начало 18..23, конец 5..10: ночь всегда через полночь, на этом стоят isNight и lastBoundary
+    static volatile int NIGHT_FROM = 22, NIGHT_TO = 7;
+
+    static boolean nightHoursOk(int from, int to) { return from >= 18 && from <= 23 && to >= 5 && to <= 10; }
+
+    static void loadNightHours(SharedPreferences sp) {
+        int f = sp.getInt("nightFrom", 22), t = sp.getInt("nightTo", 7);
+        if (nightHoursOk(f, t)) { NIGHT_FROM = f; NIGHT_TO = t; }
+    }
+
+    static String nf() { return NIGHT_FROM + ":00"; }
+    static String nt() { return NIGHT_TO + ":00"; }
+
+    // Новые часы ночи: сохранить, границу картинки пересчитать. Подсветку не трогаем: её ведёт nightTick по своей границе
+    String setNightHours(int from, int to) {
+        if (!nightHoursOk(from, to)) return "часы ночи вне рамок: начало 18..23, конец 5..10";
+        p.edit().putInt("nightFrom", from).putInt("nightTo", to).apply();
+        loadNightHours(p);
+        h.removeCallbacks(pqTick);
+        h.postDelayed(pqTick, 3_000);
+        log("Ночь теперь с " + nf() + " до " + nt());
+        return "ночь с " + nf() + " до " + nt();
+    }
     static final int NIGHT_LEVEL = 11;    // ночная подсветка из 100
     static final float NIGHT_VEIL = 0.6f;   // система режет прозрачность окна поверх до 0,8: на экране выходит около 0,48
     private android.view.View veil;
@@ -367,7 +518,7 @@ public class GuardService extends Service {
     void setDayLevel(int v) {
         if (isNight()) {
             p.edit().putInt("blDay", v).apply();
-            log("Дневная подсветка " + v + ": вернётся в 7:00, ночная " + nightLevel());
+            log("Дневная подсветка " + v + ": вернётся в " + nt() + ", ночная " + nightLevel());
             return;
         }
         stopRamp();
@@ -444,18 +595,18 @@ public class GuardService extends Service {
         if (veil != null) hideVeil(1_500);
         p.edit().putString("nightHow", night ? "подсветка" : "").apply();
         if (nmActive) {
-            log((night ? "22:00" : "7:00") + ": подсветку ведёт «Ночной режим», не трогаю");
+            log((night ? nf() : nt()) + ": подсветку ведёт «Ночной режим», не трогаю");
             return;
         }
         if (night) {
             int base = p.getInt("blBase", -1), level = nightLevel();
             if (base >= 0 && cur != base) {
-                log("22:00: яркость сегодня меняли (" + base + " → " + cur + "), не трогаю до завтра");
+                log(nf() + ": яркость сегодня меняли (" + base + " → " + cur + "), не трогаю до завтра");
                 return;
             }
-            if (cur <= level) { log("22:00: и так темно (" + cur + ")"); return; }
+            if (cur <= level) { log(nf() + ": и так темно (" + cur + ")"); return; }
             p.edit().putInt("blDay", cur).apply();
-            log("Вечер: подсветка " + cur + " → " + level + " до 7:00");
+            log("Вечер: подсветка " + cur + " → " + level + " до " + nt());
             moveBacklight(cur, level);
         } else {
             int day = p.getInt("blDay", -1);
@@ -527,6 +678,9 @@ public class GuardService extends Service {
             if (cur <= 0) return;
             saverActive = true;
             saverPrev = cur;
+            // Запомнить и на диске: «Сторож», перезапущенный посреди приглушения (обновление, сбой), иначе не знал, что вернуть,
+            // и подсветка оставалась вдвое ниже (06.11, после переустановки «Сторожа» в 18:28)
+            p.edit().putInt("saverPrev", cur).apply();
             stopRamp();
             final int from = cur, to = Math.max(1, Math.round(cur / 2f));
             final long start = android.os.SystemClock.uptimeMillis();
@@ -540,11 +694,25 @@ public class GuardService extends Service {
             });
             log("Простой: подсветка вдвое, " + from + " → " + to);
         } else {
-            if (!saverActive) return;
+            int prev = saverActive ? saverPrev : p.getInt("saverPrev", -1);   // после перезапуска «Сторожа» память пуста, на диске нет
             saverActive = false;
-            if (saverPrev >= 0) Backlight.set(saverPrev, false);
             saverPrev = -1;
+            p.edit().remove("saverPrev").apply();
+            if (prev >= 0) {
+                Backlight.set(prev, false);
+                log("Простой кончился: подсветка снова " + prev);
+            }
         }
+    }
+
+    // Вернуть подсветку из сохранённого без службы (команда «хватит», пока служба не запущена)
+    static void restoreSaver(Context c) {
+        SharedPreferences sp = c.getSharedPreferences("guard", MODE_PRIVATE);
+        int prev = sp.getInt("saverPrev", -1);
+        if (prev < 0) return;
+        sp.edit().remove("saverPrev").apply();
+        Backlight.set(prev, false);
+        Log.i("guard", "Простой кончился без службы: подсветка снова " + prev);
     }
 
     void showVeil(long fadeMs) {
@@ -567,7 +735,7 @@ public class GuardService extends Service {
         }
         veil = v;
         v.animate().alpha(NIGHT_VEIL).setDuration(fadeMs).start();
-        log("Вечер: подсветку ведёт датчик света, поэтому экран темнее вуалью до 7:00");
+        log("Вечер: подсветку ведёт датчик света, поэтому экран темнее вуалью до " + nt());
     }
 
     void hideVeil(long fadeMs) {
@@ -678,7 +846,9 @@ public class GuardService extends Service {
             svcMiss = 0;
             return "отвечает";
         }
-        if (playingVideo() != null) return "не отвечает, но идёт видео: ждём";
+        // Видео по медиасессии или по работающему видеодекодеру (встроенный плеер Lampa медиасессии не даёт; 06.11, план Codex:
+        // «не запускай сервер заново поверх фильма»). Декодер не виден: тоже ждём
+        if (playingVideo() != null || !Boolean.FALSE.equals(videoDecoding())) return "не отвечает, но идёт видео: ждём";
         svcMiss = now ? Math.max(2, svcMiss + 1) : svcMiss + 1;
         if (svcMiss < 2) return "не отвечает, промах " + svcMiss;
         boolean alive = processAlive(pkg);
@@ -764,10 +934,67 @@ public class GuardService extends Service {
     }
 
     // ===== Беспроводная отладка: Android выключает её после перезагрузки и смены сети =====
+    // Режим (06.11, аудит Codex: отладку нельзя было выключить, не убрав «Сторожа»), выбирается на экране «Сторожа»:
+    // always: держать включённой всегда (иначе после перезагрузки и смены сети ТВ пропадает для ПК, так было раньше);
+    // service: режим обслуживания, держать 2 часа от включения, потом выключить самому и перейти в off;
+    // off: не включать никогда, что выбрано в настройках Android, то и есть.
+    // Выключил человек сам в настройках Android (не перезагрузка и не смена сети: их Android делает сам), «Сторож» уважает:
+    // переходит в off и пишет записку, как вернуть
+    static final String ADB_ALWAYS = "always", ADB_SERVICE = "service", ADB_OFF = "off";
+    static final long SERVICE_MS = 2 * 3600_000L;
+    static final long QUIET_MS = 20_000;        // столько после смены сети или пробуждения выключение считается системным
+    long netEventAt;                            // последняя смена сети, пробуждение или запуск (SystemClock.elapsedRealtime)
+    long selfOffAt;                             // когда «Сторож» сам выключил отладку: это не решение человека
+    android.database.ContentObserver adbWatch;
 
     boolean adbOn() { return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1; }
 
+    String adbMode() {
+        String m = p.getString("adbMode", getString(R.string.adb_mode_default));
+        return ADB_SERVICE.equals(m) || ADB_OFF.equals(m) ? m : ADB_ALWAYS;
+    }
+
+    long adbUntil() { return p.getLong("adbUntil", 0); }
+
+    void setAdbMode(String m, String why) {
+        SharedPreferences.Editor e = p.edit().putString("adbMode", m);
+        if (ADB_SERVICE.equals(m)) e.putLong("adbUntil", System.currentTimeMillis() + SERVICE_MS);
+        e.apply();
+        h.removeCallbacks(serviceEnd);
+        if (ADB_OFF.equals(m)) {
+            adbSet(false);
+            log("Отладка по сети выключена (" + why + "), «Сторож» её не включает");
+        } else {
+            if (ADB_SERVICE.equals(m)) h.postDelayed(serviceEnd, SERVICE_MS);
+            log(ADB_SERVICE.equals(m) ? "Режим обслуживания на 2 часа (" + why + ")" : "Отладка по сети: держать всегда (" + why + ")");
+            keepAdb(why);
+        }
+    }
+
+    // Обслуживание кончилось: отладку выключаем сами и больше не включаем
+    final Runnable serviceEnd = new Runnable() {
+        @Override public void run() {
+            if (!ADB_SERVICE.equals(adbMode())) return;
+            long left = adbUntil() - System.currentTimeMillis();
+            if (left > 1000) { h.postDelayed(this, left); return; }
+            setAdbMode(ADB_OFF, "обслуживание кончилось");
+            showNote("Режим обслуживания закончился: отладка по сети выключена. Включить снова: экран «Сторож»");
+        }
+    };
+
+    private void adbSet(boolean on) {
+        try {
+            if (!on) selfOffAt = SystemClock.elapsedRealtime();
+            Settings.Global.putInt(getContentResolver(), "adb_wifi_enabled", on ? 1 : 0);
+        } catch (SecurityException e) {
+            log("Нет права менять настройки: выдать с ПК WRITE_SECURE_SETTINGS");
+        }
+    }
+
     void keepAdb(String why) {
+        String m = adbMode();
+        if (ADB_OFF.equals(m)) return;
+        if (ADB_SERVICE.equals(m) && System.currentTimeMillis() >= adbUntil()) { h.post(serviceEnd); return; }
         try {
             if (!adbOn()) {
                 Settings.Global.putInt(getContentResolver(), "adb_wifi_enabled", 1);
@@ -776,6 +1003,39 @@ public class GuardService extends Service {
         } catch (SecurityException e) {
             log("Нет права менять настройки: выдать с ПК WRITE_SECURE_SETTINGS");
         }
+    }
+
+    // Следим, кто выключил отладку. Выключение рядом со сменой сети, пробуждением или запуском делает сам Android,
+    // своё выключение «Сторож» помнит; остальное значит, что человек выключил её в настройках
+    void watchAdb() {
+        netEventAt = SystemClock.elapsedRealtime();
+        adbWatch = new android.database.ContentObserver(h) {
+            @Override public void onChange(boolean self) {
+                if (adbOn() || ADB_OFF.equals(adbMode())) return;
+                long now = SystemClock.elapsedRealtime();
+                if (humanOff(now, netEventAt, selfOffAt, now)) {
+                    setAdbMode(ADB_OFF, "выключили в настройках Android");
+                    showNote("Отладку по сети выключили в настройках: «Сторож» больше не включает её сам. Вернуть: экран «Сторож»");
+                }
+            }
+        };
+        getContentResolver().registerContentObserver(Settings.Global.getUriFor("adb_wifi_enabled"), false, adbWatch);
+        if (ADB_SERVICE.equals(adbMode())) h.post(serviceEnd);   // после перезапуска службы: досчитать обслуживание
+    }
+
+    // Решение человека, а не системы: не рядом со сменой сети или пробуждением, не сам «Сторож» и не сразу после загрузки ТВ
+    static boolean humanOff(long now, long netAt, long selfAt, long uptime) {
+        return uptime > 3 * 60_000 && now - netAt > QUIET_MS && (selfAt == 0 || now - selfAt > QUIET_MS);
+    }
+
+    // ===== Записки с телефона: выключатель на экране «Сторожа» (06.11) =====
+
+    void setNotes(boolean on) {
+        p.edit().putBoolean("notesOn", on).apply();
+        if (server == null) return;
+        server.stop();
+        if (on) server.start();
+        log(on ? "Записки с телефона включены" : "Записки с телефона выключены");
     }
 
     // ===== Key Mapper: если его служба упала, фирменные кнопки пульта молчат =====
@@ -823,6 +1083,48 @@ public class GuardService extends Service {
         }
         return b.toString();
     }
+
+    // ===== Присмотр за DNS (DnsWatch) =====
+    DnsWatch dns;
+    boolean dnsBusy;   // только в главной нитке
+    final Runnable dnsTick = new Runnable() {
+        @Override public void run() {
+            h.removeCallbacks(this);
+            PowerManager pm = getSystemService(PowerManager.class);
+            if (dns == null || pm == null || !pm.isInteractive()) { h.postDelayed(this, DnsWatch.EVERY); return; }
+            if (dnsBusy) return;   // проверка уже идёт и сама назначит следующую: иначе цепочки удваиваются
+            dnsBusy = true;
+            new Thread(() -> {
+                long next = dns.check(false);
+                h.post(() -> {
+                    dnsBusy = false;
+                    h.removeCallbacks(dnsTick);
+                    h.postDelayed(dnsTick, next);
+                });
+            }, "guard-dns-check").start();
+        }
+    };
+
+    // ===== Обновления приложений не из магазина (Updates) =====
+    Updates upd;
+    boolean updBusy;   // только в главной нитке
+    final Runnable updTick = new Runnable() {
+        @Override public void run() {
+            h.removeCallbacks(this);
+            if (upd == null || updBusy) return;   // идущий шаг сам назначит следующий
+            updBusy = true;
+            new Thread(() -> {
+                long next;
+                try { next = upd.tick(); } catch (Exception e) { next = Updates.TICK; log("Обновления: сбой шага (" + e + ")"); }
+                final long n = next;
+                h.post(() -> {
+                    updBusy = false;
+                    h.removeCallbacks(updTick);
+                    h.postDelayed(updTick, n);
+                });
+            }, "guard-upd").start();
+        }
+    };
 
     // ===== Записки =====
 

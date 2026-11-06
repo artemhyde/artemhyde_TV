@@ -8,7 +8,9 @@ import android.util.Log;
 final class Backlight {
     private Backlight() { }
 
+    // Только на TCL (план Codex, блок 5): на другом бренде класс с таким именем мог бы значить что угодно
     private static Object mgr() throws Exception {
+        if (!Caps.tcl()) throw new IllegalStateException("не TCL: подсветка TCL не вызывается");
         return Class.forName("com.tcl.tv.pq.TvBacklightManager").getMethod("getInstance").invoke(null);
     }
 
@@ -47,7 +49,8 @@ final class Backlight {
         }
     }
 
-    // save=false: только применить (после перезагрузки вернётся сохранённое), true: применить и сохранить в режим картинки
+    // save=false: только применить (после перезагрузки вернётся сохранённое), true: применить и сохранить в режим картинки.
+    // true только если служба согласилась и обратное чтение показывает то же значение
     @SuppressWarnings({"unchecked", "rawtypes"})
     static boolean set(int v, boolean save) {
         try {
@@ -55,7 +58,11 @@ final class Backlight {
             Class ap = Class.forName("com.tcl.tv.pq.EnApplyType"), act = Class.forName("com.tcl.tv.pq.EnTclActType");
             Object a = Enum.valueOf(ap, "EN_APPLY_CURRENT");
             Object t = Enum.valueOf(act, save ? "EN_TCL_ACT_EXEC_SAVE" : "EN_TCL_ACT_EXEC");
-            return (Boolean) m.getClass().getMethod("setBacklight", ap, int.class, act).invoke(m, a, Math.max(0, Math.min(100, v)), t);
+            int want = Math.max(0, Math.min(100, v));
+            boolean ok = (Boolean) m.getClass().getMethod("setBacklight", ap, int.class, act).invoke(m, a, want, t);
+            int back = (Integer) m.getClass().getMethod("getBacklight").invoke(m);
+            if (!ok || back != want) Log.w("guard", "подсветка TCL: просил " + want + ", служба " + (ok ? "согласилась" : "отказала") + ", на панели " + back);
+            return ok && back == want;
         } catch (Throwable e) {
             Log.w("guard", "подсветка TCL: запись не удалась", e);
             return false;

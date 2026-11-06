@@ -62,7 +62,9 @@ public class PillsActivity extends Activity {
         if (getPackageManager().getLaunchIntentForPackage(PICTURE) != null) pills.add(new Pill("picture", "Картинка", PillView.SUN));
         pills.add(new Pill("volna", "Волна", PillView.WAVE));
         pills.add(new Pill("style", "Стиль", PillView.SHAPE));   // вид «Дома»: «Графит» или «Vision», по кругу
-        pills.add(new Pill("tcl", "Панель TCL", PillView.GRID));
+        // Панель TCL только на TCL и только если её служба есть в прошивке (план Codex, блок 5); иначе обычные настройки Android
+        if (tclPanel()) pills.add(new Pill("tcl", "Панель TCL", PillView.GRID));
+        else pills.add(new Pill("settings", "Настройки ТВ", PillView.GRID));
 
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(false);
@@ -161,14 +163,24 @@ public class PillsActivity extends Activity {
                 case "tcl":
                     // Системная панель TCL: служба открыта без разрешения, Key Mapper запускал её так же
                     // Нет службы (другая прошивка): null, и полоса закроется обычным плавным уходом
-                    return startService(new Intent("com.tcl.settings.SHOW_WINDOW")
-                            .setComponent(new ComponentName("com.android.tv.settings", "com.tcl.settings.ShowWindowService"))
-                            .putExtra("Type", "quicksettings")) != null;
+                    return startService(tclPanelIntent()) != null;
+                case "settings": return open(new Intent(android.provider.Settings.ACTION_SETTINGS));
                 default: return false;
             }
         } catch (Exception e) {
             return false;
         }
+    }
+
+    static Intent tclPanelIntent() {
+        return new Intent("com.tcl.settings.SHOW_WINDOW")
+                .setComponent(new ComponentName("com.android.tv.settings", "com.tcl.settings.ShowWindowService"))
+                .putExtra("Type", "quicksettings");
+    }
+
+    boolean tclPanel() {
+        boolean tcl = "TCL".equalsIgnoreCase(android.os.Build.MANUFACTURER) || "TCL".equalsIgnoreCase(android.os.Build.BRAND);
+        return tcl && getPackageManager().resolveService(tclPanelIntent(), 0) != null;
     }
 
     // Цель появляется мгновенно: свой переход нулевой

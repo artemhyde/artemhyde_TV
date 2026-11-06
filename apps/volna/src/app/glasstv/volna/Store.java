@@ -42,12 +42,18 @@ final class Store {
     final Map<String, String[]> likedMeta = new ConcurrentHashMap<>(); // лайкнутые в «Волне»: id -> {название, исполнитель}
     final Map<String, Integer> pending = new ConcurrentHashMap<>();    // оценки, которые ещё не дошли до аккаунта: id -> 1, 0, -1
     final Map<String, String> alias = new ConcurrentHashMap<>();       // загрузка не играет -> та же песня, что играет
+    // Запрошенные в этом сеансе: подбор не выберет их снова, но и прослушанными они не считаются (быстро пролистали). Не сохраняется
+    final Map<String, Long> asked = new ConcurrentHashMap<>();
     private boolean dirty;
 
-    Store(Context c, String profile) {
+    Store(Context c, String profile) { this(c, profile, "volna2", null); }
+
+    // base: имя памяти (стенд пишет в свою, «volnatest», и не трогает настоящую); fixedSeed: база вкуса вместо res/raw
+    Store(Context c, String profile, String base, List<Track> fixedSeed) {
         this.profile = profile;
-        p = c.getSharedPreferences(profile.isEmpty() ? "volna2" : "volna2_" + profile, Context.MODE_PRIVATE);
-        loadSeed(c);
+        p = c.getSharedPreferences(profile.isEmpty() ? base : base + "_" + profile, Context.MODE_PRIVATE);
+        if (fixedSeed == null) loadSeed(c);
+        else for (Track t : fixedSeed) { seed.add(new Seed(t, "liked")); seedIds.add(t.id); knownArtists.addAll(t.artists()); }
         try {
             JSONObject pl = new JSONObject(p.getString("played", "{}"));
             for (Iterator<String> it = pl.keys(); it.hasNext(); ) {
@@ -172,21 +178,39 @@ final class Store {
     boolean empty() { return seed.isEmpty() && likedMeta.isEmpty(); }
 
     // Трек, который пользователь уже знает: из базы, игравший, лайкнутый или отвергнутый
-    boolean known(String id) { return seedIds.contains(id) || played.containsKey(id) || liked.contains(id) || disliked.contains(id); }
+    boolean known(String id) {
+        return seedIds.contains(id) || played.containsKey(id) || liked.contains(id) || disliked.contains(id) || asked.containsKey(id);
+    }
 
     boolean recentlyPlayed(String id, long withinMs) {
         long[] v = played.get(id);
-        return v != null && System.currentTimeMillis() - v[0] < withinMs;
+        long now = System.currentTimeMillis();
+        if (v != null && now - v[0] < withinMs) return true;
+        Long a = asked.get(id);
+        return a != null && now - a < withinMs;
     }
 
-    void played(Track t) {
+    // Три разных события. Запрошен: выбран (в серии нажатий таких много), только память сеанса
+    void requested(Track t) {
+        asked.put(t.id, System.currentTimeMillis());
+        if (asked.size() > 2000) asked.clear();
+    }
+
+    // Начал играть: в историю (повтор не раньше суток), но исполнитель ещё не «знакомый», счёт прослушиваний не растёт
+    void started(Track t) {
         long[] v = played.get(t.id);
-        long now = System.currentTimeMillis();
-        // Повторная отметка того же запуска (при выдаче и при старте в Aura) не считается вторым прослушиванием
-        played.put(t.id, new long[]{now, v == null ? 1 : now - v[0] < 60_000 ? v[1] : v[1] + 1});
-        knownArtists.addAll(t.artists());
+        played.put(t.id, new long[]{System.currentTimeMillis(), v == null ? 0 : v[1]});
         if (played.size() > 4000) trimPlayed();
         dirty = true;
+    }
+
+    // Прослушан (30 с или половина трека): исполнитель знакомый, «Новое» его больше не предлагает, счёт растёт
+    void listened(Track t) {
+        long[] v = played.get(t.id);
+        played.put(t.id, new long[]{System.currentTimeMillis(), (v == null ? 0 : v[1]) + 1});
+        knownArtists.addAll(t.artists());
+        dirty = true;
+        save();
     }
 
     private void trimPlayed() {

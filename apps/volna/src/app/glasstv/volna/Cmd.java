@@ -15,6 +15,8 @@ public class Cmd extends BroadcastReceiver {
         if (what == null) what = "state";
         // «Дом» открыт или закрыт: только плашка, к Aura не подключаемся
         if (what.equals("home_on") || what.equals("home_off")) { e.homeShown(what.equals("home_on")); return; }
+        // Стенд: тихий второй движок с поддельным плеером и источником, настоящая музыка не задета
+        if (what.equals("bench")) { Bench.start(c, i.getStringExtra("suite"), i.getIntExtra("n", 0), i.getIntExtra("seed", 42)); return; }
         switch (what) {
             case "my": e.start(Brain.MY); break;
             case "new": e.start(Brain.NEW); break;
@@ -46,7 +48,7 @@ public class Cmd extends BroadcastReceiver {
             default: break;
         }
         Track nx = e.brain.peek(e.mode);
-        Log.i("volna", "состояние: волна=" + (e.driving ? Brain.MODE_NAMES[e.mode] : "нет") + " aura=" + e.state
+        Log.i("volna", "состояние: " + e.phase + " " + e.ids() + " волна=" + (e.driving ? Brain.MODE_NAMES[e.mode] : "нет") + " aura=" + e.state
                 + " трек=" + e.curId + " «" + e.curTitle + "» — " + e.curArtist + " [" + e.badge + "]"
                 + " план=" + (e.planned == null ? null : e.planned.id) + " далее=" + (nx == null ? null : nx.title + " [" + nx.badge + "]")
                 + " статус=" + e.status + " лайк=" + e.liked() + " профиль=" + e.profileName(e.store.profile)

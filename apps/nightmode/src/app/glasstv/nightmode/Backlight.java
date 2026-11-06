@@ -8,7 +8,13 @@ import android.util.Log;
 final class Backlight {
     private Backlight() { }
 
+    // Только на TCL (план Codex, блок 5). Не TCL: подсветка «недоступна» (-1), и ночной режим работает затемнением экрана
+    static boolean tcl() {
+        return "TCL".equalsIgnoreCase(android.os.Build.MANUFACTURER) || "TCL".equalsIgnoreCase(android.os.Build.BRAND);
+    }
+
     private static Object mgr() throws Exception {
+        if (!tcl()) throw new IllegalStateException("не TCL: подсветка TCL не вызывается");
         return Class.forName("com.tcl.tv.pq.TvBacklightManager").getMethod("getInstance").invoke(null);
     }
 
@@ -55,7 +61,12 @@ final class Backlight {
             Class ap = Class.forName("com.tcl.tv.pq.EnApplyType"), act = Class.forName("com.tcl.tv.pq.EnTclActType");
             Object a = Enum.valueOf(ap, "EN_APPLY_CURRENT");
             Object t = Enum.valueOf(act, save ? "EN_TCL_ACT_EXEC_SAVE" : "EN_TCL_ACT_EXEC");
-            return (Boolean) m.getClass().getMethod("setBacklight", ap, int.class, act).invoke(m, a, Math.max(0, Math.min(100, v)), t);
+            int want = Math.max(0, Math.min(100, v));
+            boolean ok = (Boolean) m.getClass().getMethod("setBacklight", ap, int.class, act).invoke(m, a, want, t);
+            // Чтение после записи (план Codex, блок 5): true, только если на панели то, что просили
+            int back = (Integer) m.getClass().getMethod("getBacklight").invoke(m);
+            if (!ok || back != want) Log.w("nightmode", "подсветка TCL: просил " + want + ", служба " + (ok ? "согласилась" : "отказала") + ", на панели " + back);
+            return ok && back == want;
         } catch (Throwable e) {
             Log.w("nightmode", "подсветка TCL: запись не удалась", e);
             return false;
@@ -66,6 +77,7 @@ final class Backlight {
     @SuppressWarnings({"unchecked", "rawtypes"})
     static boolean setContrast(int v) {
         try {
+            if (!tcl()) return false;
             Object m = Class.forName("com.tcl.tv.pq.TvPqManager").getMethod("getInstance").invoke(null);
             Class ap = Class.forName("com.tcl.tv.pq.EnApplyType"), act = Class.forName("com.tcl.tv.pq.EnTclActType");
             return (Boolean) m.getClass().getMethod("setContrast", int.class, ap, int.class, act).invoke(m, 0,

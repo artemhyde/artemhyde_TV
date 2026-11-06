@@ -22,8 +22,9 @@ import java.util.Locale;
 // виден и на кнопке, и в строке с текстом. Сам меняется только регистр на одну букву. Язык помнится отдельно для обычных полей и для
 // пароля, адреса и почты, и новое поле его не сбрасывает.
 // Частое не дороже трёх нажатий: удержание OK на букве даёт заглавную, удержание «Назад» стирает на месте, удержание пробела меняет язык.
-// Вверх с верхнего ряда встаёт на строку с текстом: там влево и вправо двигают курсор, OK стирает знак слева, крестик в конце строки
-// стирает всё. Клавиши срабатывают на отпускании, кроме стирания и движения курсора: так работают удержания и не остаётся обрывков нажатия.
+// Вверх с верхнего ряда встаёт на строку с текстом: там влево и вправо двигают курсор, OK и вниз возвращают к буквам, крестик в конце
+// строки стирает всё. Стирает знак только ⌫, удержание «Назад» и CH-: 06.11 OK на строке стирал знак, и Lampa теряла адрес
+// («http://lampa.m»). Поле с текстом открывается на «Готово»: такой текст чаще подтверждают как есть. Клавиши срабатывают на отпускании, кроме стирания и движения курсора: так работают удержания и не остаётся обрывков нажатия.
 // Перехватываем только стрелки, OK и «Назад»: громкость, «Домой» и кнопки Key Mapper идут дальше как обычно.
 // Набранное нигде не хранится и не пишется в журнал, интернета в манифесте нет, подсказок и автозамены нет.
 public class Kbd extends InputMethodService implements KeyView.Source {
@@ -176,19 +177,29 @@ public class Kbd extends InputMethodService implements KeyView.Source {
         else placeholder = field == Layouts.F_URL ? "Адрес" : field == Layouts.F_EMAIL ? "Почта" : field == Layouts.F_PASSWORD ? "Пароль" : field == Layouts.F_NUMBER ? "Цифры" : "Текст";
     }
 
-    // Новое поле, всегда одно и то же начало. Пустое: середина букв. С текстом: строка с текстом, раз его, скорее всего, будут править
+    // Новое поле, всегда одно и то же начало. Пустое: середина букв. С текстом: «Готово», один OK подтверждает текст как есть
     private void startFocus(EditorInfo info) {
         onClear = false;
         stripBack = -1;
         InputConnection ic = getCurrentInputConnection();
         boolean filled = ic != null && (notEmpty(ic.getTextBeforeCursor(1, 0)) || notEmpty(ic.getTextAfterCursor(1, 0)));
         boolean keys = info.privateImeOptions != null && info.privateImeOptions.contains(START_ON_KEYS);
-        if (filled && !keys) {
-            fRow = STRIP;
-            stickX = START_X;
-        } else {
-            goStartKey();
+        if (filled && !keys) goEnterKey();
+        else goStartKey();
+    }
+
+    private void goEnterKey() {
+        for (int r = 0; r < rows.length; r++) {
+            for (int i = 0; i < rows[r].length; i++) {
+                if (rows[r][i].kind == Layouts.ENTER) {
+                    fRow = r;
+                    fIndex = i;
+                    rememberX();
+                    return;
+                }
+            }
         }
+        goStartKey();
     }
 
     private void goStartKey() {
@@ -278,9 +289,7 @@ public class Kbd extends InputMethodService implements KeyView.Source {
         }
         pressedNow = true;
         lastStep = e.getEventTime();
-        if (fRow == STRIP) {
-            if (!onClear) backspace(false);
-        } else {
+        if (fRow != STRIP) {
             Layouts.Key k = rows[fRow][fIndex];
             if (k.kind == Layouts.BACKSPACE) backspace(false);
             else if (k.kind == Layouts.LEFT) caret(-1, false);
@@ -301,10 +310,7 @@ public class Kbd extends InputMethodService implements KeyView.Source {
             case KeyEvent.KEYCODE_BACK: backHeld(e, held); return;
             default: break;
         }
-        if (fRow == STRIP) {
-            if (!onClear) eraseHeld(e, held);
-            return;
-        }
+        if (fRow == STRIP) return;
         Layouts.Key k = rows[fRow][fIndex];
         switch (k.kind) {
             case Layouts.BACKSPACE: eraseHeld(e, held); break;
@@ -357,6 +363,7 @@ public class Kbd extends InputMethodService implements KeyView.Source {
         holdUpper = false;
         if (fRow == STRIP) {
             if (onClear) clearPress();
+            else leaveStrip();
             redraw();
             return;
         }
@@ -796,7 +803,7 @@ public class Kbd extends InputMethodService implements KeyView.Source {
         if (!note.isEmpty()) return note;
         if (fRow == STRIP) {
             if (onClear) return selected.isEmpty() ? "OK два раза: стереть всё" : "ещё OK: стереть всё";
-            return "OK: стереть символ · Вниз: к буквам";
+            return "Влево, вправо: курсор · OK или вниз: к буквам";
         }
         if (caps) return "ВСЕ ЗАГЛАВНЫЕ";
         if (shift) return "следующая заглавная";

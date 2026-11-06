@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 // Мозг: собирает очередь для двух волн.
 // «Моя волна»: 35% своё (лайки, плейлисты, история), 65% в том же духе: радио от любимых треков, ещё песни любимых исполнителей,
@@ -71,8 +70,18 @@ final class Brain {
     final Store s;
     Ready ready;
     Personal personal;
+    Source source = Source.NET;
+    static final java.util.concurrent.atomic.AtomicInteger made = new java.util.concurrent.atomic.AtomicInteger();
+    final int gen = made.incrementAndGet();   // номер подбора: по нему в журнале видно, чей ответ пришёл
+    static final java.util.concurrent.atomic.AtomicInteger open = new java.util.concurrent.atomic.AtomicInteger();   // сколько подборов не закрыто
+    String tag = "volna";
     private long accountSyncAt;
-    private final ExecutorService ex = Executors.newSingleThreadExecutor();
+    // Свой поток у каждой волны и у аккаунта: «Новое» не ждёт долгий подбор «Моей», и наоборот. Без дела поток засыпает через 20 с,
+    // при закрытии подбора все три останавливаются. Больше трёх потоков на подбор не бывает
+    private final ExecutorService exMy = lane("my"), exNew = lane("new"), exAcc = lane("acc");
+    private volatile boolean closed;
+    private volatile boolean syncing;
+    static final int BUF_MAX = 15;   // готовых треков в очереди волны не больше
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Random rnd = new Random();
     @SuppressWarnings("unchecked")
@@ -93,8 +102,72 @@ final class Brain {
     // Во вкусе почти нет русских песен: «Новое» их не предлагает вовсе, оно про западные хиты и новые направления
     private final boolean westernNew;
 
+    private ExecutorService lane(String name) {
+        java.util.concurrent.ThreadPoolExecutor x = new java.util.concurrent.ThreadPoolExecutor(1, 1, 20, java.util.concurrent.TimeUnit.SECONDS,
+                new java.util.concurrent.LinkedBlockingQueue<Runnable>(), r -> new Thread(r, "volna-" + name + "-" + gen));
+        x.allowCoreThreadTimeOut(true);
+        return x;
+    }
+
+    boolean closed() { return closed; }
+
+    // Закрыть подбор (сменили профиль): потоки остановлены, отложенные повторы сняты, ответы и «готово» больше никуда не идут.
+    // Возвращает готовые очереди двух волн: если вернутся в этот профиль, новый подбор начнёт с них
+    // Что подбор успел собрать: очереди двух волн, пулы радио и подборок, когда подтягивался аккаунт.
+    // При возврате в профиль новый подбор начинает с этого и не ждёт сеть заново
+    static final class Parked {
+        final long at = android.os.SystemClock.elapsedRealtime();
+        List<Track> my, nw, similar;
+        Map<String, List<Track>> buckets = new HashMap<>();
+        Map<String, List<String>> lists = new HashMap<>();
+        Map<String, String> genres;
+        long accountSyncAt;
+    }
+
+    synchronized Parked close() {
+        Parked p = new Parked();
+        p.my = new ArrayList<>(buf[MY]);
+        p.nw = new ArrayList<>(buf[NEW]);
+        p.similar = new ArrayList<>(similarPool);
+        for (Map.Entry<String, ArrayDeque<Track>> e : bucketPool.entrySet()) p.buckets.put(e.getKey(), new ArrayList<>(e.getValue()));
+        p.lists.putAll(genreLists);
+        p.genres = genreParams;
+        p.accountSyncAt = accountSyncAt;
+        if (closed) return p;
+        closed = true;
+        ready = null;
+        personal = null;
+        changed = null;
+        main.removeCallbacksAndMessages(null);
+        exMy.shutdownNow();
+        exNew.shutdownNow();
+        exAcc.shutdownNow();
+        open.decrementAndGet();
+        return p;
+    }
+
+    synchronized void adopt(Parked p) {
+        int[] took = new int[2];
+        List<Track>[] q = new List[]{p.my, p.nw};
+        for (int m = 0; m < 2; m++)
+            for (Track t : q[m]) {
+                if (buf[m].size() >= BUF_MAX || queued.contains(t.id)) continue;
+                t.srcGen = gen;
+                buf[m].addLast(t);
+                queued.add(t.id);
+                took[m]++;
+            }
+        similarPool.addAll(p.similar);
+        for (Map.Entry<String, List<Track>> e : p.buckets.entrySet()) bucketPool.put(e.getKey(), new ArrayDeque<>(e.getValue()));
+        genreLists.putAll(p.lists);
+        genreParams = p.genres;
+        accountSyncAt = p.accountSyncAt;
+        Log.i(tag, "подбор " + gen + ": из кэша профиля «Моя» " + took[MY] + ", «Новое» " + took[NEW] + ", похожих " + similarPool.size());
+    }
+
     Brain(Store s) {
         this.s = s;
+        open.incrementAndGet();
         int ru = 0;
         for (Store.Seed sd : s.seed) if ((sd.t.tags & Tags.RU) != 0) ru++;
         westernNew = s.seed.size() > 20 && ru < s.seed.size() * 0.15;
@@ -136,9 +209,21 @@ final class Brain {
         refillIfLow(mode);
         if (t == null && mode == MY) {
             synchronized (this) { t = familiar(); }
-            if (t != null) remember(t);
+            if (t != null) {
+                remember(t);
+                t.srcMode = mode;
+                t.srcProfile = s.profile;
+                t.srcGen = gen;
+            }
         }
         return t;
+    }
+
+    // Стенд: очереди пусты, как у только что открытого подбора
+    synchronized void testClear() {
+        for (ArrayDeque<Track> q : buf) q.clear();
+        for (ArrayDeque<Track> q : bucketPool.values()) q.clear();
+        queued.clear();
     }
 
     private boolean stillGood(Track t, int mode) {
@@ -171,25 +256,45 @@ final class Brain {
     }
 
     void refillIfLow(int mode) {
+        // Аккаунт отдельно и не по пути к первому треку: его лайки и лента придут, когда придут
+        syncSoon();
         synchronized (this) {
-            if (filling[mode] || buf[mode].size() >= 5) return;
+            if (closed || filling[mode] || buf[mode].size() >= 5) return;
             filling[mode] = true;
         }
-        ex.execute(() -> {
-            int got = 0;
-            try {
-                syncAccount();
-                // Треки кладутся в очередь по одному: первый готовый сразу уходит в игру
-                List<Track> batch = mode == MY ? genMy(10) : genNew(10);
-                got = batch.size();
-            } catch (Throwable e) {
-                Log.w("volna", "подбор не удался", e);
-            } finally {
-                synchronized (this) { filling[mode] = false; }
-                // Пусто (нет сети): не дёргаем движок по кругу, пробуем снова через полминуты
-                if (got == 0) main.postDelayed(() -> refillIfLow(mode), 30_000);
-            }
-        });
+        try {
+            (mode == MY ? exMy : exNew).execute(() -> {
+                int got = 0;
+                try {
+                    // Треки кладутся в очередь по одному: первый готовый сразу уходит в игру
+                    List<Track> batch = mode == MY ? genMy(10) : genNew(10);
+                    got = batch.size();
+                } catch (Throwable e) {
+                    if (!closed) Log.w(tag, "подбор не удался: " + e);
+                } finally {
+                    synchronized (this) { filling[mode] = false; }
+                    // Пусто (нет сети): не дёргаем движок по кругу, пробуем снова через полминуты. Закрытый подбор не пробует
+                    if (got == 0 && !closed) main.postDelayed(() -> refillIfLow(mode), 30_000);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            synchronized (this) { filling[mode] = false; }
+        }
+    }
+
+    private void syncSoon() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (closed || syncing || personal == null || (accountSyncAt != 0 && now - accountSyncAt < 30 * 60_000)) return;
+        syncing = true;
+        try {
+            exAcc.execute(() -> {
+                try { syncAccount(); }
+                catch (Throwable e) { if (!closed) Log.w(tag, "аккаунт не подтянулся: " + e); }
+                finally { syncing = false; }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            syncing = false;
+        }
     }
 
     // ===== Направления: язык (кириллица или нет) и главный жанр. «Не моё» гасит направление до конца сеанса =====
@@ -218,7 +323,7 @@ final class Brain {
         purge(buf[NEW], arts, NEW);
         for (ArrayDeque<Track> q : bucketPool.values()) purge(q, arts, NEW);
         if (!t.bucket.isEmpty()) bucketWeight.put(t.bucket, Math.max(0.2f, bucketWeight.getOrDefault(t.bucket, 1f) - 0.4f));
-        Log.i("volna", "не моё: направление " + key(t) + " = " + cluster.get(key(t)) + ", язык " + lang(t) + " = " + cluster.get("l:" + lang(t)));
+        Log.i(tag, "не моё: направление " + key(t) + " = " + cluster.get(key(t)) + ", язык " + lang(t) + " = " + cluster.get("l:" + lang(t)));
     }
 
     synchronized void onLike(Track t) {
@@ -231,17 +336,18 @@ final class Brain {
     // ===== Аккаунт профиля: лайки и домашняя лента, не чаще раза в полчаса =====
 
     // Связь с аккаунтом появилась (Aura подключилась и узнала профиль): подтянуть лайки и ленту сразу, не дожидаясь подбора
-    void accountReady() { ex.execute(this::syncAccount); }
+    void accountReady() { syncSoon(); }
 
     private void syncAccount() {
         long now = android.os.SystemClock.elapsedRealtime();
-        if (personal == null || (accountSyncAt != 0 && now - accountSyncAt < 30 * 60_000)) return;
-        List<Track> likes = personal.feed("liked", null);
-        if (likes == null) return;   // нет входа или связи: попробуем при следующем подборе
+        Personal p = personal;
+        if (closed || p == null || (accountSyncAt != 0 && now - accountSyncAt < 30 * 60_000)) return;
+        List<Track> likes = p.feed("liked", null);
+        if (likes == null || closed) return;   // нет входа или связи: попробуем при следующем подборе. Закрытый подбор чужое не пишет
         accountSyncAt = now;
         s.mergeAccountLikes(likes);
-        List<Track> home = personal.feed("home", null);
-        if (home == null) return;
+        List<Track> home = p.feed("home", null);
+        if (home == null || closed) return;
         Collections.shuffle(home, rnd);
         synchronized (this) {
             int n = 0;
@@ -258,8 +364,10 @@ final class Brain {
 
     // Радио от трека: от имени профиля, если есть вход
     private List<Track> radioOf(String id) throws Exception {
-        List<Track> r = personal == null ? null : personal.feed("radio", id);
-        return r == null || r.isEmpty() ? Net.radio(id) : r;
+        Personal p = personal;
+        List<Track> r = p == null ? null : p.feed("radio", id);
+        if (closed) return new ArrayList<>();
+        return r == null || r.isEmpty() ? source.radio(id) : r;
     }
 
     private void purge(ArrayDeque<Track> q, List<String> arts, int mode) {
@@ -289,7 +397,20 @@ final class Brain {
 
     private List<Track> genMy(int n) {
         List<Track> out = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
+        // Похожих ещё нет (новый подбор, сменили профиль): сначала несколько своих, они без сети, и очередь на экране полна сразу.
+        // Похожие встают следом, как только придёт радио
+        int quick;
+        synchronized (this) { quick = similarPool.isEmpty() && buf[MY].size() < 4 ? 4 - buf[MY].size() : 0; }
+        for (int i = 0; i < quick && !closed; i++) {
+            Track t;
+            synchronized (this) { t = familiar(); }
+            if (t == null) break;
+            queued.add(t.id);
+            remember(t);
+            out.add(t);
+            emit(MY, t, out.size() == 1);
+        }
+        for (int i = out.size(); i < n && !closed; i++) {
             boolean own = PATTERN[patternPos++ % PATTERN.length];
             Track t = null;
             if (!own) t = similar();
@@ -305,9 +426,24 @@ final class Brain {
 
     // Готовый трек сразу в очередь; первый из пачки будит движок, если тот ждёт
     private void emit(int mode, Track t, boolean first) {
-        synchronized (this) { buf[mode].addLast(t); }
-        if (first) main.post(() -> { if (ready != null) ready.onReady(mode); });
+        t.srcMode = mode;
+        t.srcProfile = s.profile;
+        t.srcGen = gen;
+        synchronized (this) {
+            if (closed) return;   // ответ пришёл после закрытия: никуда
+            if (buf[mode].size() >= BUF_MAX) { queued.remove(t.id); return; }
+            buf[mode].addLast(t);
+        }
+        // Будит движок каждый трек, а не только первый из пачки: очередь могли выбрать до дна посреди подбора (быстро листали),
+        // и тогда движок висел на «Подбираю…», хотя треки уже лежали в очереди
+        main.post(() -> { Ready r = ready; if (r != null && !closed) r.onReady(mode); });
+        // Экран узнаёт о новом треке в очереди сразу, а не со следующим сообщением плеера (серия сводится в одно обновление)
+        main.removeCallbacks(tellChanged);
+        main.postDelayed(tellChanged, 120);
     }
+
+    Runnable changed;   // в очереди появились треки
+    private final Runnable tellChanged = () -> { Runnable c = changed; if (c != null && !closed) c.run(); };
 
     // Своё: случайный выбор с весами (лайки и плейлисты сильнее, свежая история сильнее старой)
     private Track familiar() {
@@ -366,7 +502,9 @@ final class Brain {
 
     // Похожее: радио YouTube Music от любимых треков, без отвергнутого и недавно игравшего
     private Track similar() {
-        if (similarPool.size() < 4) fillSimilar();
+        int have;
+        synchronized (this) { have = similarPool.size(); }
+        if (have < 4 && !closed) fillSimilar();
         return pickSimilar();
     }
 
@@ -417,7 +555,7 @@ final class Brain {
                     for (Track x : add) if (n < 8 && have.add(x.id)) { similarPool.add(x); n++; }
                 }
             } catch (Exception e) {
-                Log.w("volna", "радио не загрузилось", e);
+                Log.w(tag, "радио не загрузилось: " + e);
             }
         }
     }
@@ -428,7 +566,7 @@ final class Brain {
         if (seedT == null || seedT.artists().isEmpty()) return;
         String artist = seedT.artists().get(0);
         try {
-            List<Track> got = Net.songsOf(artist);
+            List<Track> got = source.songsOf(artist);
             List<Track> add = new ArrayList<>();
             for (Track t : got) {
                 if (s.known(t.id) || queued.contains(t.id) || s.dead.contains(t.id) || t.durationMs > maxLen()) continue;
@@ -440,7 +578,7 @@ final class Brain {
             Collections.shuffle(add, rnd);
             synchronized (this) { for (int i = 0; i < Math.min(3, add.size()); i++) similarPool.add(add.get(i)); }
         } catch (Exception e) {
-            Log.w("volna", "песни исполнителя не загрузились: " + e.getMessage());
+            Log.w(tag, "песни исполнителя не загрузились: " + e.getMessage());
         }
     }
 
@@ -449,7 +587,7 @@ final class Brain {
     private List<Track> genNew(int n) {
         List<Track> out = new ArrayList<>();
         int guard = 0;
-        while (out.size() < n && guard++ < n * 4) {
+        while (out.size() < n && guard++ < n * 4 && !closed) {
             String b = chooseBucket();
             Track t = drawFresh(b);
             recentBuckets.addLast(b);
@@ -463,7 +601,7 @@ final class Brain {
         return out;
     }
 
-    private String chooseBucket() {
+    private synchronized String chooseBucket() {
         List<Double> w = new ArrayList<>();
         List<String> keys = new ArrayList<>();
         for (Object[] b : buckets) {
@@ -527,9 +665,9 @@ final class Brain {
                 String g = src.substring(6);
                 List<String> lists = genreLists.get(g);
                 if (lists == null) {
-                    if (genreParams == null) genreParams = Net.genres();
+                    if (genreParams == null) genreParams = source.genres();
                     String params = genreParams.get(g);
-                    lists = params == null ? new ArrayList<String>() : Net.genrePlaylists(params);
+                    lists = params == null ? new ArrayList<String>() : source.genrePlaylists(params);
                     genreLists.put(g, lists);
                 }
                 List<String> fresh = new ArrayList<>();
@@ -539,15 +677,15 @@ final class Brain {
                 for (int i = 0; i < 2 && !fresh.isEmpty(); i++) {
                     String l = fresh.remove(rnd.nextInt(Math.min(fresh.size(), 6)));
                     usedLists.add(l);
-                    got.addAll(Net.playlist(l));
+                    got.addAll(source.playlist(l));
                 }
             } else if (src.startsWith("chart:")) {
-                got.addAll(Net.charts(src.substring(6)));
+                got.addAll(source.charts(src.substring(6)));
             } else if (src.equals("new")) {
-                if (albums == null || albums.isEmpty()) albums = Net.newAlbums();
+                if (albums == null || albums.isEmpty()) albums = source.newAlbums();
                 Collections.shuffle(albums, rnd);
                 for (int i = 0; i < 4 && !albums.isEmpty(); i++) {
-                    List<Track> a = Net.album(albums.remove(0));
+                    List<Track> a = source.album(albums.remove(0));
                     if (!a.isEmpty()) got.add(a.get(Math.min(a.size() - 1, rnd.nextInt(Math.min(3, a.size())))));
                 }
             } else if (src.equals("radio")) {
@@ -559,7 +697,7 @@ final class Brain {
                 }
             }
         } catch (Exception e) {
-            Log.w("volna", "корзина " + key + " не загрузилась", e);
+            Log.w(tag, "корзина " + key + " не загрузилась: " + e);
         }
         Collections.shuffle(got, rnd);
         synchronized (this) { for (Track t : got) if (isFresh(t)) pool.add(t); }

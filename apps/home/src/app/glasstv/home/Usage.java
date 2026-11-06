@@ -198,7 +198,7 @@ final class Usage {
         return res;
     }
 
-    private static boolean isLampa(String p) { return Last.LAMPA.equals(p); }
+    private static boolean isLampa(String p) { return Last.LAMPA.equals(p) || p.startsWith("ru.yourok.torrserve"); }
 
     private static boolean ignored(String p) {
         return p.startsWith("app.glasstv.") || p.equals("android") || p.startsWith("com.android.") || p.startsWith("com.google.android.");

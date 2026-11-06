@@ -65,6 +65,110 @@ public class Cmd extends BroadcastReceiver {
             }, "guard-svc-cmd").start();
             return;
         }
+        // Обновления приложений не из магазина (Updates, список в assets/updates.txt): a=status (что стоит и что на сайте);
+        // check (проверить сейчас и сразу поставить, окно «Обновить» откроет сразу; итог в журнале: logcat -s guard),
+        // --ez force true (поставить заново ту же версию, для проверки), --es pkg <пакет> (только одно приложение)
+        if ("upd".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null || g.upd == null) { Log.i("guard", "upd: служба Сторожа не запущена"); return; }
+            final String a = i.getStringExtra("a"), pkg = i.getStringExtra("pkg");
+            final boolean force = i.getBooleanExtra("force", false);
+            if ("check".equals(a)) {
+                // Скачивание идёт минутами, а ответ на команду должен уйти быстро: итог пишется в журнал
+                new Thread(() -> Log.i("guard", "upd: проверка: " + g.upd.checkNow(force, pkg)), "guard-upd-cmd").start();
+                setResultData("проверка запущена, итог: logcat -s guard");
+                return;
+            }
+            final PendingResult pr = goAsync();
+            new Thread(() -> {
+                String out = g.upd.status();
+                Log.i("guard", "upd: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-upd-cmd").start();
+            return;
+        }
+        // Отладка по сети и записки (06.11): --es do adb (состояние) или --es do adb --es m always|service|off;
+        // --es do notes --ez on true|false. Выключение отладки отсюда закроет и этот путь к ТВ: off только по решению человека
+        if ("adb".equals(i.getStringExtra("do")) || "notes".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null) { Log.i("guard", "служба Сторожа не запущена"); return; }
+            String out;
+            if ("notes".equals(i.getStringExtra("do"))) {
+                if (i.hasExtra("on")) g.setNotes(i.getBooleanExtra("on", false));
+                out = "записки " + (GuardService.notesEnabled(c) ? "включены" : "выключены");
+            } else {
+                String m = i.getStringExtra("m");
+                if (m != null) g.setAdbMode(m, "команда с ПК");
+                out = "отладка " + (g.adbOn() ? "включена" : "выключена") + ", режим " + g.adbMode()
+                        + (GuardService.ADB_SERVICE.equals(g.adbMode()) ? " до " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date(g.adbUntil())) : "");
+            }
+            Log.i("guard", out);
+            setResultData(out);
+            return;
+        }
+        // Отчёт для обслуживания без личных данных (06.11, план Codex, блок 6): --es do report [--ez save true: ещё и в «Загрузки»]
+        if ("report".equals(i.getStringExtra("do"))) {
+            final PendingResult pr = goAsync();
+            final Context app = c.getApplicationContext();
+            final boolean save = i.getBooleanExtra("save", false);
+            new Thread(() -> {
+                String out = Report.build(app);
+                if (save) out = "файл: " + Report.save(app, out) + "\n" + out;
+                Log.i("guard", "отчёт: " + out.length() + " знаков");
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-report-cmd").start();
+            return;
+        }
+        // Паспорт ТВ (06.11, план Codex, блок 5): --es do caps, модель, прошивка, уровень и какие закрытые функции отвечают
+        if ("caps".equals(i.getStringExtra("do"))) {
+            final PendingResult pr = goAsync();
+            final Context app = c.getApplicationContext();
+            new Thread(() -> {
+                String out = Caps.report(app);
+                Log.i("guard", "caps: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-caps-cmd").start();
+            return;
+        }
+        // Простой (06.11): --es do idle, что видит «Сторож»: сколько без нажатий, кто держит экран, идёт ли видео
+        if ("idle".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null) { Log.i("guard", "idle: служба Сторожа не запущена"); return; }
+            final PendingResult pr = goAsync();
+            new Thread(() -> {
+                String out = g.idleReport();
+                Log.i("guard", "idle: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-idle-cmd").start();
+            return;
+        }
+        // Присмотр за DNS (DnsWatch): a=status (что стоит и работает ли), check (проверить и починить сразу),
+        // pref --es host <имя> (выбранный DNS, к которому «Сторож» возвращается), probe (какие DNS отвечают напрямую)
+        if ("dns".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null || g.dns == null) { Log.i("guard", "dns: служба Сторожа не запущена"); return; }
+            final String a = i.getStringExtra("a"), host = i.getStringExtra("host");
+            final PendingResult pr = goAsync();
+            new Thread(() -> {
+                String out;
+                if ("pref".equals(a) && host != null) { g.dns.setPref(host); out = "выбранный DNS: " + host; }
+                else if ("check".equals(a)) { g.dns.check(true); out = "проверено, стоит " + g.dns.current(); }
+                else if ("probe".equals(a)) {
+                    StringBuilder b = new StringBuilder();
+                    for (DnsWatch.P x : DnsWatch.ALL) b.append(x.host).append(DnsWatch.probe(x) ? " отвечает; " : " молчит; ");
+                    out = b.toString();
+                } else out = "стоит " + g.dns.current() + ", выбранный " + g.dns.pref() + ", интернет " + (DnsWatch.ipUp() ? "есть" : "нет")
+                        + ", имена " + (g.dns.namesWork() ? "разрешаются" : "НЕ разрешаются");
+                Log.i("guard", "dns: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-dns-cmd").start();
+            return;
+        }
         if ("daylevel".equals(i.getStringExtra("do"))) {
             GuardService g = GuardService.running;
             if (g != null) g.setDayLevel(i.getIntExtra("v", 45));
@@ -226,7 +330,29 @@ public class Cmd extends BroadcastReceiver {
         // Экран блокировки «Дома»: через 15 минут простоя подсветка вдвое (--es do saver --ez on true|false)
         if ("saver".equals(i.getStringExtra("do"))) {
             GuardService g = GuardService.running;
-            if (g != null) g.setSaver(i.getBooleanExtra("on", false));
+            boolean on = i.getBooleanExtra("on", false);
+            if (g != null) { g.setSaver(on); return; }
+            // Службы нет (её убила система или обновление): «хватит» всё равно возвращает подсветку с диска, служба поднимается (06.11)
+            if (!on) GuardService.restoreSaver(c);
+            GuardService.start(c);
+            return;
+        }
+        // Расписание ночи (06.11, план Codex, блок 3): --es do nighthours [--ei from 18..23 --ei to 5..10] [--ez enabled true|false];
+        // без extras только ответ. Шлёт «Настройки «Дома»» через AppCmd, с ПК через Cmd
+        if ("nighthours".equals(i.getStringExtra("do"))) {
+            GuardService g = GuardService.running;
+            String out;
+            if (g == null) {
+                out = "служба «Сторожа» не запущена";
+                GuardService.start(c);
+            } else {
+                String r = "";
+                if (i.hasExtra("from") && i.hasExtra("to")) r = g.setNightHours(i.getIntExtra("from", 22), i.getIntExtra("to", 7)) + "; ";
+                if (i.hasExtra("enabled")) g.setNightEnabled(i.getBooleanExtra("enabled", true));
+                out = r + (g.nightEnabled() ? "ночная подсветка с " + GuardService.nf() + " до " + GuardService.nt() : "ночная подсветка выключена");
+            }
+            Log.i("guard", "nighthours: " + out);
+            setResultData(out);
             return;
         }
         // Граница для проверки, как в 22:00 и 7:00: --es do night --ez on true|false

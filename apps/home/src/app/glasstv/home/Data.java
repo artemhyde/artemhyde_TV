@@ -82,10 +82,8 @@ final class Data {
 
     private final List<String[]> verses = new ArrayList<>();
 
-    // Что включено в настройках сборки (Config): без города нет погоды, без курсов нет строки курсов, без стихов нет стиха
-    static final boolean WEATHER_ON = Config.HAS_LOCATION;
-    static final boolean RATES_ON = "nbrb".equals(Config.RATES);
-    static final boolean VERSES_ON = !"off".equals(Config.VERSES);
+    // Что включено, решают настройки на ТВ (Setup, 06.11; значения сборки Config там только начальные):
+    // без города нет погоды, без курсов нет строки курсов, без стихов нет стиха
 
     // Фото: три списка (утро, день, вечер) и у каждого своя очередь показа
     private final List<List<Photo>> bySlot = new ArrayList<>();
@@ -111,8 +109,8 @@ final class Data {
 
     // ===== Стихи: подборка из Синодального перевода лежит в приложении =====
 
+    // Подборка грузится всегда (она в самом приложении): стих можно включить на ТВ без перезапуска
     private void loadVerses() {
-        if (!VERSES_ON) return;
         try (BufferedReader r = new BufferedReader(new InputStreamReader(app.getResources().openRawResource(R.raw.verses), StandardCharsets.UTF_8))) {
             StringBuilder b = new StringBuilder();
             String line;
@@ -156,16 +154,39 @@ final class Data {
 
     // ===== Обновление из интернета =====
 
+    // Человек сменил на ТВ город или курсы (Setup): цифры прежнего города не показываем, грузим заново
+    void setupChanged() {
+        temp = feels = tMax = tMin = Double.NaN;
+        code = -1;
+        usd = eur = rub = Double.NaN;
+        p.edit().remove("weatherAt").remove("ratesAt").remove("weatherFailAt").remove("ratesFailAt").apply();
+        refresh();
+        changed();
+    }
+
+    // Без связи (план Codex, блок 6): сроки и пометки в Fresh. Экран зовёт refresh() раз в минуту, в сеть идём по Fresh.due
+    private final java.util.concurrent.atomic.AtomicBoolean refreshing = new java.util.concurrent.atomic.AtomicBoolean();
+
     void refresh() {
+        if (!refreshing.compareAndSet(false, true)) return;   // прошлый заход ещё ждёт сеть
         long now = System.currentTimeMillis();
         ex.execute(() -> {
-            boolean any = false;
-            if (WEATHER_ON && (now - p.getLong("weatherAt", 0) > 30 * 60_000L || Double.isNaN(temp))) any |= loadWeather();
-            if (RATES_ON && (now - p.getLong("ratesAt", 0) > 3 * 3600_000L || Double.isNaN(usd))) any |= loadRates();
-            any |= loadPhotos();
-            if (any) { save(); changed(); }
+            try {
+                boolean any = false;
+                if (Setup.weatherOn(app) && Fresh.due(now, weatherAt(), p.getLong("weatherFailAt", 0), Fresh.WEATHER_EVERY, Double.isNaN(temp))) { loadWeather(); any = true; }
+                if (Setup.ratesOn(app) && Fresh.due(now, ratesAt(), p.getLong("ratesFailAt", 0), Fresh.RATES_EVERY, Double.isNaN(usd))) { loadRates(); any = true; }
+                any |= loadPhotos();
+                if (any) { save(); changed(); }
+            } finally {
+                refreshing.set(false);
+            }
         });
     }
+
+    long weatherAt() { return p.getLong("weatherAt", 0); }
+    long ratesAt() { return p.getLong("ratesAt", 0); }
+    int weatherState(long now) { return Fresh.weather(now, weatherAt(), p.getLong("weatherFailAt", 0), Double.isNaN(temp)); }
+    int ratesState(long now) { return Fresh.rates(now, ratesAt(), p.getLong("ratesFailAt", 0), Double.isNaN(usd)); }
 
     // Только фото: дёшево, если всё уже скачано. Экран зовёт это раз в минуту, чтобы фото следующего
     // времени суток успело лечь на диск заранее
@@ -177,7 +198,7 @@ final class Data {
         try {
             // Часовой пояс Open-Meteo определяет сам по координатам
             JSONObject j = new JSONObject(get("https://api.open-meteo.com/v1/forecast?latitude="
-                    + String.format(Locale.US, "%.4f", Config.LAT) + "&longitude=" + String.format(Locale.US, "%.4f", Config.LON)
+                    + String.format(Locale.US, "%.4f", Setup.lat(app)) + "&longitude=" + String.format(Locale.US, "%.4f", Setup.lon(app))
                     + "&current=temperature_2m,apparent_temperature,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min"
                     + "&timezone=auto&forecast_days=1"));
             JSONObject cur = j.getJSONObject("current");
@@ -192,6 +213,7 @@ final class Data {
             return true;
         } catch (Exception e) {
             Log.w("home", "погода не загрузилась", e);
+            p.edit().putLong("weatherFailAt", System.currentTimeMillis()).apply();
             return false;
         }
     }
@@ -205,6 +227,7 @@ final class Data {
             return true;
         } catch (Exception e) {
             Log.w("home", "курсы не загрузились", e);
+            p.edit().putLong("ratesFailAt", System.currentTimeMillis()).apply();
             return false;
         }
     }
@@ -379,10 +402,14 @@ final class Data {
         for (File f : fs) if (!all.contains(f.getName())) f.delete();
     }
 
-    static Bitmap decode(File f) {
+    static Bitmap decode(File f) { return decode(f, 1); }
+
+    // sample 2: вдвое меньше по каждой стороне, вчетверо меньше памяти (облегчённый режим)
+    static Bitmap decode(File f, int sample) {
         try {
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inPreferredConfig = Bitmap.Config.RGB_565;   // вдвое меньше памяти, для фото незаметно
+            o.inSampleSize = Math.max(1, sample);
             return BitmapFactory.decodeFile(f.getAbsolutePath(), o);
         } catch (Throwable t) {
             return null;

@@ -4,6 +4,9 @@
     android:versionCode="3"
     android:versionName="1.2">
 
+    <!-- Команды «Сторожу» (06.11): вход app.glasstv.guard.AppCmd пускает только приложения с тем же ключом подписи -->
+    <permission android:name="app.glasstv.permission.GUARD" android:protectionLevel="signature" />
+    <uses-permission android:name="app.glasstv.permission.GUARD" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
@@ -11,6 +14,8 @@
     <!-- Для капсулы «Продолжить» и чистого запуска плиток: когда гас экран и когда приложения были на виду.
          Выдаётся с ПК: appops set app.glasstv.home GET_USAGE_STATS allow -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <!-- «Удалить приложение» из меню плитки: системное окно подтверждения удаления (обычное право, выдаётся при установке) -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <!-- Чтобы видеть все приложения ТВ для плиток -->
     <queries>
@@ -84,6 +89,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- «Настройки «Дома»» (06.11): город для погоды, курсы, стих, стиль, приложения ярлыков; открывается плиткой в конце
+             «Все приложения», с ПК: am start -n app.glasstv.home/.SetupActivity -->
+        <activity
+            android:name=".SetupActivity"
+            android:label="Настройки «Дома»"
+            android:theme="@style/Home"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape" />
 
         <!-- «Волна» сообщает, что играет -->
         <receiver android:name=".Now" android:exported="true" />

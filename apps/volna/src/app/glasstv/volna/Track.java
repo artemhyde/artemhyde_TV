@@ -15,6 +15,10 @@ final class Track {
     int tags;
     String bucket = "";   // для «Нового»: из какой корзины жанров
     String thumb = "";    // квадратная обложка YouTube Music (lh3), если её дал список
+    // Откуда трек: какой подбор, для какой волны и какого профиля его собрал. По этим меткам видно, что старый ответ не подменил новый
+    int srcMode = -1;     // -1: выбран руками из списка
+    String srcProfile;
+    int srcGen;
 
     Track(String id, String title, String artist, long durationMs) {
         this.id = id;
@@ -31,6 +35,9 @@ final class Track {
         t.kind = kind;
         t.tags = tags;
         t.bucket = bucket;
+        t.srcMode = srcMode;
+        t.srcProfile = srcProfile;
+        t.srcGen = srcGen;
         return t;
     }
 
@@ -48,6 +55,9 @@ final class Track {
         t.tags = tags;
         t.bucket = bucket;
         t.thumb = thumb;
+        t.srcMode = srcMode;
+        t.srcProfile = srcProfile;
+        t.srcGen = srcGen;
         return t;
     }
 

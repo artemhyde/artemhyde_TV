@@ -9,9 +9,10 @@ import android.os.Handler;
 // Модель панели и разговор со «Сторожем». Эффекты звука живут в «Стороже» (он работает всегда),
 // это приложение только интерфейс: шлёт команды и читает состояние.
 //
-// ПРОТОКОЛ «Звук» и «Сторож» (получатель app.glasstv.guard/app.glasstv.guard.Cmd, действие do=eq)
+// ПРОТОКОЛ «Звук» и «Сторож» (получатель app.glasstv.guard/app.glasstv.guard.AppCmd, действие do=eq)
 //
-// Запрос: явный broadcast на компонент app.glasstv.guard/.Cmd, extra do = eq, extra a = state | set.
+// Запрос: явный broadcast на компонент app.glasstv.guard/.AppCmd (вход для своих приложений, право app.glasstv.permission.GUARD;
+// с ПК тот же разбор через .Cmd), extra do = eq, extra a = state | set.
 //   a=state (по умолчанию)  только прочитать, ничего не менять.
 //   a=set                   записать и применить. Необязательные extras (целые числа):
 //                             preset  строка: kino | music | night | clean | custom
@@ -42,7 +43,7 @@ import android.os.Handler;
 final class Eq {
     private Eq() { }
 
-    static final String GUARD_PKG = "app.glasstv.guard", GUARD_CMD = "app.glasstv.guard.Cmd";
+    static final String GUARD_PKG = "app.glasstv.guard", GUARD_CMD = "app.glasstv.guard.AppCmd";
 
     // Индексы величин: речь, выравнивание, бас, детали (порядок везде один и тот же)
     static final int DE = 0, VL = 1, BASS = 2, TREBLE = 3;
