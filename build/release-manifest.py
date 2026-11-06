@@ -67,8 +67,9 @@ def sha256(path):
     return h.hexdigest()
 
 
-commit = run('git', '-C', root, 'rev-parse', 'HEAD').strip() or None
-dirty = bool(run('git', '-C', root, 'status', '--porcelain').strip()) if commit else None
+# Коммит и пометку о незакоммиченных правках передаёт build/release.sh: исходники выпуска это выгрузка без .git
+commit = os.environ.get('HYDE_COMMIT') or None
+dirty = os.environ.get('HYDE_DIRTY') == '1'
 
 tiles = {}
 tt = os.path.join(root, 'apps', 'tiles', 'tiles.txt')
