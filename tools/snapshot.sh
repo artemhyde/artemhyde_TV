@@ -68,7 +68,7 @@ grab features.txt            "pm list features"
              enabled_accessibility_services accessibility_enabled default_input_method; do
         echo "secure.$k: $(tv_sh "settings get secure $k" 2>&1 | tr -d '\r')"
     done
-    for k in private_dns_mode window_animation_scale transition_animation_scale animator_duration_scale \
+    for k in private_dns_mode private_dns_specifier window_animation_scale transition_animation_scale animator_duration_scale \
              adb_enabled adb_wifi_enabled stay_on_while_plugged_in; do
         echo "global.$k: $(tv_sh "settings get global $k" 2>&1 | tr -d '\r')"
     done

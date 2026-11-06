@@ -175,6 +175,8 @@ st="$RTMP/online"; [ -f "$st" ] || echo 1 > "$st"
 if [ "$1" = get-state ]; then if [ "$(cat "$st")" = 1 ]; then echo device; exit 0; else echo "error: no devices"; exit 1; fi; fi
 [ "$(cat "$st")" = 1 ] || { echo "error: device offline"; exit 1; }
 shift
+# Чтение настройки: значение из файла cur_<пространство>_<ключ>, нет файла: null (в журнал выполненного не идёт)
+case "$*" in "settings get "*) set -- $*; f="$RTMP/cur_$3_$4"; if [ -f "$f" ]; then cat "$f"; echo; else echo null; fi; exit 0 ;; esac
 echo "$*" >> "$RTMP/ran"
 case "$*" in "${LOSECMD:-@@}") echo 0 > "$st"; exit 1 ;; "${FAILCMD:-@@}") exit 1 ;; esac
 exit 0
@@ -199,6 +201,41 @@ check "связь пропала посреди: код 3, остаток не �
 rm -f "$TMP/online" "$TMP/ran"; echo 0 > "$TMP/online"
 out="$(RTMP="$TMP" ADB="$TMP/radb" TV=x:1 bash "$TMP/backup/r/restore.sh" --yes 2>&1)"; rc=$?
 check "ТВ не на связи с самого начала: код 3, ничего не выполнялось" '[ "$rc" = 3 ] && [ ! -f "$TMP/ran" ]'
+
+echo "== restore.sh: настройки, которые приложения меняют сами (частный DNS, спецвозможности, заставка)"
+gen="$(bash "$HERE/../make-restore.sh" "$TMP/backup/r" 2>&1)"
+check "в снимке нет списков настроек: предупреждение" 'case "$gen" in *"откат не вернёт"*) true ;; *) false ;; esac'
+# Снимок «до»: DNS автоматический, адреса частного DNS нет, заставка включена, экран гаснет через 10 минут, отладка по сети включена
+printf 'private_dns_mode=opportunistic\nadb_wifi_enabled=1\n' > "$TMP/backup/r/settings-global.txt"
+printf 'screensaver_enabled=1\naccessibility_enabled=0\n' > "$TMP/backup/r/settings-secure.txt"
+printf 'screen_off_timeout=600000\n' > "$TMP/backup/r/settings-system.txt"
+gen="$(bash "$HERE/../make-restore.sh" "$TMP/backup/r" 2>&1)"
+# Сейчас: «Сторож» сам поставил частный DNS и вписал службу Key Mapper, тайм-аут на максимуме; заставка уже как была
+printf 'hostname' > "$TMP/cur_global_private_dns_mode"; printf 'one.one.one.one' > "$TMP/cur_global_private_dns_specifier"
+printf 'io.github.sds100.keymapper/x.MyAccessibilityService' > "$TMP/cur_secure_enabled_accessibility_services"
+printf '1' > "$TMP/cur_secure_accessibility_enabled"; printf '1' > "$TMP/cur_secure_screensaver_enabled"
+printf '2147483647' > "$TMP/cur_system_screen_off_timeout"
+out="$(FAILCMD=@@ LOSECMD=@@ runr)"; rc=$?
+ran_has() { grep -qxF -- "$1" "$TMP/ran"; }
+line_of() { grep -nxF -- "$1" "$TMP/ran" | head -1 | cut -d: -f1; }
+t_dns_mode() { ran_has "settings put global private_dns_mode 'opportunistic'"; }
+t_dns_host() { ran_has "settings delete global private_dns_specifier"; }
+t_a11y() { ran_has "settings delete secure enabled_accessibility_services" && ran_has "settings put secure accessibility_enabled '0'"; }
+t_saver() { ! grep -q "screensaver_enabled" "$TMP/ran"; }
+t_timeout() { ran_has "settings put system screen_off_timeout '600000'"; }
+t_adb() { ! grep -q "adb_wifi_enabled" "$TMP/ran"; }
+t_after() { local a d; a="$(line_of "pm enable --user 0 a")"; d="$(line_of "settings put global private_dns_mode 'opportunistic'")"; [ -n "$a" ] && [ -n "$d" ] && [ "$d" -gt "$a" ]; }
+check "частный DNS: режим как до установки" t_dns_mode
+check "адрес частного DNS убран: до установки его не было" t_dns_host
+check "служба Key Mapper убрана, спецвозможности как были" t_a11y
+check "заставка не менялась: команды для неё нет" t_saver
+check "тайм-аут экрана как до установки" t_timeout
+check "отладку по сети откат не трогает: через неё идёт сам откат" t_adb
+check "настройки возвращаются после всех команд журнала" t_after
+check "итог: код 0 и «Готово»" '[ "$rc" = 0 ] && case "$out" in *"Готово: все команды"*) true ;; *) false ;; esac'
+out="$(bash "$TMP/backup/r/restore.sh" --dry-run 2>&1)"
+check "сухой прогон показывает и эти настройки" 'case "$out" in *"частный DNS"*"opportunistic"*) true ;; *) false ;; esac'
+rm -f "$TMP"/cur_* "$TMP/backup/r"/settings-*.txt
 
 echo "== tiles_install: плитка ставится и при другом варианте приложения"
 reset_tv

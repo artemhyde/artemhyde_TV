@@ -153,13 +153,16 @@ public class GuardActivity extends Activity {
         String mode = g == null ? GuardService.ADB_ALWAYS : g.adbMode();
         String until = g == null ? "" : new java.text.SimpleDateFormat("H:mm", java.util.Locale.US).format(new java.util.Date(g.adbUntil()));
         adb.setText((adbOn ? "включена" : "выключена") + (GuardService.ADB_SERVICE.equals(mode) ? " · обслуживание до " + until
-                : GuardService.ADB_OFF.equals(mode) ? " · «Сторож» не включает" : " · держит всегда"));
+                : GuardService.ADB_OFF.equals(mode) ? " · «Сторож» не включает"
+                : adbOn ? " · держит всегда"
+                : g != null && g.refusedAt != 0 ? " · нужен Wi-Fi и «Разрешить» на экране ТВ" : " · держит всегда"));
         adb.setTextColor(adbOn ? 0xFF5ED3B4 : 0xFFFFB454);
         adbBtn.setText(GuardService.ADB_SERVICE.equals(mode) ? "Отладка: 2 часа" : GuardService.ADB_OFF.equals(mode) ? "Отладка: выключена" : "Отладка: всегда");
         notesBtn.setText(GuardService.notesEnabled(this) ? "Записки: вкл" : "Записки: выкл");
         String k = getSharedPreferences("guard", MODE_PRIVATE).getString("keys", "проверяю");
         keys.setText(k);
-        keys.setTextColor(k.startsWith("не") ? 0xFFFFB454 : 0xFF5ED3B4);
+        // «не установлен» не беда (Key Mapper нужен только для своих кнопок): обычным цветом, а не тревожным
+        keys.setTextColor("не установлен".equals(k) ? 0xFFF5F5F7 : k.startsWith("не") ? 0xFFFFB454 : 0xFF5ED3B4);
         String ip = ip();
         notes.setText(!GuardService.notesEnabled(this) ? "выключены" : ip == null ? "нет сети"
                 : "http://" + ip + ":" + GuardService.NOTE_PORT + "  ·  код " + GuardService.notesCode(this));

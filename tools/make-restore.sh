@@ -10,6 +10,8 @@
 # Порядок обратный (последнее изменение отменяется первым) с одним исключением: возврат владельца главного экрана (cmd role add-role-holder)
 # идёт после последнего pm enable. Иначе на TCL роль вернётся прежнему главному экрану, пока тот ещё отключён, и команда не пройдёт.
 # Перед удалением приложения с правами администратора (dpm set-active-admin в журнале) нужна обратная команда со снятием прав; если её нет, скрипт предупредит.
+# После команд журнала restore.sh сверяет со снимком «до» несколько настроек, которые приложения меняют сами, мимо журнала
+# (частный DNS, спецвозможности, заставка и тайм-аут экрана), и возвращает те, что отличаются.
 set -uo pipefail
 source "$(dirname "$0")/lib.sh"
 
@@ -17,7 +19,7 @@ dir=""; dry=0
 for a in "$@"; do
     case "$a" in
         --dry-run) dry=1 ;;
-        -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) gt_die "Неизвестный параметр: $a" ;;
         *) [ -z "$dir" ] && dir="$a" || gt_die "Лишний аргумент: $a" ;;
     esac
@@ -66,14 +68,59 @@ warns="$(printf '%s\n' "$undo" | awk -F'\t' -v admins="$admins" '
         }
     }')"
 
+# Настройки, которые приложения HYDE меняют сами, мимо журнала (проверка на ТВ другой марки 06.11): «Сторож» при поломке DNS
+# ставит частный DNS, вписывает службу Key Mapper в спецвозможности, если она слетела, а пока «Дом» главный экран, держит
+# заставку Android выключенной и тайм-аут экрана на максимуме. restore.sh сверяет их со снимком «до» (settings-*.txt этой же
+# папки) после всех команд журнала, когда приложений уже нет и вернуть своё обратно некому, и возвращает только отличающиеся.
+# Сюда же язык штатной клавиатуры и история переключения клавиатур: Android меняет их сам, когда клавиатуру меняют туда
+# и обратно (ime set из журнала), и в истории остаётся имя удалённой клавиатуры HYDE.
+# Отладку по сети (adb_wifi_enabled) не трогаем: через неё идёт сам откат
+RUNTIME_KEYS='secure|selected_input_method_subtype|язык штатной клавиатуры
+secure|input_methods_subtype_history|история переключения клавиатур
+global|private_dns_mode|частный DNS
+global|private_dns_specifier|адрес частного DNS
+secure|enabled_accessibility_services|службы спецвозможностей
+secure|accessibility_enabled|спецвозможности
+secure|screensaver_enabled|заставка Android
+system|screen_off_timeout|через сколько гаснет экран'
+sq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+runtime=""; rt_human=""; rt_missing=""
+while IFS='|' read -r ns key what; do
+    [ -n "$ns" ] || continue
+    f="$dir/settings-$ns.txt"
+    if [ ! -f "$f" ]; then
+        case " $rt_missing " in *" settings-$ns.txt "*) ;; *) rt_missing="$rt_missing settings-$ns.txt" ;; esac
+        continue
+    fi
+    line="$(grep -m1 "^$key=" "$f" | tr -d '\r')"
+    if [ -n "$line" ] && [ "${line#*=}" != null ]; then
+        had=1; val="${line#*=}"; rt_human="$rt_human  $what ($ns $key): «$val»
+"
+    else
+        had=0; val=""; rt_human="$rt_human  $what ($ns $key): до установки не было, убрать
+"
+    fi
+    runtime="${runtime}back $(sq "$what") $ns $key $(sq "$val") $had
+"
+done <<EOF
+$RUNTIME_KEYS
+EOF
+rt_warn=""
+[ -z "$rt_missing" ] || rt_warn="Внимание: в папке снимка нет$rt_missing. Настройки, которые приложения меняют сами (частный DNS, спецвозможности, заставка), откат не вернёт."
+
 if [ "$dry" = 1 ]; then
     gt_say "Сухой прогон: откат из $ledger (записей в журнале: $total, команд отката: $count). Ничего не выполняется."
     printf '%s\n' "$undo" | awk -F'\t' '$0 != "" {printf "  %s   (отмена: %s)\n", $4, $2}'
+    if [ -n "$runtime" ]; then
+        gt_say "Потом сверка со снимком «до»: эти настройки вернутся, если приложения их меняли:"
+        printf '%s' "$rt_human"
+    fi
     if [ -n "$manual" ]; then
         gt_say "Откатом не покрывается, делать руками:"
         printf '%s\n' "$manual" | awk -F'\t' '{printf "  %s\n", $2}'
     fi
     [ -z "$warns" ] || printf '%s\n' "$warns"
+    [ -z "$rt_warn" ] || gt_say "$rt_warn"
     exit 0
 fi
 
@@ -120,8 +167,28 @@ run() {
         fi
     fi
 }
+# Настройка, которую приложения меняют сами: вернуть как в снимке «до», только если сейчас иначе.
+# back 'что' пространство ключ 'значение до' есть_в_снимке (1; 0 значит «до установки не было», тогда настройка удаляется)
+back() {
+    local cur q
+    if [ "$DRY" = 1 ]; then
+        if [ "$5" = 1 ]; then echo "  $1: вернуть «$4», если сейчас иначе"; else echo "  $1: убрать, если появилась (до установки её не было)"; fi
+        return 0
+    fi
+    [ "$LOST" = 1 ] && return 0
+    cur="$(tvsh "settings get $2 $3" 2>/dev/null | tr -d '\r')"
+    if [ "$5" = 1 ]; then
+        [ "$cur" = "$4" ] && return 0
+        q="$(printf '%s' "$4" | sed "s/'/'\\\\''/g")"
+        run "$1: сейчас «$cur», вернуть «$4»" "settings put $2 $3 '$q'"
+    else
+        [ "$cur" = null ] && return 0
+        run "$1: сейчас «$cur», до установки не было, убрать" "settings delete $2 $3"
+    fi
+}
 HEAD
     printf 'echo "Откат: %s команд, начиная с самой поздней записи."\n' "$count"
+    [ -z "$runtime" ] || echo 'echo "Потом сверка со снимком «до»: вернутся настройки, которые приложения меняли сами."'
     if [ -n "$warns" ]; then printf '%s\n' "$warns" | while IFS= read -r w; do printf "echo '%s'\n" "$w"; done; fi
     cat <<'ASK'
 if [ "$DRY" = 0 ] && [ "$(tvstate)" != device ]; then
@@ -138,6 +205,11 @@ ASK
     printf '%s\n' "$undo" | awk -F'\t' -v q="'" '
         function esc(s) { gsub(q, q "\\" q q, s); return s }
         $0 != "" { printf "run %s%s%s %s%s%s\n", q, esc("отмена: " $2), q, q, esc($4), q }'
+    if [ -n "$runtime" ]; then
+        echo 'echo ""'
+        echo 'echo "Сверка со снимком «до»: настройки, которые приложения меняли сами, мимо журнала"'
+        printf '%s' "$runtime"
+    fi
     if [ -n "$manual" ]; then
         echo 'echo ""'
         echo 'echo "Откатом не покрывается, делайте руками:"'
@@ -164,4 +236,5 @@ chmod +x "$out" 2>/dev/null || true
 bash -n "$out" || gt_die "Собранный restore.sh не прошёл проверку синтаксиса: $out"
 gt_say "Собрано: $out (команд отката: $count, руками: $(printf '%s' "$manual" | grep -c . || true))"
 [ -z "$warns" ] || printf '%s\n' "$warns"
+[ -z "$rt_warn" ] || gt_say "$rt_warn"
 gt_say "Показать без выполнения: bash \"$out\" --dry-run"

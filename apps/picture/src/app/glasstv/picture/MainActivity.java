@@ -49,6 +49,7 @@ public class MainActivity extends Activity {
     boolean moved;                             // после выбора режима двигали ползунок: ответ на режим значения не трогает
     boolean held;                              // выбор держится до границы
     String until = "", note = "";              // граница (22:00 или 07:00) и то, что мешает работе
+    TextView noteLine;                         // то, что мешает, своей строкой под шапкой (видна, только когда есть)
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -212,7 +213,7 @@ public class MainActivity extends Activity {
         until = s.until;
         if (!afterSet && fill) col = selected >= 0 ? TABS + selected : TABS;
         if (!s.svc) note = "Сторож не запущен";
-        else if ("fail".equals(s.st)) note = "ТВ не отдаёт картинку";
+        else if ("fail".equals(s.st)) note = "ТВ не отдаёт настройки картинки: эта панель работает только на ТВ TCL";
         else if ("nm".equals(s.st)) note = "Подсветку ведёт «Ночной режим»";
         else note = "";
         paint(false);
@@ -254,10 +255,12 @@ public class MainActivity extends Activity {
             bars[k].setLit(on);
             bars[k].set(v[k], animate);
         }
-        // Справа в шапке: что мешает (коралловым), подсказка к пику, иначе до какой границы держится выбор
+        // Что мешает: своей строкой под шапкой (06.11, ТВ другой марки): справа в шапке после пяти режимов места почти нет,
+        // и пометка обрезалась. Справа в шапке остаются подсказка к пику и до какой границы держится выбор
+        noteLine.setText(note);
+        noteLine.setVisibility(note.isEmpty() ? View.GONE : View.VISIBLE);
         if (!note.isEmpty()) {
-            status.setText(note);
-            status.setTextColor(Ui.WARN);
+            status.setText("");
         } else if (row == 3 && peakIdle) {
             status.setText("без затемнения пика нет");
             status.setTextColor(Ui.W60);
@@ -320,6 +323,15 @@ public class MainActivity extends Activity {
         sp.leftMargin = px(12);
         head.addView(status, sp);
         panel.addView(head, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(30)));
+        noteLine = Ui.text(this, "", 13, false, Ui.WARN);
+        noteLine.setSingleLine();
+        noteLine.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        noteLine.setVisibility(View.GONE);
+        noteLine.setPadding(px(24), 0, 0, 0);   // вровень с текстом вкладок
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        np.topMargin = px(2);
+        np.bottomMargin = px(4);
+        panel.addView(noteLine, np);
 
         // Четыре ползунка в тонких строках: подпись, линия, значение
         for (int k = 0; k < rows.length; k++) {

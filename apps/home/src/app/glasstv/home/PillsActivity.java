@@ -80,7 +80,7 @@ public class PillsActivity extends Activity {
         sp.bottomMargin = px(48);   // там же, где была бы панель TCL
         root.addView(strip, sp);
 
-        strip.addView(new Hint(this, HINT, dp), new LinearLayout.LayoutParams(-2, -2));
+        strip.addView(new Hint(this, tclPanel() ? HINT : "Шестерёнка ещё раз: закрыть", dp), new LinearLayout.LayoutParams(-2, -2));
         LinearLayout row = new LinearLayout(this) {
             @Override public boolean hasOverlappingRendering() { return false; }
         };

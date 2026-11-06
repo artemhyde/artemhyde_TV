@@ -111,6 +111,7 @@ public class GuardService extends Service {
         netCb = new ConnectivityManager.NetworkCallback() {
             @Override public void onAvailable(Network net) {
                 netEventAt = SystemClock.elapsedRealtime();
+                refusedAt = 0;   // другая сеть: в ней отладка может быть уже разрешена
                 h.postDelayed(() -> keepAdb("сеть сменилась"), 4_000);
                 h.removeCallbacks(dnsTick);
                 h.postDelayed(dnsTick, 20_000);
@@ -161,7 +162,7 @@ public class GuardService extends Service {
                 // Телевизор включили: через пару секунд проверить пульт и отладку
                 h.removeCallbacks(checkKeys);
                 h.postDelayed(checkKeys, 4_000);
-                h.postDelayed(() -> keepAdb("включение экрана"), 4_000);
+                h.postDelayed(() -> keepAdb("включение экрана", false), 4_000);
                 h.postDelayed(svcTick, 20_000);   // сеть после сна поднимается не сразу
                 h.removeCallbacks(dnsTick);
                 h.postDelayed(dnsTick, 25_000);
@@ -193,7 +194,7 @@ public class GuardService extends Service {
 
     private final Runnable periodic = new Runnable() {
         @Override public void run() {
-            keepAdb("проверка");
+            keepAdb("проверка", false);
             noDream();
             applyPq("проверка");
             checkKeys.run();
@@ -1011,6 +1012,13 @@ public class GuardService extends Service {
     static final long QUIET_MS = 20_000;        // столько после смены сети или пробуждения выключение считается системным
     long netEventAt;                            // последняя смена сети, пробуждение или запуск (SystemClock.elapsedRealtime)
     long selfOffAt;                             // когда «Сторож» сам выключил отладку: это не решение человека
+    // Когда «Сторож» сам включил отладку (06.11, проверка на ТВ другой марки). Если Android тут же выключает её обратно,
+    // это отказ системы, а не человек: нет Wi-Fi или в этой сети отладку ещё не разрешали (Android показывает окно
+    // «Разрешить отладку в этой сети?» и до ответа держит её выключенной). Режим остаётся прежним
+    long selfOnAt;
+    // Когда Android последний раз так отказал. До смены сети «Сторож» не просит снова: иначе окно «Разрешить» всплывало бы
+    // при каждом пробуждении экрана и каждые 15 минут. Просит при запуске, смене сети и выборе режима на экране «Сторожа»
+    volatile long refusedAt;
     android.database.ContentObserver adbWatch;
 
     boolean adbOn() { return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1; }
@@ -1057,12 +1065,17 @@ public class GuardService extends Service {
         }
     }
 
-    void keepAdb(String why) {
+    void keepAdb(String why) { keepAdb(why, true); }
+
+    // retry false: обычная проверка (пробуждение, раз в 15 минут), после отказа Android она не просит снова
+    void keepAdb(String why, boolean retry) {
         String m = adbMode();
         if (ADB_OFF.equals(m)) return;
+        if (!retry && refusedAt != 0) return;
         if (ADB_SERVICE.equals(m) && System.currentTimeMillis() >= adbUntil()) { h.post(serviceEnd); return; }
         try {
             if (!adbOn()) {
+                selfOnAt = SystemClock.elapsedRealtime();
                 Settings.Global.putInt(getContentResolver(), "adb_wifi_enabled", 1);
                 log("Отладка по сети включена (" + why + ")");
             }
@@ -1079,6 +1092,11 @@ public class GuardService extends Service {
             @Override public void onChange(boolean self) {
                 if (adbOn() || ADB_OFF.equals(adbMode())) return;
                 long now = SystemClock.elapsedRealtime();
+                if (selfOnAt != 0 && now - selfOnAt <= QUIET_MS) {
+                    refusedAt = now;
+                    log("Android не дал включить отладку по сети: нет Wi-Fi или в этой сети её ещё не разрешили. Снова попрошу при смене сети");
+                    return;
+                }
                 if (humanOff(now, netEventAt, selfOffAt, now)) {
                     setAdbMode(ADB_OFF, "выключили в настройках Android");
                     showNote("Отладку по сети выключили в настройках: «Сторож» больше не включает её сам. Вернуть: экран «Сторож»");
@@ -1118,6 +1136,14 @@ public class GuardService extends Service {
 
     final Runnable checkKeys = () -> {
         if (keyMapperAlive()) { p.edit().putString("keys", "работает").apply(); return; }
+        // Key Mapper не стоит (на ТВ без своих кнопок его не ставят): честно так и сказать и не вписывать
+        // несуществующую службу в настройки спецвозможностей
+        try {
+            getPackageManager().getPackageInfo("io.github.sds100.keymapper", 0);
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            p.edit().putString("keys", "не установлен").apply();
+            return;
+        }
         ContentResolver cr = getContentResolver();
         try {
             String was = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
