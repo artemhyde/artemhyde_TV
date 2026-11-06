@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tv.sh: набор функций для управления ТВ из консоли (кнопки, снимок экрана, разбор экрана, журнал изменений, установка, раскладка Key Mapper).
 # Подключение: LEDGER=backup/<метка>/ledger.tsv TV=192.168.0.10:5555 source tools/tv.sh; затем вызывать функции:
-#   key, shot, dumpui, tapt, focus_texts, dpad_to, goto_tile, ledger, off, inst, home_switch, tiles_install, play_install, rc_push, rc_press, km_new_map, km_new_long.
+#   key, shot, dumpui, tapt, focus_texts, dpad_to, goto_tile, ledger, off, inst, home_switch, tiles_install, play_install, settings_save, settings_load,
+#   rc_push, rc_press, km_new_map, km_new_long.
 # Переменные задавай в каждом вызове заново: каждый вызов Bash начинается с нового шелла. LEDGER обязателен для всего, что меняет ТВ (off, inst, home_switch, tiles_install, play_install):
 # без журнала эти функции отказываются работать, потому что откат строится из журнала.
 # Нужны adb и Python 3 (для разбора экрана). Рабочая папка для снимков и разбора экрана: TV_WORK (по умолчанию backup/.tv-work: backup/ в git не попадает).
@@ -270,17 +271,34 @@ _home_lost() {
 
 # tiles_install: поставить плитки из out/tiles/*.apk, но только те, чьё приложение-цель уже стоит на ТВ: иначе плитка на главном экране молча ничего не откроет.
 # Цель берётся из apps/tiles/tiles.txt (колонки: имя|пакет плитки|пакет цели|подпись|...), тот же файл читает build/build-app.sh.
-# Цели плиток «Браузер» и «Файлы» подправь в tiles.txt по выбору человека до сборки плиток, иначе плитка будет ждать приложение, которого нет.
+# Плитка ставится, если на ТВ есть её приложение или другой вариант того же (список _tile_alts ниже, тот же в «Доме», HomeActivity.ALT):
+# TV Bro из Google Play вместо нашей сборки, второй файловый менеджер, официальный YouTube вместо SmartTube. «Дом» сам открывает тот вариант,
+# что стоит; своё приложение для плитки человек выбирает потом на ТВ («Настройки «Дома»», «Какие приложения открывают плитки»).
+_tile_alts() {
+    case "$1" in
+        app.glasstv.browser|com.phlox.tvwebbrowser.foss) echo "com.phlox.tvwebbrowser" ;;
+        com.phlox.tvwebbrowser) echo "com.phlox.tvwebbrowser.foss" ;;
+        me.zhanghai.android.files) echo "com.cxinventor.file.explorer" ;;
+        com.cxinventor.file.explorer) echo "me.zhanghai.android.files" ;;
+        org.smarttube.stable) echo "com.liskovsoft.smarttubetv.beta com.google.android.youtube.tv" ;;
+    esac
+}
+
 tiles_install() {
-    local tf="$GT_ROOT/apps/tiles/tiles.txt" tname pkg target label rest n=0 skip=0
+    local tf="$GT_ROOT/apps/tiles/tiles.txt" tname pkg target label rest n=0 skip=0 have alt
     [ -f "$tf" ] || { echo "нет $tf"; return 1; }
     gt_need_ledger || return 1
     while IFS='|' read -r -u 3 tname pkg target label rest; do
         if [ ! -f "$GT_ROOT/out/tiles/$tname.apk" ]; then echo "пропуск $tname: нет out/tiles/$tname.apk (плитки собираются: bash build/build-app.sh tiles)"; skip=$((skip + 1)); continue; fi
-        if tv_sh "pm path $target" 2>/dev/null | grep -q package; then
+        have=""
+        for alt in "$target" $(_tile_alts "$target"); do
+            if tv_sh "pm path $alt" 2>/dev/null | grep -q package; then have="$alt"; break; fi
+        done
+        if [ -n "$have" ]; then
+            [ "$have" != "$target" ] && echo "плитка $tname: вместо $target стоит $have, «Дом» откроет его"
             if inst "$GT_ROOT/out/tiles/$tname.apk" "$pkg" "плитка $tname"; then n=$((n + 1)); fi
         else
-            echo "пропуск плитки $tname: на ТВ нет приложения $target"; skip=$((skip + 1))
+            echo "пропуск плитки $tname: на ТВ нет приложения $target и его вариантов"; skip=$((skip + 1))
         fi
     done 3< <(grep -v '^[[:space:]]*#' "$tf" | grep -v '^[[:space:]]*$' | tr -d '\r')
     echo "плиток поставлено: $n, пропущено: $skip"
@@ -317,6 +335,40 @@ play_install() {
         fi
     done
     echo "НЕ УСТАНОВИЛСЯ: $p"; return 1
+}
+
+# settings_save [файл.json]: копия настроек «Дома», «Сторожа» и «Волны» одним файлом на компьютер (на ТВ то же самое:
+# «Настройки «Дома»» > «Перенос настроек»). На ТВ копия ложится в «Загрузки», сюда забирается. По умолчанию
+# backup/hyde-settings-<время>.json: в копии город и координаты, а backup/ в git не попадает. Пароли, история и код записок
+# в копию не входят. ТВ не меняет, журнал не нужен.
+settings_save() {
+    local out="${1:-$GT_ROOT/backup/hyde-settings-$(date +%Y%m%d-%H%M%S).json}" r p
+    r="$(tv_sh "am broadcast -n app.glasstv.home/.SetupCmd --es do export" 2>/dev/null | tr -d '\r' | grep -m1 'data=')"
+    p="$(printf '%s' "$r" | sed -nE 's/.*data="(\/sdcard\/[^"]*\.json).*/\1/p')"
+    [ -n "$p" ] || { echo "ОШИБКА: «Дом» не сохранил настройки (${r:-нет ответа}). Стоит ли app.glasstv.home?"; return 1; }
+    mkdir -p "$(dirname "$out")"
+    { tv_adb pull "$p" "$(gt_native "$out")" >/dev/null 2>&1 && [ -s "$out" ]; } || { echo "ОШИБКА: не забрал $p с ТВ"; return 1; }
+    echo "настройки сохранены: $out"
+}
+
+# settings_load файл.json: вернуть настройки из копии. Сначала нынешние сохраняются в backup/ (вернуть их: settings_load тот файл),
+# потом «Дом» раскладывает копию по своим приложениям и отвечает, сколько настроек приняло каждое. Загрузка дописывает:
+# чего нет в копии, не трогает. Режим отладки «выключена» из копии сразу не выключает: два часа обслуживания, потом сам.
+settings_load() {
+    local f="${1:-}" r before
+    [ -f "$f" ] || { echo "settings_load: нужен файл копии"; return 1; }
+    before="$GT_ROOT/backup/hyde-settings-before-$(date +%Y%m%d-%H%M%S).json"
+    settings_save "$before" >/dev/null || echo "ВНИМАНИЕ: нынешние настройки сохранить не удалось, загружаю без копии «до»"
+    tv_adb push "$(gt_native "$f")" /data/local/tmp/hyde-settings.json >/dev/null 2>&1 || { echo "ОШИБКА: файл не дошёл до ТВ"; return 1; }
+    tv_sh "chmod 644 /data/local/tmp/hyde-settings.json" >/dev/null 2>&1
+    r="$(tv_sh "am broadcast -n app.glasstv.home/.SetupCmd --es do import --es file /data/local/tmp/hyde-settings.json" 2>/dev/null \
+        | tr -d '\r' | grep -m1 'data=' | sed -E 's/.*data="(.*)"$/\1/')"
+    tv_sh "rm -f /data/local/tmp/hyde-settings.json" >/dev/null 2>&1
+    case "$r" in
+        Загружено*) echo "$r"; [ -s "$before" ] && echo "прежние настройки: $before" ;;
+        *) echo "ОШИБКА: ${r:-«Дом» не ответил}"; return 1 ;;
+    esac
+    return 0
 }
 
 # goto_tile "Имя": на главном экране с плитками (у плиток есть подпись) дойти кнопками до плитки по имени.

@@ -47,6 +47,7 @@ tv_state() { if [ "$(sg online)" = 1 ]; then echo device; else echo no-device; f
 tv_adb() {
     echo "adb $*" >> "$ST/calls"
     [ "$(sg online)" = 1 ] || { echo "error: device offline"; return 1; }
+    [ "$1" = pull ] && printf '{"hyde":"settings","v":1}' > "$3"
     if [ "$1" = install ]; then
         echo "$INSTALL_RESULT"
         if [ "$INSTALL_RESULT" = Success ]; then
@@ -84,6 +85,11 @@ tv_sh() {
         "input keyevent KEYCODE_HOME")
             if has "$(sg disabled)" "$(sg holder)"; then ss top com.android.tv.settings; else ss top "$(sg holder)"; fi ;;
         "dumpsys activity activities") echo "  topResumedActivity=ActivityRecord{1a u0 $(sg top)/.Main t7}" ;;
+        "am broadcast -n app.glasstv.home/.SetupCmd --es do export")
+            if [ "${NO_HOME:-0}" = 1 ]; then echo "Broadcast completed: result=0"
+            else echo "Broadcast completed: result=0, data=\"$EXPORT_PATH (части: «Сторож» «Волна» «Дом»)\""; fi ;;
+        "am broadcast -n app.glasstv.home/.SetupCmd --es do import"*)
+            echo 'Broadcast completed: result=0, data="Загружено настроек. «Дом»: 10, «Сторож»: 16, «Волна»: 3"' ;;
     esac
     return 0
 }
@@ -178,6 +184,38 @@ check "связь пропала посреди: код 3, остаток не �
 rm -f "$TMP/online" "$TMP/ran"; echo 0 > "$TMP/online"
 out="$(RTMP="$TMP" ADB="$TMP/radb" TV=x:1 bash "$TMP/backup/r/restore.sh" --yes 2>&1)"; rc=$?
 check "ТВ не на связи с самого начала: код 3, ничего не выполнялось" '[ "$rc" = 3 ] && [ ! -f "$TMP/ran" ]'
+
+echo "== tiles_install: плитка ставится и при другом варианте приложения"
+reset_tv
+SAVED_ROOT="$GT_ROOT"; GT_ROOT="$TMP/root"; mkdir -p "$GT_ROOT/apps/tiles" "$GT_ROOT/out/tiles"
+printf '%s\n' '# имя|плитка|цель|подпись' 'browser|app.glasstv.tile.browser|com.phlox.tvwebbrowser.foss|Браузер' \
+    'files|app.glasstv.tile.files|me.zhanghai.android.files|Файлы' 'twitch|app.glasstv.tile.twitch|tv.twitch.android.app|Twitch' \
+    > "$GT_ROOT/apps/tiles/tiles.txt"
+for n in browser files twitch; do echo apk > "$GT_ROOT/out/tiles/$n.apk"; done
+ss pkgs "$(sg pkgs) com.phlox.tvwebbrowser com.cxinventor.file.explorer"
+INST_PKG=app.glasstv.tile.x; call tiles_install
+check "браузер из Google Play вместо нашей сборки: плитка ставится" 'case "$out" in *"плитка browser: вместо com.phlox.tvwebbrowser.foss стоит com.phlox.tvwebbrowser,"*) true ;; *) false ;; esac'
+check "другой файловый менеджер: плитка ставится" 'case "$out" in *"плитка files: вместо me.zhanghai.android.files стоит com.cxinventor.file.explorer"*) true ;; *) false ;; esac'
+check "нет ни приложения, ни варианта: плитка пропущена" 'case "$out" in *"пропуск плитки twitch"*) true ;; *) false ;; esac'
+check "итог: две поставлены, одна пропущена" 'case "$out" in *"плиток поставлено: 2, пропущено: 1"*) true ;; *) false ;; esac'
+GT_ROOT="$SAVED_ROOT"
+
+echo "== settings_save и settings_load: перенос настроек"
+reset_tv
+SAVED_ROOT="$GT_ROOT"; GT_ROOT="$TMP/root2"; mkdir -p "$GT_ROOT"
+EXPORT_PATH='/sdcard/Download/hyde-settings-20261106-2000 (1).json'
+call settings_save "$TMP/copy.json"
+check "сохранение: файл забран с ТВ, путь с пробелом цел" '[ "$rc" = 0 ] && [ -s "$TMP/copy.json" ] && grep -qF "adb pull $EXPORT_PATH" "$ST/calls"'
+call settings_load "$TMP/copy.json"
+check "загрузка: ответ «Дома» показан" '[ "$rc" = 0 ] && case "$out" in *"«Сторож»: 16"*) true ;; *) false ;; esac'
+check "загрузка: прежние настройки сохранены до загрузки" 'ls "$GT_ROOT"/backup/hyde-settings-before-*.json >/dev/null 2>&1'
+check "загрузка: файл убран с ТВ" 'grep -q "rm -f /data/local/tmp/hyde-settings.json" "$ST/calls"'
+reset_tv
+NO_HOME=1; call settings_save "$TMP/copy2.json"; NO_HOME=0
+check "«Дома» нет: ошибка, файла нет" '[ "$rc" = 1 ] && [ ! -e "$TMP/copy2.json" ]'
+call settings_load "$TMP/нет.json"
+check "загрузка без файла: отказ, на ТВ ничего не шлётся" '[ "$rc" = 1 ] && ! grep -q "do import" "$ST/calls"'
+GT_ROOT="$SAVED_ROOT"
 
 echo
 echo "Итог: прошло $PASS, провалов $FAILN"

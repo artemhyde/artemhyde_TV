@@ -705,6 +705,72 @@ public class GuardService extends Service {
         }
     }
 
+    // Перенос настроек (06.11, план Codex, блок 3): только выбор человека, без журнала и служебных отметок.
+    // Код записок не переносится: на другом ТВ он свой. Режим обслуживания кончается выключением отладки, поэтому
+    // в файл идёт «выключать». Собирает и раскладывает файл «Дом» (Transfer.java), сюда приходит только часть «Сторожа»
+    static final java.util.Set<String> EXPORT_KEYS = Prefs.set("nightEnabled", "nightLevel", "nightFrom", "nightTo", "adbMode",
+            "notesOn", "dnsPref", "svcUrl", "svcPkg", "svcName", "pqAuto", "smartOn", "smartLevel", "smartMode", "smartTune",
+            "eqOn", "eqDe", "eqVl", "eqBass", "eqTreble");
+
+    static String exportJson(Context c) throws Exception {
+        org.json.JSONObject o = Prefs.dump(c.getSharedPreferences("guard", MODE_PRIVATE), EXPORT_KEYS, null);
+        if (("s:" + ADB_SERVICE).equals(o.optString("adbMode"))) o.put("adbMode", "s:" + ADB_OFF);
+        return o.toString();
+    }
+
+    static String importJson(Context c, String json) throws Exception {
+        org.json.JSONObject o = new org.json.JSONObject(json);
+        SharedPreferences sp = c.getSharedPreferences("guard", MODE_PRIVATE);
+        java.util.Map<String, ?> before = new java.util.HashMap<>(sp.getAll());
+        SharedPreferences.Editor ed = sp.edit();
+        int n = Prefs.load(ed, o, EXPORT_KEYS, null);
+        ed.commit();
+        java.util.Map<String, ?> after = sp.getAll();
+        final java.util.Set<String> changed = new java.util.HashSet<>();
+        for (String k : EXPORT_KEYS) if (!java.util.Objects.equals(before.get(k), after.get(k))) changed.add(k);
+        Log.i("guard", "перенос: загружено " + n + ", изменилось " + changed);
+        GuardService g = running;
+        if (g != null && !changed.isEmpty()) g.h.post(() -> g.applyImported(changed));
+        return "загружено настроек: " + n;
+    }
+
+    // Загруженное применить сразу, без перезапуска. Трогаем только то, что поменялось: те же значения из копии
+    // не перезапускают записки и не сбрасывают Dolby
+    void applyImported(java.util.Set<String> ch) {
+        if (ch.contains("nightFrom") || ch.contains("nightTo")) {
+            loadNightHours(p);
+            h.removeCallbacks(pqTick);
+            h.postDelayed(pqTick, 3_000);
+        }
+        if (ch.contains("nightEnabled")) setNightEnabled(nightEnabled());
+        if (ch.contains("notesOn")) setNotes(notesEnabled(this));
+        if (ch.contains("adbMode")) {
+            // «Выключать» с прошлого ТВ сразу не выключает: по сети может идти установка. Два часа обслуживания, потом само
+            if (ADB_OFF.equals(adbMode())) setAdbMode(ADB_SERVICE, "перенос настроек, потом выключится");
+            else setAdbMode(adbMode(), "перенос настроек");
+        }
+        boolean snd = false;
+        for (String k : ch) snd |= k.startsWith("smart") || k.startsWith("eq");
+        if (snd && sound != null) sound.eqChanged();
+        log("Настройки загружены из копии: изменилось " + ch.size());
+    }
+
+    // Код записок (06.11): шесть цифр, создаётся при первой нужде, виден на экране «Сторожа». Новый: команда do notes --ez newcode true
+    static synchronized String notesCode(Context c) {
+        SharedPreferences sp = c.getSharedPreferences("guard", MODE_PRIVATE);
+        String code = sp.getString("notesCode", "");
+        if (code.length() != 6) {
+            code = String.format(java.util.Locale.ROOT, "%06d", new java.security.SecureRandom().nextInt(1_000_000));
+            sp.edit().putString("notesCode", code).apply();
+        }
+        return code;
+    }
+
+    static synchronized String newNotesCode(Context c) {
+        c.getSharedPreferences("guard", MODE_PRIVATE).edit().remove("notesCode").apply();
+        return notesCode(c);
+    }
+
     // Вернуть подсветку из сохранённого без службы (команда «хватит», пока служба не запущена)
     static void restoreSaver(Context c) {
         SharedPreferences sp = c.getSharedPreferences("guard", MODE_PRIVATE);

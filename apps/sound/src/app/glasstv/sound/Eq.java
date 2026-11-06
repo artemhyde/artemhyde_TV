@@ -11,7 +11,7 @@ import android.os.Handler;
 //
 // ПРОТОКОЛ «Звук» и «Сторож» (получатель app.glasstv.guard/app.glasstv.guard.AppCmd, действие do=eq)
 //
-// Запрос: явный broadcast на компонент app.glasstv.guard/.AppCmd (вход для своих приложений, право app.glasstv.permission.GUARD;
+// Запрос: явный broadcast на компонент app.glasstv.guard/.AppCmd (вход для своих приложений, право app.glasstv.permission.HYDE;
 // с ПК тот же разбор через .Cmd), extra do = eq, extra a = state | set.
 //   a=state (по умолчанию)  только прочитать, ничего не менять.
 //   a=set                   записать и применить. Необязательные extras (целые числа):

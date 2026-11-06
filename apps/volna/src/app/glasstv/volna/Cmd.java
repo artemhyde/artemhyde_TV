@@ -9,6 +9,25 @@ import android.util.Log;
 // adb shell am broadcast -n app.glasstv.volna/.Cmd --es do my|new|next|toggle|like|dislike|stop|state
 // Профиль: --es do profile --es id second|main; имя второго профиля: --es do profile_name --es name Имя
 public class Cmd extends BroadcastReceiver {
+    // Ключи в файле переноса одинаковые у любой сборки: второй вкус в файле всегда «second»
+    static final String[][] UI_KEYS = {{"name_main", "name_main"}, {"name_" + Store.SECOND, "name_second"},
+            {"chan_" + Store.SECOND, "chan_second"}, {"toastAlways", "toastAlways"}};
+
+    static String exportUi(android.content.SharedPreferences ui) throws Exception {
+        org.json.JSONObject all = Prefs.dump(ui, null, null), o = new org.json.JSONObject();
+        for (String[] k : UI_KEYS) if (all.has(k[0])) o.put(k[1], all.get(k[0]));
+        return o.toString();
+    }
+
+    static int importUi(android.content.SharedPreferences ui, String json) throws Exception {
+        org.json.JSONObject in = new org.json.JSONObject(json), o = new org.json.JSONObject();
+        for (String[] k : UI_KEYS) if (in.has(k[1])) o.put(k[0], in.get(k[1]));
+        android.content.SharedPreferences.Editor ed = ui.edit();
+        int n = Prefs.load(ed, o, null, null);
+        ed.commit();
+        return n;
+    }
+
     @Override public void onReceive(Context c, Intent i) {
         Engine e = Engine.get(c);
         String what = i.getStringExtra("do");
@@ -34,7 +53,20 @@ public class Cmd extends BroadcastReceiver {
             case "fakestall": e.fakeStall = true; break;   // для проверки сторожа: как будто музыка встала, через 7 с он сработает
             case "restart": e.restartAura("проверка с ПК"); break;
             case "profile": e.setProfile(Store.SECOND.equals(i.getStringExtra("id")) ? Store.SECOND : Store.MAIN); break;
-            case "profile_name": e.ui.edit().putString("name_" + Store.SECOND, i.getStringExtra("name")).apply(); break;
+            // Имя вкуса с пульта («Настройки «Дома»»): --es who main|second (по умолчанию второй) --es name Имя
+            case "profile_name": e.renameProfile(!"main".equals(i.getStringExtra("who")), i.getStringExtra("name")); break;
+            // Перенос настроек (06.11, план Codex, блок 3): часть «Волны» в общем файле «Дома» (Home/Transfer.java)
+            case "export":
+                try { setResultData(exportUi(e.ui)); } catch (Exception x) { setResultData("ошибка: " + x.getMessage()); }
+                return;
+            case "import":
+                try { setResultData("загружено настроек: " + importUi(e.ui, String.valueOf(i.getStringExtra("json")))); }
+                catch (Exception x) { setResultData("ошибка: " + x.getMessage()); }
+                return;
+            // Имена обоих вкусов для «Настроек «Дома»»: ответ в resultData, строки main= и second=
+            case "names":
+                if (isOrderedBroadcast()) setResultData("main=" + e.profileName("") + "\nsecond=" + e.profileName(Store.SECOND));
+                return;
             // Посмотреть, что волна подберёт, без звука: --es do peek --es mode new|my
             case "peek": {
                 int m = "new".equals(i.getStringExtra("mode")) ? Brain.NEW : Brain.MY;

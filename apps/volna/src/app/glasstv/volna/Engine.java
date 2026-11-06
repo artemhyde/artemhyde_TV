@@ -178,10 +178,26 @@ final class Engine {
 
     // ===== Профили: у каждого из двух свой вкус, лайки и «не моё»; имена задаёт Config. Второй профиль это канал аккаунта с тем же именем =====
 
-    String profileName(String id) { return id.isEmpty() ? Config.PROFILE1 : ui.getString("name_" + id, Config.PROFILE2); }
+    // Имена меняются с пульта («Настройки «Дома»», 06.11, план Codex, блок 3); Config даёт только начальные
+    String profileName(String id) { return id.isEmpty() ? ui.getString("name_main", Config.PROFILE1) : ui.getString("name_" + id, Config.PROFILE2); }
 
-    // Как профиль называется для Aura: пусто значит основной профиль аккаунта
-    private String channel() { return store.profile.isEmpty() ? "" : profileName(store.profile); }
+    // Как профиль называется для Aura: пусто значит основной профиль аккаунта. Второй профиль Aura ищет по имени канала, поэтому
+    // при первом переименовании нынешнее имя запоминается как имя канала (chan_): экранное имя меняется, канал остаётся тем же
+    private String channel() { return store.profile.isEmpty() ? "" : ui.getString("chan_" + store.profile, profileName(store.profile)); }
+
+    void renameProfile(boolean second, String name) {
+        if (name == null || name.trim().isEmpty()) return;
+        String n = name.trim().length() > 24 ? name.trim().substring(0, 24) : name.trim();
+        android.content.SharedPreferences.Editor ed = ui.edit();
+        if (second) {
+            if (!ui.contains("chan_" + Store.SECOND)) ed.putString("chan_" + Store.SECOND, profileName(Store.SECOND));
+            ed.putString("name_" + Store.SECOND, n);
+        } else {
+            ed.putString("name_main", n);
+        }
+        ed.apply();
+        Log.i(tag, "имя вкуса: " + (second ? "второй" : "первый") + " теперь «" + n + "»");
+    }
 
     void setProfile(String id) {
         if (id.equals(store.profile)) return;

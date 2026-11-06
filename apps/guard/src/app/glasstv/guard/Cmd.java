@@ -96,7 +96,8 @@ public class Cmd extends BroadcastReceiver {
             String out;
             if ("notes".equals(i.getStringExtra("do"))) {
                 if (i.hasExtra("on")) g.setNotes(i.getBooleanExtra("on", false));
-                out = "записки " + (GuardService.notesEnabled(c) ? "включены" : "выключены");
+                if (i.getBooleanExtra("newcode", false)) GuardService.newNotesCode(c);
+                out = "записки " + (GuardService.notesEnabled(c) ? "включены, код " + GuardService.notesCode(c) : "выключены");
             } else {
                 String m = i.getStringExtra("m");
                 if (m != null) g.setAdbMode(m, "команда с ПК");
@@ -119,6 +120,20 @@ public class Cmd extends BroadcastReceiver {
                 pr.setResultData(out);
                 pr.finish();
             }, "guard-report-cmd").start();
+            return;
+        }
+        // Перенос настроек (06.11, план Codex, блок 3): --es do export (JSON в ответе), --es do import --es json '{...}'.
+        // Обычно шлёт «Дом» через AppCmd: он собирает общий файл (Home/Transfer.java)
+        if ("export".equals(i.getStringExtra("do")) || "import".equals(i.getStringExtra("do"))) {
+            String out;
+            try {
+                out = "export".equals(i.getStringExtra("do")) ? GuardService.exportJson(c)
+                        : GuardService.importJson(c, String.valueOf(i.getStringExtra("json")));
+            } catch (Exception e) {
+                out = "ошибка: " + e.getMessage();
+            }
+            Log.i("guard", "перенос: " + (out.length() > 80 ? out.substring(0, 80) + "…" : out));
+            setResultData(out);
             return;
         }
         // Паспорт ТВ (06.11, план Codex, блок 5): --es do caps, модель, прошивка, уровень и какие закрытые функции отвечают

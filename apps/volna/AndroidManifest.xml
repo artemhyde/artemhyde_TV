@@ -7,6 +7,9 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Команды между своими приложениями HYDE (06.11): только с тем же ключом подписи -->
+    <permission android:name="app.glasstv.permission.HYDE" android:protectionLevel="signature" />
+    <uses-permission android:name="app.glasstv.permission.HYDE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -56,8 +59,10 @@
             android:excludeFromRecents="true"
             android:theme="@style/Blackout" />
 
-        <!-- Команды без экрана (Key Mapper, проверка с ПК) -->
-        <receiver android:name=".Cmd" android:exported="true" />
+        <!-- Команды с ПК (adb, стенд): только у кого право DUMP. 06.11, план Codex: раньше вход был открыт любому приложению -->
+        <receiver android:name=".Cmd" android:exported="true" android:permission="android.permission.DUMP" />
+        <!-- Те же команды от своих приложений («Дом»: home_on, home_off, my): только с тем же ключом подписи -->
+        <receiver android:name=".AppCmd" android:exported="true" android:permission="app.glasstv.permission.HYDE" />
 
         <!-- Пока музыка нужна: служба поднимает важность «Волны» и привязанной к ней Aura, иначе система её замораживает -->
         <service

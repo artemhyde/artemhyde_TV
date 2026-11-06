@@ -4,9 +4,10 @@
     android:versionCode="3"
     android:versionName="1.2">
 
-    <!-- Команды «Сторожу» (06.11): вход app.glasstv.guard.AppCmd пускает только приложения с тем же ключом подписи -->
-    <permission android:name="app.glasstv.permission.GUARD" android:protectionLevel="signature" />
-    <uses-permission android:name="app.glasstv.permission.GUARD" />
+    <!-- Команды между своими приложениями HYDE (06.11): входы AppCmd «Сторожа» и «Волны» и приёмник Now «Дома» пускают только
+         приложения с тем же ключом подписи -->
+    <permission android:name="app.glasstv.permission.HYDE" android:protectionLevel="signature" />
+    <uses-permission android:name="app.glasstv.permission.HYDE" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
@@ -33,6 +34,11 @@
         <package android:name="app.glasstv.picture" />
         <package android:name="app.glasstv.volna" />
         <package android:name="com.android.tv.settings" />
+        <!-- Перенос настроек: выбрать файл копии в «Файлах» -->
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="*/*" />
+        </intent>
     </queries>
 
     <application
@@ -101,7 +107,9 @@
             android:screenOrientation="landscape" />
 
         <!-- «Волна» сообщает, что играет -->
-        <receiver android:name=".Now" android:exported="true" />
+        <receiver android:name=".Now" android:exported="true" android:permission="app.glasstv.permission.HYDE" />
+        <!-- Перенос настроек с ПК (SetupCmd.java): только adb -->
+        <receiver android:name=".SetupCmd" android:exported="true" android:permission="android.permission.DUMP" />
 
         <!-- Что смотрели: слушает медиасессии SmartTube, Just Player и VK Видео и помнит, где остановились. Уведомления ей
              не нужны, доступ к уведомлениям нужен только затем, чтобы система показывала чужие медиасессии.

@@ -2,7 +2,7 @@
 
 [ 🇷🇺 Русский (README.md) ](README.md) | [ 🇬🇧 English (README.en.md) ](README.en.md)
 
-**Stock Google TV with ads ➔ HYDE TV (Vision and Graphite, 60 FPS)**  
+**Stock Google TV with ads ➔ HYDE TV (Vision and Graphite)**  
 ![Before and After: a curtain moves from the stock Google TV screen with ads to the HYDE TV home screen, first in the Vision style, then in the Graphite style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@8c457cc/docs/screenshots/before-after.gif)  
 Drag the curtain yourself and switch the variant (Vision, Graphite, light glass): [open the comparison](https://artemhyde.github.io/artemhyde_TV/before-after.html), or on your computer `bash tools/before-after.sh` (Windows: `powershell -ExecutionPolicy Bypass -File tools\windows\before-after.ps1`).
 
@@ -18,7 +18,7 @@ Here it is different:
 - Not a pile of icons but one system: its own home screen (clock, weather, rates, "continue watching", music), night backlight on a schedule, even sound, a menu on a remote button, the Volna music player.
 - With your consent, ads, telemetry and unneeded TCL services are switched off.
 - The project installs no pirate sources.
-- Animations are measured on the TV itself: 60 frames per second on weak hardware.
+- Animations are measured on the TV itself, a TCL 65C6K (2.4 GB of RAM): they run smoothly there, at 60 frames per second. Not measured on other TVs.
 
 Honest downsides: so far tested on one TV (TCL 65C6K, Android 14), you need a computer for the setup, and the browser and the Volna player are built on your machine, which takes a while.
 
@@ -74,7 +74,7 @@ Only you type passwords, the wizard never sees or types them. Signing in is opti
 2. Download this repository (Code button, Download ZIP) and unpack it.
 3. Open the folder in Claude Code and write "let's start". The TV and the computer must be on the same home network.
 
-You need: Google TV on Android 12 or newer, a computer with Windows, macOS or Linux, about 600 MB for tools, about 20 minutes (the browser with our patches takes longer to build).  
+You need: Google TV on Android 12 or newer, a computer with Windows, macOS or Linux. Disk for build tools: about 0.6 GB for our apps, about 2.4 GB more for the patched browser and about 1.5 GB for Volna. How long it takes depends on the computer, the network and the chosen set: an honest number will come with the ready installer after measurements. Tested on one TV: TCL 65C6K, Android 14.  
 What happens: Claude asks its questions one at a time (theme, remote buttons, which apps, city for the weather), takes a "before" snapshot of your TV, records every change and builds a rollback script from those records, then builds the apps with your own signing key and installs them.
 
 **Responsibility**  

@@ -186,12 +186,91 @@ public class SetupActivity extends Activity {
                 new String[]{"С 22:00 до 7:00", "С 21:00 до 7:00", "С 23:00 до 7:00", "С 22:00 до 8:00", "Не затемнять"},
                 new String[]{"22-7", "21-7", "23-7", "22-8", "off"}, Setup.night(this),
                 v -> { Setup.put(this, "night", v); Setup.sendNight(this, v); })));
+        if (getPackageManager().getLaunchIntentForPackage("app.glasstv.volna") != null)
+            row("Имена вкусов «Волны»", "", () -> open(this::namesPage));
         row("Облегчённый режим", Setup.lite(this) ? "включён" : "выключен", () -> open(() -> choice(
                 "Облегчённый режим", "Для слабых телевизоров: меньше движения и памяти. Часы, погода, стих и плитки те же",
                 new String[]{"Выключен: все эффекты", "Включён: без частиц и наплыва фото, фото легче"}, new String[]{"off", "on"},
                 Setup.lite(this) ? "on" : "off", v -> Setup.put(this, "lite", v))));
         row("Какие приложения открывают плитки", "", () -> open(this::tilesPage));
+        row("Перенос настроек", "", () -> open(this::transferPage));
         row("Вернуть ряд главного экрана как было", "", () -> open(this::resetPage));
+        focusFirst();
+    }
+
+    // ===== Перенос настроек (06.11): копия в «Загрузки» и обратно =====
+
+    static final int PICK = 7;
+
+    void transferPage() {
+        page("Перенос настроек", "Один файл с настройками «Дома», «Сторожа» и «Волны»: для другого ТВ или после переустановки. "
+                + "Паролей и того, что смотрели, в нём нет");
+        final Runnable me = current;
+        row("Сохранить копию в «Загрузки»", "", () -> {
+            sub.setText("Собираю настройки…");
+            Transfer.collect(this, b -> {
+                String name = Transfer.save(this, b);
+                if (current != me || isFinishing()) return;
+                transferPage();
+                sub.setText(name == null ? "Не сохранилось: «Загрузки» недоступны"
+                        : "Сохранено: Загрузки/" + name + ". Для другого ТВ скопируйте файл на флешку");
+            });
+        });
+        for (Transfer.Copy k : Transfer.copies(this))
+            row("Загрузить копию", k.when, () -> open(() -> confirmLoad("Загрузить копию от " + k.when + "?", () -> Transfer.read(this, k.uri))));
+        final Intent pi = pickIntent();
+        if (pi != null)
+            row("Загрузить копию с флешки или из файла", "", () -> {
+                try { startActivityForResult(pi, PICK); } catch (Exception e) { sub.setText("«Файлы» не открылись"); }
+            });
+        else
+            row("Загрузить копию с флешки", "нужны «Файлы»", () -> sub.setText(
+                    "Для копии с флешки нужен файловый менеджер Material Files: его ставит мастер установки"));
+        focusFirst();
+    }
+
+    // Выбор файла только в явном приложении. Неявный GET_CONTENT на этом ТВ зацикливается: системный выбор фото
+    // пересылает запрос дальше, окно выбора приложения отдаёт его обратно ему же, два десятка запусков в секунду,
+    // пока не нажать «Назад» (проверено 06.11). Сначала Material Files, потом CX File Explorer
+    static final String[] PICKERS = {"me.zhanghai.android.files", "com.cxinventor.file.explorer"};
+
+    Intent pickIntent() {
+        for (String pkg : PICKERS) {
+            Intent i = new Intent(Intent.ACTION_GET_CONTENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).setPackage(pkg);
+            if (i.resolveActivity(getPackageManager()) != null) return i;
+        }
+        return null;
+    }
+
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != PICK || res != RESULT_OK || data == null || data.getData() == null) return;
+        final android.net.Uri u = data.getData();
+        open(() -> confirmLoad("Загрузить настройки из файла?", () -> Transfer.read(this, u)));
+    }
+
+    interface Src { JSONObject get() throws Exception; }
+
+    void confirmLoad(String t, Src src) {
+        page(t, "Нынешние настройки «Дома», «Сторожа» и «Волны» заменятся настройками из копии");
+        row("Нет, оставить", "", this::goBack);
+        row("Да, загрузить", "", () -> {
+            final Runnable me = current;
+            JSONObject b;
+            try {
+                b = src.get();
+            } catch (Exception e) {
+                sub.setText("Файл не читается: " + e.getMessage());
+                return;
+            }
+            sub.setText("Загружаю…");
+            Transfer.apply(this, b, text -> {
+                if (current != me || isFinishing()) return;
+                page("Перенос настроек", text);
+                row("Готово", "", this::toMain);
+                focusFirst();
+            });
+        });
         focusFirst();
     }
 
@@ -247,6 +326,69 @@ public class SetupActivity extends Activity {
         });
         row("Искать", "", () -> search(in.getText().toString()));
         in.post(in::requestFocus);
+    }
+
+    // Имена вкусов «Волны» (06.11, план Codex, блок 3): нынешние спрашиваем у самой «Волны», правим текстом с пульта
+    static final String VOLNA = "app.glasstv.volna", VOLNA_CMD = "app.glasstv.volna.AppCmd";
+
+    void namesPage() {
+        page("Имена вкусов «Волны»", "У каждого вкуса свои лайки и подборки. Имя видно на кнопке «Вкус» в «Волне»");
+        final Runnable me = current;
+        sendOrderedBroadcast(new android.content.Intent().setClassName(VOLNA, VOLNA_CMD).putExtra("do", "names"), null,
+                new android.content.BroadcastReceiver() {
+                    @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                        if (current != me) return;   // пока ждали ответа, ушли на другую страницу
+                        String d = getResultData();
+                        if (d == null) { sub.setText("«Волна» не ответила. Откройте её один раз и вернитесь сюда"); return; }
+                        String m = "", s = "";
+                        for (String line : d.split("\n")) {
+                            if (line.startsWith("main=")) m = line.substring(5);
+                            else if (line.startsWith("second=")) s = line.substring(7);
+                        }
+                        final String fm = m, fs = s;
+                        row("Первый вкус", fm, () -> open(() -> namePage(false, fm)));
+                        row("Второй вкус", fs, () -> open(() -> namePage(true, fs)));
+                        focusFirst();
+                    }
+                }, null, android.app.Activity.RESULT_OK, null, null);
+    }
+
+    void namePage(boolean second, String cur) {
+        page(second ? "Второй вкус" : "Первый вкус", "Новое имя. Подборки и лайки этого вкуса останутся");
+        final EditText in = new EditText(this);
+        in.setSingleLine(true);
+        in.setTextSize(22);
+        in.setTypeface(Fonts.reg24);
+        in.setTextColor(Fonts.WHITE);
+        in.setHintTextColor(0x66FFFFFF);
+        in.setHint("Имя");
+        in.setText(cur);
+        in.setSelection(cur.length());
+        in.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        GradientDrawable fb = new GradientDrawable();
+        fb.setColor(0x1FFFFFFF);
+        fb.setCornerRadius(px(16));
+        fb.setStroke(Math.max(1, px(1)), 0x33FFFFFF);
+        in.setBackground(fb);
+        in.setPadding(px(22), px(14), px(22), px(14));
+        list.addView(in, new LinearLayout.LayoutParams(-1, -2));
+        in.setOnEditorActionListener((v, id, ev) -> {
+            if (id == EditorInfo.IME_ACTION_DONE || (ev != null && ev.getKeyCode() == KeyEvent.KEYCODE_ENTER && ev.getAction() == KeyEvent.ACTION_DOWN)) {
+                saveName(second, in.getText().toString());
+                return true;
+            }
+            return false;
+        });
+        row("Сохранить", "", () -> saveName(second, in.getText().toString()));
+        in.post(in::requestFocus);
+    }
+
+    void saveName(boolean second, String name) {
+        String n = name.trim();
+        if (n.isEmpty()) { sub.setText("Имя не может быть пустым"); return; }
+        sendBroadcast(new android.content.Intent().setClassName(VOLNA, VOLNA_CMD).putExtra("do", "profile_name")
+                .putExtra("who", second ? "second" : "main").putExtra("name", n));
+        list.postDelayed(this::goBack, 400);   // назад к именам: они спросят «Волну» заново, уже с новым
     }
 
     void search(String q) {

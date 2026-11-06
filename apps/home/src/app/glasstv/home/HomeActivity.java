@@ -89,6 +89,25 @@ public class HomeActivity extends Activity {
     boolean reloadLater;               // пакеты сменились, пока было открыто меню или плитка в руке
     int gridFocusAt = -1;              // после перестройки сетки фокус на это место
     final Map<String, String> tileTarget = new HashMap<>();   // плитка-ярлык: приложение, которое она открывает
+    final Map<String, String> tileSwap = new HashMap<>();     // ярлык, который открывает не то, что вшито в него: выбор человека или замена
+
+    // Другой вариант того же приложения (06.11, план Codex: связка плитки и цели). Нет нашей сборки браузера, а есть TV Bro
+    // из Google Play, нет одного файлового менеджера, а есть другой: ярлык не пропадает, открывается то, что стоит.
+    // Тот же список в tools/tv.sh (tiles_install), чтобы мастер ставил такие плитки
+    static final Map<String, String[]> ALT = new HashMap<>();
+    static {
+        ALT.put("com.phlox.tvwebbrowser.foss", new String[]{"com.phlox.tvwebbrowser"});
+        ALT.put("com.phlox.tvwebbrowser", new String[]{"com.phlox.tvwebbrowser.foss"});
+        ALT.put("me.zhanghai.android.files", new String[]{"com.cxinventor.file.explorer"});
+        ALT.put("com.cxinventor.file.explorer", new String[]{"me.zhanghai.android.files"});
+        ALT.put("org.smarttube.stable", new String[]{"com.liskovsoft.smarttubetv.beta", "com.google.android.youtube.tv"});
+    }
+
+    String alternative(String target) {
+        String[] a = ALT.get(target);
+        if (a != null) for (String x : a) if (present(x)) return x;
+        return null;
+    }
     android.content.BroadcastReceiver pkgEvents;
     int setupRev = -1;                 // номер правки настроек «Дома» (Setup), с которым экран нарисован
 
@@ -269,14 +288,18 @@ public class HomeActivity extends Activity {
         // нет на ТВ, не показывается нигде (в ряду его место сохраняется: поставят приложение снова, ярлык вернётся туда же).
         // Приложение, у которого стоит ярлык, в сетке не повторяется: его открывает ярлык
         tileTarget.clear();
+        tileSwap.clear();
         Set<String> covered = new HashSet<>(), orphan = new HashSet<>();
         for (ResolveInfo r : apps.values()) {
             android.os.Bundle md = r.activityInfo.metaData;
             String tg = md == null ? null : md.getString("target");
             if (tg == null || tg.isEmpty()) continue;
+            String baked = tg;
             String ov = Setup.tileApp(this, r.activityInfo.packageName);   // человек выбрал для ярлыка своё приложение
             if (ov != null && present(ov)) tg = ov;
+            else if (!present(tg)) { String alt = alternative(tg); if (alt != null) tg = alt; }
             tileTarget.put(r.activityInfo.packageName, tg);
+            if (!tg.equals(baked)) tileSwap.put(r.activityInfo.packageName, tg);
             if (present(tg)) covered.add(tg); else orphan.add(r.activityInfo.packageName);
         }
         Set<String> hiddenByUser = userHidden();
@@ -462,6 +485,7 @@ public class HomeActivity extends Activity {
         // Ярлык, для которого на ТВ выбрано другое приложение (Setup): открываем выбранное
         String ov = tileTarget.containsKey(pkg) ? Setup.tileApp(this, pkg) : null;
         if (ov != null && present(ov)) pkg = ov;
+        else if (tileSwap.containsKey(pkg) && present(tileSwap.get(pkg))) pkg = tileSwap.get(pkg);   // замена варианта
         markSeen(pkg);
         PackageManager pm = getPackageManager();
         Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
@@ -508,7 +532,7 @@ public class HomeActivity extends Activity {
         } else {
             play.set("Включить", "Моя волна", volna);
             play.setOnClickListener(v -> {
-                try { sendBroadcast(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.Cmd").putExtra("do", "my")); }
+                try { sendBroadcast(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.AppCmd").putExtra("do", "my")); }
                 catch (Exception ignored) { }
             });
         }

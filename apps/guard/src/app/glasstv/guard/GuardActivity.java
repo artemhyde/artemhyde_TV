@@ -161,7 +161,8 @@ public class GuardActivity extends Activity {
         keys.setText(k);
         keys.setTextColor(k.startsWith("не") ? 0xFFFFB454 : 0xFF5ED3B4);
         String ip = ip();
-        notes.setText(!GuardService.notesEnabled(this) ? "выключены" : ip == null ? "нет сети" : "http://" + ip + ":" + GuardService.NOTE_PORT);
+        notes.setText(!GuardService.notesEnabled(this) ? "выключены" : ip == null ? "нет сети"
+                : "http://" + ip + ":" + GuardService.NOTE_PORT + "  ·  код " + GuardService.notesCode(this));
         notes.setTextColor(0xFFF5F5F7);
         long[] m = memory();
         mem.setText(m == null ? "?" : "свободно " + m[1] / 1024 + " МБ из " + m[0] / 1024);

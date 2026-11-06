@@ -42,7 +42,7 @@ public class Now extends BroadcastReceiver {
 
     private static void tellVolna(Context c, boolean homeVisible) {
         try {
-            c.sendBroadcast(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.Cmd")
+            c.sendBroadcast(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.AppCmd")
                     .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
                     .putExtra("do", homeVisible ? "home_on" : "home_off"));
         } catch (Exception ignored) { }

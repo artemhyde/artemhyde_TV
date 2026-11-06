@@ -90,5 +90,5 @@ final class Setup {
     // Номер правки: «Дом» по нему видит, что настройки меняли, и перерисовывает экран
     static int rev(Context c) { return sp(c).getInt("rev", 0); }
 
-    private static void bump(Context c) { sp(c).edit().putInt("rev", rev(c) + 1).apply(); }
+    static void bump(Context c) { sp(c).edit().putInt("rev", rev(c) + 1).apply(); }
 }

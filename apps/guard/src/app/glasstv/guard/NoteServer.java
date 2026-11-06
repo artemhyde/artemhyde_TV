@@ -19,6 +19,22 @@ final class NoteServer {
     // Защита (06.11): не больше трёх запросов одновременно (лишние сразу закрываются), записка не чаще раза в 3 секунды
     private final java.util.concurrent.atomic.AtomicInteger busy = new java.util.concurrent.atomic.AtomicInteger();
     private volatile long lastNoteAt;
+    // Код (06.11, план Codex: записки только по коду): шесть цифр с экрана «Сторожа», телефон присылает его заголовком X-Code.
+    // Пять неверных кодов за минуту: минуту записки не принимаются совсем, чтобы код нельзя было подобрать перебором
+    private int wrong;
+    private long wrongSince, lockedUntil;
+
+    private synchronized boolean codeOk(String code) {
+        long now = System.currentTimeMillis();
+        if (now < lockedUntil) return false;
+        boolean ok = code != null && code.trim().equals(GuardService.notesCode(g));
+        if (ok) { wrong = 0; return true; }
+        if (now - wrongSince > 60_000) { wrongSince = now; wrong = 0; }
+        if (++wrong >= 5) { lockedUntil = now + 60_000; wrong = 0; }
+        return false;
+    }
+
+    private synchronized boolean locked() { return System.currentTimeMillis() < lockedUntil; }
 
     NoteServer(GuardService g, int port) { this.g = g; this.port = port; }
 
@@ -54,9 +70,13 @@ final class NoteServer {
             String[] first = head.split("\r\n")[0].split(" ");
             String method = first.length > 0 ? first[0] : "", path = first.length > 1 ? first[1] : "/";
             int len = 0;
+            String code = null;
             for (String line : head.split("\r\n")) {
-                if (line.toLowerCase(Locale.ROOT).startsWith("content-length:")) {
+                String low = line.toLowerCase(Locale.ROOT);
+                if (low.startsWith("content-length:")) {
                     try { len = Math.min(4096, Integer.parseInt(line.substring(15).trim())); } catch (Exception ignored) { }
+                } else if (low.startsWith("x-code:")) {
+                    code = line.substring(7).trim();
                 }
             }
             OutputStream out = sock.getOutputStream();
@@ -67,6 +87,8 @@ final class NoteServer {
                 String text = new String(body, 0, got, StandardCharsets.UTF_8).trim();
                 if (text.length() > 200) text = text.substring(0, 200);
                 if (text.isEmpty()) { reply(out, 400, "text/plain", "пусто"); return; }
+                if (locked()) { reply(out, 429, "text/plain", "много неверных кодов, подождите минуту"); return; }
+                if (!codeOk(code)) { reply(out, 403, "text/plain", "код не подошёл"); return; }
                 long now = System.currentTimeMillis();
                 if (now - lastNoteAt < 3000) { reply(out, 429, "text/plain", "подождите пару секунд"); return; }
                 lastNoteAt = now;
@@ -118,15 +140,27 @@ final class NoteServer {
             + "background:var(--card);color:var(--text);font:inherit;font-size:15px}"
             + ".send{width:100%;border:0;border-radius:14px;padding:16px;background:var(--accent);color:#fff;font:inherit;font-weight:600}"
             + ".send:active,.chips button:active{opacity:.6}#st{text-align:center;color:var(--muted);margin-top:14px;min-height:24px}"
+            + "#cb{display:none;margin-bottom:14px}#c{width:100%;border:0;border-radius:16px;padding:16px;font:inherit;font-size:22px;letter-spacing:.2em;"
+            + "background:var(--card);color:var(--text);outline:none}#cb p{margin:0 0 8px;font-size:15px}"
             + "</style></head><body><main><h1>Записка на ТВ</h1><p>Появится поверх фильма на 12 секунд.</p>"
+            + "<div id=\"cb\"><p>Код с экрана ТВ: «Сторож», строка «Записки с телефона». Спросим один раз.</p>"
+            + "<input id=\"c\" inputmode=\"numeric\" maxlength=\"6\" autocomplete=\"off\" placeholder=\"000000\"></div>"
             + "<textarea id=\"t\" maxlength=\"200\" placeholder=\"Например: ужин готов\"></textarea>"
             + "<div class=\"chips\"><button>Ужин готов</button><button>Подойди, пожалуйста</button>"
             + "<button>Сделай потише</button><button>Пора спать</button></div>"
             + "<button class=\"send\" id=\"s\">Показать на телевизоре</button><div id=\"st\"></div></main><script>"
-            + "const t=document.getElementById('t'),st=document.getElementById('st');"
-            + "async function send(x){x=(x||t.value).trim();if(!x)return;st.textContent='Отправляю…';"
-            + "try{const r=await fetch('/note',{method:'POST',body:x});st.textContent=r.ok?'Показано на телевизоре':'Не получилось';"
-            + "if(r.ok)t.value=''}catch(e){st.textContent='Телевизор не отвечает'}}"
+            + "const t=document.getElementById('t'),st=document.getElementById('st'),cb=document.getElementById('cb'),cf=document.getElementById('c');"
+            + "let code='';try{code=localStorage.getItem('hydeCode')||''}catch(e){}if(!code)cb.style.display='block';"
+            + "async function send(x){x=(x||t.value).trim();if(!x)return;if(!code){code=cf.value.trim();"
+            + "if(code.length<6){cb.style.display='block';st.textContent='Введите код с экрана ТВ';code='';return}}"
+            + "st.textContent='Отправляю…';"
+            + "try{const r=await fetch('/note',{method:'POST',headers:{'X-Code':code},body:x});"
+            + "if(r.status==403){try{localStorage.removeItem('hydeCode')}catch(e){}code='';cf.value='';cb.style.display='block';"
+            + "st.textContent='Код не подошёл: посмотрите его на экране «Сторожа»';return}"
+            + "if(r.status==429){st.textContent=await r.text();return}"
+            + "st.textContent=r.ok?'Показано на телевизоре':'Не получилось';"
+            + "if(r.ok){t.value='';try{localStorage.setItem('hydeCode',code)}catch(e){}cb.style.display='none'}}"
+            + "catch(e){st.textContent='Телевизор не отвечает'}}"
             + "document.getElementById('s').onclick=()=>send();"
             + "document.querySelectorAll('.chips button').forEach(b=>b.onclick=()=>send(b.textContent));"
             + "</script></body></html>";

@@ -4,9 +4,10 @@
     android:versionCode="3"
     android:versionName="1.2.0">
 
-    <!-- Команды «Сторожу» (06.11): вход app.glasstv.guard.AppCmd пускает только приложения с тем же ключом подписи -->
-    <permission android:name="app.glasstv.permission.GUARD" android:protectionLevel="signature" />
-    <uses-permission android:name="app.glasstv.permission.GUARD" />
+    <!-- Команды между своими приложениями HYDE (06.11): входы AppCmd «Сторожа» и «Волны» и приёмник Now «Дома» пускают только
+         приложения с тем же ключом подписи -->
+    <permission android:name="app.glasstv.permission.HYDE" android:protectionLevel="signature" />
+    <uses-permission android:name="app.glasstv.permission.HYDE" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
