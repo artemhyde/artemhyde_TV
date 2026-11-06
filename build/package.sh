@@ -24,9 +24,16 @@ rel="${rel:-$ROOT/out/release/$ver}"
 [ -f "$rel/manifest.json" ] && [ -f "$rel/SHA256SUMS" ] || die "Нет выпуска в $rel (manifest.json и SHA256SUMS): сначала bash build/release.sh $ver"
 PY="$(find_python || true)"
 [ -n "$PY" ] || die "Не найден Python 3"
+# Установщик собирается из рабочей папки, поэтому она должна совпадать с коммитом: он записывается в VERSION.txt архива
+icommit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+[ -n "$icommit" ] || die "Архивы собираются только в git-репозитории с коммитом"
+if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
+    [ "${HYDE_RELEASE_DIRTY:-0}" = 1 ] || die "Есть незакоммиченные правки: установщик для людей собирается только из коммита (проба: HYDE_RELEASE_DIRTY=1)"
+    icommit="$icommit (+ незакоммиченные правки, только для проб)"
+fi
 
 bash "$ROOT/installer/build.sh"
 out="$ROOT/out/dist/$ver"
 rm -rf "$out"
-$PY -I -X utf8 "$(P "$GT_BUILD_DIR/package.py")" "$(P "$rel")" "$(P "$ROOT/out/installer")" "$(P "$out")" "$ver" "$(P "$ROOT")"
+$PY -I -X utf8 "$(P "$GT_BUILD_DIR/package.py")" "$(P "$rel")" "$(P "$ROOT/out/installer")" "$(P "$out")" "$ver" "$(P "$ROOT")" "$icommit"
 note "Готово: $out. Выкладывать только по решению владельца проекта."

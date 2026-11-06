@@ -310,6 +310,36 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 	return pl
 }
 
+// heldSteps: какие команды плана на ТВ уже действуют (права Key Mapper, поставленного раньше, всё при обновлении).
+// cache: уже проверенные команды этого ТВ (окно мастера перестраивает план на каждый переключатель)
+func heldSteps(tv TV, pl *Plan, cache map[string]bool) map[string]bool {
+	if cache == nil {
+		cache = map[string]bool{}
+	}
+	for _, s := range pl.Steps {
+		if s.Kind != "" || s.Run || s.Do == "" {
+			continue
+		}
+		if _, ok := cache[s.Do]; ok {
+			continue
+		}
+		ok, known, _ := (&tvLook{tv: tv}).holds(s.Do)
+		cache[s.Do] = known && ok
+	}
+	return cache
+}
+
+// markHeld: только для показа плана: что уже так, установка не выполнит и в журнал не запишет, поэтому и откат это
+// не тронет. Сама установка проверяет то же своим путём (runApply), этот вид плана ей не передаётся
+func markHeld(pl *Plan, held map[string]bool) {
+	for i, s := range pl.Steps {
+		if s.Kind == "" && !s.Run && held[s.Do] {
+			pl.Steps[i].What += ": уже так, не меняем"
+			pl.Steps[i].Run, pl.Steps[i].Do, pl.Steps[i].Undo = true, "", ""
+		}
+	}
+}
+
 // addInstall: установка приложения из выпуска с правильной обратной командой (как inst в tools/tv.sh): новое
 // удаляется откатом, обновление нет (прежняя версия поверх не ставится); приложение с правами администратора перед
 // обновлением снимает их само, иначе система зависает

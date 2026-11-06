@@ -304,6 +304,13 @@ func cmdPlan(args []string) error {
 		}
 	})
 	pl := buildPlan(rec, m, p, ch, !*noCheck)
+	if pf.from == "" { // живой ТВ: пометить то, что на нём уже так
+		if a, err := findADB(); err == nil {
+			if serial, err := pickSerial(a, pf.tv); err == nil {
+				markHeld(&pl, heldSteps(&adbTV{a: a, serial: serial}, &pl, nil))
+			}
+		}
+	}
 	if *asJSON {
 		return printJSON(pl)
 	}

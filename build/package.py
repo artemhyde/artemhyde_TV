@@ -5,7 +5,8 @@ SHA256SUMS выпуска плюс manifest.json и сами суммы), README
 installer/AGENT.md) и licenses/. adb в архив не кладётся: условия Android SDK запрещают его раздавать, установщик
 качает его сам с сайта Google по согласию человека.
 Архивы повторяемые: постоянные даты, порядок и права файлов; тот же выпуск и тот же установщик дают те же байты.
-Запуск: python package.py <папка выпуска> <папка установщиков> <куда> <версия> <корень репозитория>
+VERSION.txt: номер выпуска, коммит приложений (из описи) и коммит установщика.
+Запуск: python package.py <папка выпуска> <папка установщиков> <куда> <версия> <корень репозитория> <коммит установщика>
 """
 import gzip
 import hashlib
@@ -16,7 +17,7 @@ import sys
 import tarfile
 import zipfile
 
-rel, inst, out, ver, root = sys.argv[1:6]
+rel, inst, out, ver, root, icommit = sys.argv[1:7]
 EPOCH = (1980, 1, 1, 0, 0, 0)
 EPOCH_TS = 315532800
 
@@ -92,6 +93,8 @@ for binname, label, kind, platform, fmt in PLATFORMS:
     entries.append((exe, os.path.join(inst, binname), True))
     entries.append(('README.txt', readme(kind, platform, archive), False))
     entries.append(('CLAUDE.md', os.path.join(root, 'installer', 'AGENT.md'), False))
+    entries.append(('VERSION.txt', ('HYDE TV %s (%s)\nприложения: коммит %s, опись release/manifest.json\nустановщик: коммит %s\n'
+                                    % (ver, platform, man['built_from']['commit'], icommit)).encode('utf-8'), False))
     for src, dst in licenses:
         entries.append(('licenses/' + dst, os.path.join(root, src), False))
     for name in release_files:
@@ -109,7 +112,7 @@ for binname, label, kind, platform, fmt in PLATFORMS:
                 zi.create_system = 3  # права Unix: macOS и Linux сохранят исполняемость установщика
                 zi.external_attr = (0o100755 if x else 0o100644) << 16
                 zi.compress_type = zipfile.ZIP_DEFLATED
-                z.writestr(zi, data((name, src, x)))
+                z.writestr(zi, data((name, src, x)), compresslevel=9)
     else:
         raw = io.BytesIO()
         with tarfile.open(fileobj=raw, mode='w', format=tarfile.USTAR_FORMAT) as t:

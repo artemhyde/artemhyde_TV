@@ -117,3 +117,25 @@ func TestVerifyAcrossSessions(t *testing.T) {
 		t.Fatalf("проверок мало: %d", len(cs))
 	}
 }
+
+// План на живом ТВ помечает то, что уже действует (права Key Mapper, поставленного раньше): установка это пропустит,
+// откат не тронет, и план не должен обещать обратного
+func TestPlanMarksHeld(t *testing.T) {
+	f, m, rec := applyEnv(t, false)
+	f.pkgs["io.github.sds100.keymapper"] = 1
+	f.grants["io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS"] = true
+	pl := buildPlan(rec, m, parsePassport(f.passport()), Choices{}, false)
+	markHeld(&pl, heldSteps(f, &pl, nil))
+	km, guard := false, false
+	for _, s := range pl.Steps {
+		if s.Group == "Key Mapper" && strings.HasPrefix(s.What, "право менять защищённые настройки") {
+			km = strings.HasSuffix(s.What, "уже так, не меняем") && s.Run && s.Do == "" && s.Undo == ""
+		}
+		if s.Group == "«Сторож»" && strings.HasPrefix(s.What, "право менять защищённые настройки") {
+			guard = s.Do != "" && !s.Run
+		}
+	}
+	if !km || !guard {
+		t.Fatalf("пометка «уже так»: Key Mapper %v, «Сторож» остаётся изменением %v", km, guard)
+	}
+}

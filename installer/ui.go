@@ -36,6 +36,7 @@ type uiServer struct {
 	mu        sync.Mutex
 	last      time.Time
 	passports map[string]Passport
+	held      map[string]map[string]bool // по ТВ: какие команды плана на нём уже действуют (сбрасывается после установки и отката)
 	job       *uiJob
 }
 
@@ -60,7 +61,7 @@ func cmdUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	s := &uiServer{rec: rec, relDir: releaseDir(*rel), passports: map[string]Passport{}, last: time.Now(), token: randHex(16)}
+	s := &uiServer{rec: rec, relDir: releaseDir(*rel), passports: map[string]Passport{}, held: map[string]map[string]bool{}, last: time.Now(), token: randHex(16)}
 	if a, err := findADB(); err != nil {
 		s.adbErr, s.adbErrV = err.Error(), err
 	} else {
@@ -286,6 +287,7 @@ func (s *uiServer) inspect(r *http.Request) (any, error) {
 	}
 	s.mu.Lock()
 	s.passports[q.Serial] = p
+	delete(s.held, q.Serial)
 	s.mu.Unlock()
 	return map[string]any{"caps": capsOf(p), "text": capsText(capsOf(p))}, nil
 }
@@ -312,7 +314,18 @@ func (s *uiServer) plan(r *http.Request) (any, error) {
 	if q.Modules == nil {
 		q.Modules = map[string]bool{}
 	}
-	return buildPlan(s.rec, m, p, Choices{Modules: q.Modules, Home: q.Home}, false), nil
+	pl := buildPlan(s.rec, m, p, Choices{Modules: q.Modules, Home: q.Home}, false)
+	if a := s.getA(); a != nil {
+		s.mu.Lock()
+		cache := s.held[q.Serial]
+		s.mu.Unlock()
+		cache = heldSteps(&adbTV{a: a, serial: q.Serial}, &pl, cache)
+		s.mu.Lock()
+		s.held[q.Serial] = cache
+		s.mu.Unlock()
+		markHeld(&pl, cache)
+	}
+	return pl, nil
 }
 
 // startJob: одна работа за раз; события копятся, итог в Result
@@ -334,6 +347,7 @@ func (s *uiServer) startJob(kind string, work func(emit func(Event)) any) error 
 		res := work(emit)
 		s.mu.Lock()
 		j.Result, j.Running = res, false
+		s.held = map[string]map[string]bool{} // после установки или отката на ТВ всё по-другому
 		s.mu.Unlock()
 	}()
 	return nil
