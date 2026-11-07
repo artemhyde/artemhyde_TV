@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -84,19 +85,29 @@ func fetchFile(raw, dst string, limit int64, progress func(done, total int64)) e
 	return os.Rename(part, dst)
 }
 
-// downloadThirdParty: чужое приложение из описи выпуска (third_party) в свою папку, затем сверка сертификата подписи
-// с записью в описи. Не совпал: файл удаляется, установки не будет (CLAUDE.md, «Скачивание»)
-func downloadThirdParty(tp *ThirdParty, dir string, progress func(done, total int64)) (string, error) {
-	u, err := url.Parse(tp.Download)
-	if err != nil {
-		return "", fmt.Errorf("плохой адрес %s", tp.Download)
+// downloadThirdParty: чужое приложение из описи выпуска (third_party) по адресу из плана (файл под процессор ТВ) в свою
+// папку, затем сверка суммы файла (если она есть в описи) и сертификата подписи. Не совпало: файл удаляется, установки не
+// будет (CLAUDE.md, «Скачивание»)
+func downloadThirdParty(tp *ThirdParty, raw, sha string, dir string, progress func(done, total int64)) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || raw == "" {
+		return "", fmt.Errorf("плохой адрес %s", raw)
 	}
 	if tp.CertSha256 == "" {
 		return "", fmt.Errorf("в описи нет сертификата %s: проверить файл нечем", tp.Name)
 	}
 	dst := filepath.Join(dir, path.Base(u.Path))
-	if err := fetchFile(tp.Download, dst, 0, progress); err != nil {
+	if err := fetchFile(raw, dst, 0, progress); err != nil {
 		return "", err
+	}
+	if sha != "" {
+		if got, err := sha256File(dst); err != nil || !strings.EqualFold(got, sha) {
+			os.Remove(dst)
+			if err == nil {
+				err = fmt.Errorf("сумма %s…, а на странице релиза %s…", prefix(got, 12), prefix(sha, 12))
+			}
+			return "", fmt.Errorf("файл %s не тот, что выложил автор, файл удалён: %v", tp.Name, err)
+		}
 	}
 	cert, err := certOf(dst)
 	if err != nil || cert != tp.CertSha256 {

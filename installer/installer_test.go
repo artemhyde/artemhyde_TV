@@ -79,7 +79,14 @@ func testManifest(t *testing.T) *Manifest {
 	m := map[string]any{"product": "HYDE TV", "release": "1.0.0", "versionCode": 10000, "built_from": map[string]any{"commit": "0123456789abcdef"},
 		"apps": apps, "third_party": []any{map[string]any{"name": "Key Mapper", "package": "io.github.sds100.keymapper", "pinned_version": "4.6.2-foss",
 			"download":    "https://github.com/keymapperorg/KeyMapper/releases/download/v4.6.2/keymapper-4.6.2-foss.apk",
-			"cert_sha256": "2f41a816b8d60aa1d7cd4976b4452b0335e583d4f4ab14071f303177850ce460"}}}
+			"cert_sha256": "2f41a816b8d60aa1d7cd4976b4452b0335e583d4f4ab14071f303177850ce460"},
+			map[string]any{"name": "Lampa", "package": "top.rootu.lampa", "pinned_version": "1.13.5",
+				"files": []any{map[string]any{"abi": "any", "url": "https://github.com/lampa-app/LAMPA/releases/download/v1.13.5/app-lite-release.apk",
+					"size": 11741704, "sha256": ""}},
+				"cert_sha256": "8adaaa27bf99293ec260fe372e77d142ac9166fe339f348f1148a3bf987d9872"},
+			map[string]any{"name": "LocalSend", "package": "org.localsend.localsend_app", "pinned_version": "1.18.2",
+				"files": []any{map[string]any{"abi": "arm64-v8a", "url": "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-android-arm64v8.apk"}},
+				"cert_sha256": "3220c353a73cfbd0c2f3052471c445324cf452bcba26de1c473a52fe5c44e1d6"}}}
 	b, _ := json.Marshal(m)
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0o644); err != nil {
 		t.Fatal(err)

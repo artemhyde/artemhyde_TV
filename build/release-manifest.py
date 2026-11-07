@@ -145,7 +145,7 @@ if os.path.exists(tp):
     src = json.load(open(tp, encoding='utf-8'))
     for a in src.get('apps', []):
         third.append({k: a[k] for k in ('name', 'package', 'pinned_version', 'version_seen', 'releases', 'download',
-                                         'license', 'cert_sha256', 'cert_subject') if k in a})
+                                         'files', 'license', 'cert_sha256', 'cert_subject') if k in a})
     # Инструменты для компьютера (adb): установщик качает их сам по согласию человека и сверяет с этой записью
     for t in src.get('tools', []):
         tools.append({k: t[k] for k in ('id', 'name', 'version', 'page', 'terms', 'license', 'checksum_source', 'files') if k in t})

@@ -28,8 +28,8 @@ adb ищется рядом с установщиком, в `~/.glasstv/tools` (
 hyde-install                          окно мастера в браузере
 hyde-install get-adb [--yes]          скачать adb с сайта Google (с согласием с условиями Google)
 hyde-install devices                  ТВ в сети и уже подключённые
-hyde-install connect адрес[:порт]     подключиться (адрес и порт с главного экрана «Беспроводная отладка»)
-hyde-install pair адрес:порт код      сопряжение по коду из окна «Подключить устройство с помощью кода»
+hyde-install connect адрес[:порт]     подключиться (адрес и порт с главного экрана «Отладка по Wi-Fi»)
+hyde-install pair адрес:порт код      сопряжение по коду из окна «Подключить устройство с помощью кода подключения»
 hyde-install inspect [--tv адрес] [--json] [--save файл]       паспорт ТВ
 hyde-install plan [--tv адрес] [--release папка] [--with м1,м2] [--without м3] [--home] [--json]
 hyde-install apply [как plan] [--backup папка] [--allow-download] [--tv-free] [--yes]

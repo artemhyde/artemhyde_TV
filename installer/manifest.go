@@ -74,13 +74,44 @@ type ManifestApp struct {
 }
 
 type ThirdParty struct {
-	Name          string `json:"name"`
-	Package       string `json:"package"`
-	PinnedVersion string `json:"pinned_version"`
-	Download      string `json:"download"`
-	Releases      string `json:"releases"`
-	License       string `json:"license"`
-	CertSha256    string `json:"cert_sha256"`
+	Name          string   `json:"name"`
+	Package       string   `json:"package"`
+	PinnedVersion string   `json:"pinned_version"`
+	Download      string   `json:"download"`
+	Files         []TPFile `json:"files"`
+	Releases      string   `json:"releases"`
+	License       string   `json:"license"`
+	CertSha256    string   `json:"cert_sha256"`
+}
+
+// TPFile: точный файл закреплённой версии под процессор ТВ (abi «any» подходит любому) с размером и суммой со страницы
+// релиза GitHub (data/third-party-sources.json, поле files)
+type TPFile struct {
+	ABI    string `json:"abi"`
+	URL    string `json:"url"`
+	Size   int64  `json:"size"`
+	Sha256 string `json:"sha256"`
+}
+
+// FileFor: файл под процессоры ТВ по порядку (первый в списке ТВ основной), иначе общий для всех. У записи без files
+// (Key Mapper) одна ссылка download без суммы файла: сверяется только сертификат
+func (t *ThirdParty) FileFor(abis []string) *TPFile {
+	for _, a := range abis {
+		for i := range t.Files {
+			if t.Files[i].ABI == a {
+				return &t.Files[i]
+			}
+		}
+	}
+	for i := range t.Files {
+		if t.Files[i].ABI == "any" {
+			return &t.Files[i]
+		}
+	}
+	if len(t.Files) == 0 && t.Download != "" {
+		return &TPFile{ABI: "any", URL: t.Download}
+	}
+	return nil
 }
 
 // ABI: список архитектур приложения; пусто значит «любая» (в описи строка "any")
@@ -124,6 +155,20 @@ func (m *Manifest) Third(pkg string) *ThirdParty {
 		}
 	}
 	return nil
+}
+
+// sha256File: SHA-256 файла шестнадцатеричной строкой
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // CheckFile: файл приложения на месте и совпадает с описью (размер и SHA-256). Пусто: всё верно

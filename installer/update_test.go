@@ -4,6 +4,8 @@ package main
 // настройки, сбой посередине восстанавливается»). Подставной ТВ, к настоящему ничего не подключается
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -237,6 +239,81 @@ func TestApplyKeyMapperFreshInstall(t *testing.T) {
 	manual := strings.Join(r.Manual, "\n")
 	if !strings.Contains(manual, "установлен io.github.sds100.keymapper") || strings.Contains(manual, "обновлён io.github.sds100.keymapper") {
 		t.Fatalf("список «делайте руками»: %q", manual)
+	}
+}
+
+// Приложения по желанию (Lampa): качается файл под процессор ТВ со сверкой суммы и подписи, ставится от имени «Сторожа»
+// (тогда он сам обновляет её дальше), вместе с ней встаёт её плитка, а откат её удаляет. Сборки под процессор ТВ нет
+// (LocalSend только для arm64 в тестовой описи): модуль недоступен, а не падает при установке
+func TestApplyOptionalAppLampa(t *testing.T) {
+	f, m, rec := applyEnv(t, false)
+	body := []byte("lampa apk")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer srv.Close()
+	tp := m.Third("top.rootu.lampa")
+	tp.Files[0].URL = srv.URL + "/app-lite-release.apk"
+	sum := sha256.Sum256(body)
+	tp.Files[0].Sha256 = hex.EncodeToString(sum[:])
+	old := certOf
+	certOf = func(p string) (string, error) {
+		if strings.HasSuffix(p, "app-lite-release.apk") {
+			return tp.CertSha256, nil
+		}
+		return "cafe", nil
+	}
+	defer func() { certOf = old }()
+	f.files["app-lite-release.apk"] = "top.rootu.lampa"
+	ch := Choices{Modules: map[string]bool{"lampa": true, "localsend": true, "keymapper": false}}
+	pl := buildPlan(rec, m, parsePassport(f.passport()), ch, false)
+	var dl, inst, tile *Step
+	for i, s := range pl.Steps {
+		switch {
+		case s.Kind == "download" && s.Package == "top.rootu.lampa":
+			dl = &pl.Steps[i]
+		case s.Kind == "install3p" && s.Package == "top.rootu.lampa":
+			inst = &pl.Steps[i]
+		case s.Package == "app.glasstv.tile.lampa":
+			tile = &pl.Steps[i]
+		}
+	}
+	if dl == nil || dl.Sha256 == "" || !strings.Contains(dl.What, "со страницы автора") {
+		t.Fatalf("скачивание Lampa: %+v", dl)
+	}
+	if inst == nil || inst.Installer != "app.glasstv.guard" || inst.Undo != "pm uninstall --user 0 top.rootu.lampa" {
+		t.Fatalf("установка Lampa: %+v", inst)
+	}
+	if tile == nil {
+		t.Fatal("плитка Lampa не встала вместе с ней")
+	}
+	for _, mc := range pl.Modules {
+		if mc.Module == "localsend" && (mc.Available || mc.Chosen || !strings.Contains(mc.Why, "процессор")) {
+			t.Fatalf("LocalSend без сборки под процессор ТВ: %+v", mc)
+		}
+		if mc.Module == "lampa" && (!mc.Third || mc.Group != "apps") {
+			t.Fatalf("Lampa в окне мастера: %+v", mc)
+		}
+	}
+	res := runApply(f, nil, rec, m, ch, ApplyOpts{AllowDownload: true, BackupRoot: t.TempDir()})
+	if !res.Finished {
+		t.Fatalf("установка с Lampa: %+v", res)
+	}
+	if !contains(f.ran, "install top.rootu.lampa от имени app.glasstv.guard") {
+		t.Fatalf("Lampa поставлена не от имени «Сторожа»: %v", f.ran)
+	}
+	if r := runRestore(f, res.Backup, nil); r.Fail != 0 {
+		t.Fatalf("откат: %+v", r)
+	}
+	if _, ok := f.pkgs["top.rootu.lampa"]; ok {
+		t.Fatal("откат не удалил Lampa, которую поставил установщик")
+	}
+	// Чужой файл (сумма не та): ТВ не тронут, установки нет
+	f2, m2, _ := applyEnv(t, false)
+	m2.Third("top.rootu.lampa").Files[0].URL = srv.URL + "/app-lite-release.apk"
+	m2.Third("top.rootu.lampa").Files[0].Sha256 = strings.Repeat("0", 64)
+	f2.files["app-lite-release.apk"] = "top.rootu.lampa"
+	res2 := runApply(f2, nil, rec, m2, ch, ApplyOpts{AllowDownload: true, BackupRoot: t.TempDir()})
+	if res2.Finished || !strings.Contains(res2.Error, "не тот") || contains(f2.ran, "install app.glasstv.guard") {
+		t.Fatalf("файл с чужой суммой: %+v, на ТВ %v", res2, f2.ran)
 	}
 }
 

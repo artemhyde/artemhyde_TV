@@ -17,13 +17,20 @@ HYDE TV {VERSION}: установщик для телевизора на Google 
 @@end
 
 ЧТО ПОНАДОБИТСЯ
-Телевизор на Google TV или Android TV 12 и новее. Проверено на TCL 65C6K (Android 14) и на виртуальном Google TV; на других моделях часть функций может не заработать, мастер проверит это сам и скажет честно.
-Компьютер и телевизор в одной домашней сети, пульт под рукой: на телевизоре один раз включается «Беспроводная отладка», мастер подскажет, где.
+Телевизор на Google TV или Android TV 12 и новее (TCL, Sony, Philips, Hisense, Xiaomi и другие) или приставка с Google TV. Samsung и LG не подойдут: у них своя система. Проверено на TCL 65C6K (Android 14) и на виртуальном Google TV; на других моделях часть функций может не заработать, мастер проверит это сам и скажет честно.
+Компьютер и телевизор в одной домашней сети Wi-Fi, пульт под рукой.
+
+КАК ПОДКЛЮЧИТЬ ТЕЛЕВИЗОР (один раз, то же показывает окно мастера со снимками)
+1. На телевизоре: Настройки, Система, «Об устройстве». На строке «Сборка ОС Android TV» нажмите OK семь раз подряд, появится «Вы стали разработчиком!».
+2. Назад в «Система»: появился пункт «Для разработчиков». В нём откройте «Отладка по Wi-Fi» (на некоторых телевизорах «Беспроводная отладка»).
+3. Выберите «Включено». Спросит, разрешить ли отладку в этой сети: отметьте «Всегда» и нажмите «Разрешить». Затем «Подключить устройство с помощью кода подключения». Отладке нужен Wi-Fi, даже если телевизор подключён кабелем.
+4. Введите шесть цифр с экрана телевизора в окне мастера. Окно на телевизоре не закрывайте, пока не подключится.
+Подробная инструкция со снимками: https://github.com/artemhyde/artemhyde_TV/blob/main/docs/install/windows.md
 
 ЧТО СДЕЛАЕТ МАСТЕР
-Найдёт телевизор, прочитает, что он умеет, и покажет план: что поставит, какие права выдаст и как всё вернуть. До кнопки «Установить» на телевизоре ничего не меняется. Каждое изменение пишется в журнал (папка .glasstv/backup в вашей домашней папке), кнопка «Откатить всё» возвращает телевизор как было.
+Найдёт телевизор, прочитает, что он умеет, и покажет план: что поставит, какие права выдаст и как всё вернуть. Главным экраном HYDE станет, только если вы так выберете; можно сначала попробовать его как обычное приложение. До кнопки «Установить» на телевизоре ничего не меняется. Каждое изменение пишется в журнал (папка .glasstv/backup в вашей домашней папке), кнопка «Откатить всё» возвращает телевизор как было.
 Для связи с телевизором нужна программа adb от Google. Раздавать её вместе с HYDE TV нельзя, поэтому мастер предложит скачать её с сайта Google (около 8 МБ), когда вы примете условия Google. Скачанное сверяется с официальной контрольной суммой.
-Key Mapper (кнопки пульта) мастер скачивает с GitHub автора, тоже только с вашего согласия, и сверяет подпись.
+Key Mapper (кнопки пульта) и приложения по желанию (SmartTube, Lampa, TorrServe, LocalSend, Material Files) мастер скачивает со страниц их авторов на GitHub, только с вашего согласия, и ставит, только если сумма файла и подпись совпали со списком. Откат удаляет всё, что поставил мастер, кроме Key Mapper (у него права администратора, их снимают руками).
 
 С CLAUDE
 Если у вас есть Claude Code: откройте его в этой папке и напишите «давай начнём». Claude поведёт по шагам тем же установщиком (инструкция для него в файле CLAUDE.md).
@@ -52,6 +59,7 @@ Unzip the archive and double click hyde-install: Terminal and the wizard in your
 Extract with tar -xzf {ARCHIVE} and run ./hyde-install in the extracted folder (./hyde-install --no-browser prints the wizard address instead of opening a browser). On ARM Linux Google ships no adb: install it with your package manager.
 @@end
 
-The wizard finds the TV, reads what it supports and shows a plan: what will be installed, which permissions are granted and how everything is reverted. Nothing on the TV changes before you press "Install". Every change is written to a journal (.glasstv/backup in your home folder), and "Revert everything" returns the TV to how it was. The wizard needs adb from Google; it may not be redistributed with HYDE TV, so the wizard downloads it from Google after you accept Google's terms and checks it against Google's official checksum. The interface of the apps on the TV is in Russian.
+Connect the TV once: on the TV open Settings, System, About and press OK seven times on "Android TV OS build"; then in System, Developer options, open "Wi-Fi debugging" (on some TVs "Wireless debugging"), turn it on, choose "Pair device with pairing code" and type the six digits into the wizard. Samsung and LG TVs are not supported (different system); a Google TV streaming box works with any TV.
+The wizard finds the TV, reads what it supports and shows a plan: what will be installed, which permissions are granted and how everything is reverted. You choose whether HYDE becomes the home screen or is tried as a regular app first. Nothing on the TV changes before you press "Install". Every change is written to a journal (.glasstv/backup in your home folder), and "Revert everything" returns the TV to how it was. The wizard needs adb from Google; it may not be redistributed with HYDE TV, so the wizard downloads it from Google after you accept Google's terms and checks it against Google's official checksum. The interface of the apps on the TV is in Russian.
 With Claude Code: open it in this folder and say "let's start"; it drives the same installer (see CLAUDE.md).
 Release signing certificate (SHA-256): {CERT}

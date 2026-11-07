@@ -10,7 +10,7 @@ import (
 type TV interface {
 	Serial() string
 	Shell(script string, timeout time.Duration) (string, error)
-	Install(apk string) (string, error) // adb install -r
+	Install(apk, installer string) (string, error) // adb install -r; installer непустой: от имени этого приложения (-i)
 	Pull(remote, local string) error
 	State() string // «device», если ТВ на связи
 }
@@ -28,8 +28,12 @@ func (t *adbTV) Shell(script string, timeout time.Duration) (string, error) {
 
 // Install: только основному пользователю (--user 0). У TCL есть служебный второй пользователь прошивки: приложение,
 // поставленное всем, после отката «pm uninstall --user 0» осталось бы числиться за ним (07.11, настоящий TCL 65C6K)
-func (t *adbTV) Install(apk string) (string, error) {
-	return t.a.run(10*time.Minute, "-s", t.serial, "install", "--user", "0", "-r", apk)
+func (t *adbTV) Install(apk, installer string) (string, error) {
+	args := []string{"-s", t.serial, "install", "--user", "0", "-r"}
+	if installer != "" {
+		args = append(args, "-i", installer)
+	}
+	return t.a.run(10*time.Minute, append(args, apk)...)
 }
 
 func (t *adbTV) Pull(remote, local string) error {

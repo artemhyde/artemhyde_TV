@@ -72,7 +72,7 @@ final class Ambient implements Data.Listener {
 
         // Два слоя фото для смены через растворение; в каждом резкая картинка и её размытая копия
         for (int i = 0; i < 2; i++) {
-            FrameLayout f = new FrameLayout(c);
+            FrameLayout f = new Flat(c);
             ImageView s = new ImageView(c), b = new ImageView(c);
             s.setScaleType(ImageView.ScaleType.CENTER_CROP);
             b.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -87,16 +87,16 @@ final class Ambient implements Data.Listener {
         }
         // Подложки под текст: сверху до строки даты и погоды (на светлом небе без неё дата пропадала),
         // снизу до 55 % на нижних 240 dp. Тени у текста нет: она держала анимации на 30 кадрах
-        top = new View(c);
+        top = new FlatView(c);
         GradientDrawable topShade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0x4D000000, 0x00000000});
         if (android.os.Build.VERSION.SDK_INT >= 29) topShade.setColors(new int[]{0x66000000, 0x4D000000, 0x00000000}, new float[]{0f, 0.62f, 1f});
         top.setBackground(topShade);
         root.addView(top, new FrameLayout.LayoutParams(-1, px(190)));
-        bottom = new View(c);
+        bottom = new FlatView(c);
         bottom.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x00000000, 0x33000000, 0x8C000000}));
         root.addView(bottom, new FrameLayout.LayoutParams(-1, px(240), Gravity.BOTTOM));
-        dim = new View(c);
+        dim = new FlatView(c);
         dim.setBackgroundColor(0xFF000000);
         dim.setAlpha(0f);
         root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
@@ -184,6 +184,20 @@ final class Ambient implements Data.Listener {
     }
 
     int px(float v) { return Math.round(v * dp); }
+
+    // Рамка фото и подложки без промежуточного буфера при прозрачности. В рамке на экране видна одна картинка: размытая
+    // копия прозрачна на экране блокировки, а в плитках резкое фото спрятано под непрозрачной копией; подложка рисуется
+    // одним градиентом. Иначе Android на каждом кадре растворения рисовал весь экран дважды, в буфер и из буфера:
+    // на ТВ смена фото шла по 44 мс на кадр вместо 16 (07.11, замер gfxinfo). Вид от этого не меняется
+    static final class Flat extends FrameLayout {
+        Flat(Context c) { super(c); }
+        @Override public boolean hasOverlappingRendering() { return false; }
+    }
+
+    static final class FlatView extends View {
+        FlatView(Context c) { super(c); }
+        @Override public boolean hasOverlappingRendering() { return false; }
+    }
 
     // ===== Стиль (Style) =====
 
@@ -539,10 +553,18 @@ final class Ambient implements Data.Listener {
         next.setScaleY(1f);
         // Тёмная подложка корня нужна только пока фото растворяются друг в друге (оба полупрозрачны). Когда новое
         // фото встало, она убирается: под непрозрачным фото это лишняя заливка 1080p в каждом кадре (27.10)
+        // Прежнее фото после смены больше не нужно: отпускаем его картинки из памяти (около 10 МБ в «Vision»). На ТВ с
+        // занятой памятью лёгкий «Дом» реже выгружается системой, а первое пробуждение после выгрузки самое дёрганое (07.11)
+        final int old = 1 - back;
+        final Runnable drop = () -> {
+            if (front != back) return;   // пока растворялось, началась новая смена: её картинки не трогаем
+            sharp[old].setImageDrawable(null);
+            soft[old].setImageDrawable(null);
+        };
         if (fade) {
             root.setBackgroundColor(0xFF07070A);
             next.animate().alpha(1f).setDuration(M.t(2200)).setInterpolator(new AccelerateDecelerateInterpolator())
-                    .withEndAction(() -> root.setBackground(null)).start();
+                    .withEndAction(() -> { root.setBackground(null); drop.run(); }).start();
             cur.animate().alpha(0f).setDuration(M.t(2200)).setInterpolator(new AccelerateDecelerateInterpolator()).start();
         } else {
             next.setAlpha(1f);
@@ -550,6 +572,7 @@ final class Ambient implements Data.Listener {
             root.setBackground(null);
         }
         front = back;
+        if (!fade) drop.run();
         shown = bm;
         shownPhoto = ph;
         caption.setText(captionText(ph));

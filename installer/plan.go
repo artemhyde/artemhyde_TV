@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 )
@@ -25,6 +26,11 @@ type Step struct {
 	Package string `json:"package,omitempty"`
 	URL     string `json:"url,omitempty"`
 	Cert    string `json:"cert,omitempty"`
+	// Скачивание: сумма и размер файла со страницы релиза (если есть); установка стороннего: от чьего имени
+	// (app.glasstv.guard: тогда «Сторож» сам обновляет его дальше)
+	Sha256    string `json:"sha256,omitempty"`
+	Size      int64  `json:"size,omitempty"`
+	Installer string `json:"installer,omitempty"`
 }
 
 type ModuleChoice struct {
@@ -36,6 +42,9 @@ type ModuleChoice struct {
 	Required  bool   `json:"required"`
 	Why       string `json:"why,omitempty"`
 	State     string `json:"state,omitempty"`
+	Note      string `json:"note,omitempty"`  // оговорка из рецепта (серая зона, эксперимент)
+	Group     string `json:"group,omitempty"` // «apps»: приложения по желанию
+	Third     bool   `json:"third,omitempty"` // чужое приложение: качается со страницы автора
 }
 
 // Choices: выбор человека. Модуля нет в списке: как в рецепте по умолчанию. Home nil: как в рецепте
@@ -99,14 +108,19 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 	// Выбор модулей: доступность по паспорту и выпуску, затем выбор человека или как в рецепте
 	chosen := map[string]bool{}
 	for _, rm := range rec.Modules {
-		mc := ModuleChoice{Module: rm.Module, Title: rm.Title, What: rm.What, Required: rm.Required, Available: true}
+		mc := ModuleChoice{Module: rm.Module, Title: rm.Title, What: rm.What, Required: rm.Required, Available: true,
+			Note: rm.Note, Group: rm.Group, Third: rm.ThirdParty != ""}
 		app := m.App(rm.Module)
 		switch {
 		case rm.ThirdParty != "":
-			if m.Third(rm.ThirdParty) == nil {
+			tp := m.Third(rm.ThirdParty)
+			switch {
+			case tp == nil:
 				mc.Available, mc.Why = false, "нет в списке сторонних приложений выпуска"
-			} else if p.Has(rm.ThirdParty) {
+			case p.Has(rm.ThirdParty):
 				mc.State = "уже стоит"
+			case tp.FileFor(c.ABI) == nil:
+				mc.Available, mc.Why = false, "у автора нет сборки под процессор этого ТВ ("+strings.Join(c.ABI, ", ")+")"
 			}
 		case app == nil:
 			mc.Available, mc.Why = false, "нет в этом выпуске"
@@ -157,6 +171,9 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 		if a := m.App(rm.Module); a != nil && chosen[rm.Module] {
 			willHave[a.Package] = true
 		}
+		if rm.ThirdParty != "" && chosen[rm.Module] {
+			willHave[rm.ThirdParty] = true // Lampa, SmartTube, Material Files: их плитки ставятся вместе с ними
+		}
 	}
 
 	add := func(s Step) { pl.Steps = append(pl.Steps, s) }
@@ -168,13 +185,28 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 		if rm.ThirdParty != "" {
 			tp := m.Third(rm.ThirdParty)
 			if p.Has(tp.Package) {
-				add(Step{Group: g, What: "уже стоит, не обновляем: раскладка кнопок проверена на версии " + tp.PinnedVersion, Run: true})
+				add(Step{Group: g, What: "уже стоит, не трогаем" + prefixed(": ", rm.Installed), Run: true})
 			} else {
-				add(Step{Group: g, What: fmt.Sprintf("скачать %s %s с GitHub и сверить подпись (SHA-256 сертификата %s…)", tp.Name, tp.PinnedVersion, prefix(tp.CertSha256, 12)),
-					Do: tp.Download, Host: true, Run: true, Kind: "download", URL: tp.Download, Cert: tp.CertSha256, Package: tp.Package})
-				add(Step{Group: g, What: "поставить " + tp.Name, Do: "adb install --user 0 " + path.Base(tp.Download), Undo: "-", Host: true,
-					Kind: "install3p", File: path.Base(tp.Download), Package: tp.Package, Cert: tp.CertSha256,
-					Note: "откат Key Mapper не удаляет: у него права администратора, они снимаются только руками (docs/rollback.md)"})
+				f := tp.FileFor(c.ABI)
+				size := ""
+				if f.Size > 0 {
+					size = ", " + mb(f.Size)
+				}
+				add(Step{Group: g, What: fmt.Sprintf("скачать %s %s со страницы автора (%s%s) и сверить подпись (SHA-256 сертификата %s…)", tp.Name, tp.PinnedVersion, hostOf(f.URL), size, prefix(tp.CertSha256, 12)),
+					Do: f.URL, Host: true, Run: true, Kind: "download", URL: f.URL, Cert: tp.CertSha256, Package: tp.Package, Sha256: f.Sha256, Size: f.Size})
+				st := Step{Group: g, What: "поставить " + tp.Name, Do: "adb install --user 0 " + path.Base(f.URL), Undo: "pm uninstall --user 0 " + tp.Package, Host: true,
+					Kind: "install3p", File: path.Base(f.URL), Package: tp.Package, Cert: tp.CertSha256}
+				if rm.Updates == "guard" && chosen["guard"] {
+					// От имени «Сторожа»: тогда он сам ставит новые версии без нажатий (Android даёт тихое обновление только
+					// тому, кто числится установщиком)
+					st.Installer = "app.glasstv.guard"
+					st.Do = "adb install --user 0 -i app.glasstv.guard " + path.Base(f.URL)
+					st.Note = "новые версии потом ставит «Сторож» сам"
+				}
+				if rm.Keep != "" {
+					st.Undo, st.Note = "-", rm.Keep
+				}
+				add(st)
 			}
 		} else {
 			addInstall(&pl, add, g, m, m.App(rm.Module), p, rm.Admin, checkFiles)
@@ -413,6 +445,22 @@ func prefix(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// prefixed: «p+s», если s непустая
+func prefixed(p, s string) string {
+	if s == "" {
+		return ""
+	}
+	return p + s
+}
+
+// hostOf: имя сайта из адреса (github.com) для слов «откуда качаем»
+func hostOf(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Hostname()
+	}
+	return raw
 }
 
 func nonEmpty(s, def string) string {

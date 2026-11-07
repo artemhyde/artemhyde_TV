@@ -1,5 +1,5 @@
 {
-  "about": "Чужие приложения, которые мастер может скачать по просьбе человека. Мы их не копируем и не раздаём: только ссылки на страницы авторов. Перед установкой скачанный APK проверяется командой apksigner verify --print-certs, SHA-256 сертификата должен совпасть с cert_sha256. Не совпал: не ставить. Отпечатки сняты с копий, установленных на проверенном ТВ (доверие по первой установке). Что подписи новых версий совпадут с записанным отпечатком, не проверено: ставить нужно ту версию, что указана в pinned_version (если она есть), а новее только по явному решению человека. Не совпал отпечаток: не ставить, сказать человеку и остановиться по этому приложению. license_checked равно false значит, что лицензия записана по памяти и её нужно перепроверить на странице автора.",
+  "about": "Чужие приложения, которые мастер может скачать по просьбе человека. Мы их не копируем и не раздаём: только ссылки на страницы авторов. Перед установкой скачанный APK проверяется командой apksigner verify --print-certs, SHA-256 сертификата должен совпасть с cert_sha256. Не совпал: не ставить. Отпечатки сняты с копий, установленных на проверенном ТВ (доверие по первой установке). Что подписи новых версий совпадут с записанным отпечатком, не проверено: ставить нужно ту версию, что указана в pinned_version (если она есть), а новее только по явному решению человека. Не совпал отпечаток: не ставить, сказать человеку и остановиться по этому приложению. license_checked равно false значит, что лицензия записана по памяти и её нужно перепроверить на странице автора. Поле files: точные файлы закреплённой версии по процессорам ТВ (abi any подходит любому) с размером и SHA-256 со страницы релиза GitHub; установщик сверяет и сумму файла, и сертификат подписи.",
   "tools": [
     {
       "name": "Android SDK Platform-Tools (adb)",
@@ -46,13 +46,40 @@
     {
       "name": "SmartTube",
       "package": "org.smarttube.stable",
-      "version_seen": "32.68",
+      "version_seen": "32.71",
       "releases": "https://github.com/yuliskov/SmartTube/releases",
       "license": "MIT",
       "license_checked": true,
       "cert_sha256": "109735aa24fe85e2e1623ebb3b1ecc4bf4263f4c6374e4411d646bfa2eda482a",
       "cert_subject": "CN=Yurii L",
-      "note": "YouTube без рекламы. Серая зона условий сервиса: ставить только по желанию человека, сказав об этом."
+      "note": "YouTube без рекламы. Серая зона условий сервиса: ставить только по желанию человека, сказав об этом.",
+      "pinned_version": "32.71",
+      "files": [
+        {
+          "abi": "armeabi-v7a",
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.71s/SmartTube_stable_32.71_armeabi-v7a.apk",
+          "size": 25517725,
+          "sha256": "288e8caaa11417f6b64d2a7f906cead85c0b8a9bb5904753d7cb4f79d117d023"
+        },
+        {
+          "abi": "arm64-v8a",
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.71s/SmartTube_stable_32.71_arm64-v8a.apk",
+          "size": 26731385,
+          "sha256": "6a799a129015e772d231440f4e3ad919f643164a0fdeb76ecb202bf3afb3db52"
+        },
+        {
+          "abi": "x86",
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.71s/SmartTube_stable_32.71_x86.apk",
+          "size": 28396106,
+          "sha256": "16bccb10ab894a2201cab281bc4bcc838804c6d6a8065be591d1b29a0018178d"
+        },
+        {
+          "abi": "any",
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.71s/SmartTube_stable_32.71_universal.apk",
+          "size": 35393792,
+          "sha256": "6d1819b88ed7b03a61fac0b58d3e14197fab9eb7d42905bd93913da58f1adc2b"
+        }
+      ]
     },
     {
       "name": "Lampa",
@@ -63,7 +90,16 @@
       "license_checked": true,
       "cert_sha256": "8adaaa27bf99293ec260fe372e77d142ac9166fe339f348f1148a3bf987d9872",
       "cert_subject": "CN=top.rootu",
-      "note": "Ставится только само приложение и меняются только его собственные настройки (docs/lampa.md). Расширения только те, что назвал сам человек, адрес вводит он (docs/lampa.md, «Расширения»)."
+      "note": "Ставится только само приложение и меняются только его собственные настройки (docs/lampa.md). Расширения только те, что назвал сам человек, адрес вводит он (docs/lampa.md, «Расширения»).",
+      "pinned_version": "1.13.5",
+      "files": [
+        {
+          "abi": "any",
+          "url": "https://github.com/lampa-app/LAMPA/releases/download/v1.13.5/app-lite-release.apk",
+          "size": 11741704,
+          "sha256": "4d53f2038cb99dc7a05f346e943dd6ec7cedd25e42b878ce383cb4e31d6c24c8"
+        }
+      ]
     },
     {
       "name": "TorrServe",
@@ -74,7 +110,16 @@
       "license_checked": true,
       "cert_sha256": "6cbc24b62d7c7cbcdfa534a863b3612e8abde28af6ab41a566a3a9b879293f4e",
       "cert_subject": "CN=Yuri Yushkin, L=Russian Federation, C=RU",
-      "note": "Необязательный модуль: клиент сервера торрентов для Lampa (docs/torrserve.md). Сам сервер человек ставит кнопкой в клиенте или запускает на своём устройстве; источников модуль не добавляет. Отпечаток снят 06.11.2026 с MatriX.143.Client, проверенного на TCL 65C6K вместе с сервером MatriX.147."
+      "note": "Необязательный модуль: клиент сервера торрентов для Lampa (docs/torrserve.md). Сам сервер человек ставит кнопкой в клиенте или запускает на своём устройстве; источников модуль не добавляет. Отпечаток снят 06.11.2026 с MatriX.143.Client, проверенного на TCL 65C6K вместе с сервером MatriX.147.",
+      "pinned_version": "MatriX.143.Client",
+      "files": [
+        {
+          "abi": "any",
+          "url": "https://github.com/YouROK/TorrServe/releases/download/MatriX.143.Client/TorrServe_MatriX.143.Client.apk",
+          "size": 11955914,
+          "sha256": "4b577862df6de9b22c387fd2737818a8373b9efa354c91badcc6b78f73f7c7a9"
+        }
+      ]
     },
     {
       "name": "Just Player",
@@ -104,10 +149,45 @@
       "version_seen": "1.7.5",
       "releases": "https://github.com/zhanghai/MaterialFiles/releases",
       "license": "GPL-3.0",
-      "license_checked": false,
+      "license_checked": true,
       "cert_sha256": "873b9b60c77cf7f3cd5fae66d0fe112c4a86973e118ee8a29c346c4c673c97f0",
       "cert_subject": "CN=Hai Zhang",
-      "note": "Файловый менеджер."
+      "note": "Файловый менеджер.",
+      "pinned_version": "1.7.5",
+      "files": [
+        {
+          "abi": "any",
+          "url": "https://github.com/zhanghai/MaterialFiles/releases/download/v1.7.5/app-release-universal.apk",
+          "size": 13747821,
+          "sha256": "f2e7f028fbddf51d7ee90ace27a1ae4b247511e12514d1def6c9e52435feac40"
+        }
+      ]
+    },
+    {
+      "name": "LocalSend",
+      "package": "org.localsend.localsend_app",
+      "version_seen": "1.18.2",
+      "releases": "https://github.com/localsend/localsend/releases",
+      "license": "Apache-2.0",
+      "license_checked": true,
+      "cert_sha256": "3220c353a73cfbd0c2f3052471c445324cf452bcba26de1c473a52fe5c44e1d6",
+      "cert_subject": "O=LocalSend",
+      "note": "Присылать на ТВ файлы и приложения с телефона или компьютера в домашней сети. Отпечаток снят 07.11.2026 с версии 1.18.2, которую «Сторож» поставил с GitHub (файл на ТВ совпал с суммой GitHub).",
+      "pinned_version": "1.18.2",
+      "files": [
+        {
+          "abi": "armeabi-v7a",
+          "url": "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-android-arm32v7.apk",
+          "size": 39333444,
+          "sha256": "222b02d2813578a574cd3fbcfa7b8ff317d4887edb9ca0fb7b292816d222dc63"
+        },
+        {
+          "abi": "arm64-v8a",
+          "url": "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-android-arm64v8.apk",
+          "size": 46558706,
+          "sha256": "82ec3568fba2aa5295b9aae8b76f701d7a4703d86b9f8bad749472038fbaeab3"
+        }
+      ]
     },
     {
       "name": "NewPipe",

@@ -39,6 +39,14 @@ type RecipeModule struct {
 	ThirdParty string       `json:"third_party"`
 	PartOf     string       `json:"part_of"`
 	Steps      []RecipeStep `json:"steps"`
+	// Для сторонних: Keep непустой значит «откат не удаляет» и почему; Updates «guard»: ставить от имени «Сторожа»,
+	// тогда он сам обновляет приложение без нажатий (apps/guard/assets/updates.txt); Installed: что сказать, если уже стоит
+	Keep      string `json:"keep"`
+	Updates   string `json:"updates"`
+	Installed string `json:"installed"`
+	// Group «apps»: раздел «Приложения по желанию» в окне мастера; Note: оговорка под названием (серая зона, эксперимент)
+	Group string `json:"group"`
+	Note  string `json:"note"`
 }
 
 type RecipeStep struct {

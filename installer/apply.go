@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -88,9 +89,10 @@ func runTVCmd(tv TV, cmd string) (string, error) {
 	return out, fmt.Errorf("не прошло: %s", nonEmpty(lastLine(out), "без ответа"))
 }
 
-func installFile(tv TV, file string) error {
+// installFile: поставить файл; installer непустой: от имени этого приложения (стороннее, которое потом обновляет «Сторож»)
+func installFile(tv TV, file, installer string) error {
 	for try := 0; try < 2; try++ {
-		out, _ := tv.Install(file)
+		out, _ := tv.Install(file, installer)
 		if strings.Contains(out, "Success") {
 			return nil
 		}
@@ -169,7 +171,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			}
 		}
 		if s.Kind == "download" && !o.AllowDownload {
-			return fail(fmt.Errorf("нужно согласие скачать %s с GitHub: без него уберите Key Mapper из выбора", s.URL))
+			return fail(fmt.Errorf("нужно согласие скачать %s со страницы автора (%s): без него уберите «%s» из выбора", path.Base(s.URL), hostOf(s.URL), s.Group))
 		}
 		if s.Kind == "home_role" && !o.TVFree {
 			return fail(errors.New("смена главного экрана нажимает кнопки на ТВ: нужно подтверждение, что ТВ свободен"))
@@ -246,11 +248,11 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		}
 		tp := m.Third(s.Package)
 		emit(Event{Status: "start", Group: s.Group, What: s.What})
-		path, err := downloadThirdParty(tp, filepath.Join(dir, "downloads"), nil)
+		file, err := downloadThirdParty(tp, s.URL, s.Sha256, filepath.Join(dir, "downloads"), nil)
 		if err != nil {
 			return fail(err)
 		}
-		files[s.Package] = path
+		files[s.Package] = file
 		emit(Event{Status: "ok", Group: s.Group, What: s.What})
 	}
 
@@ -291,9 +293,11 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			what := "установлен " + s.Package + " (" + s.Group + ", " + s.File + ")"
 			switch {
 			case s.Kind == "install3p":
-				// Стороннее приложение ставится только там, где его не было, и откат его не удаляет: у Key Mapper права
-				// администратора, они снимаются только руками (07.11: живой Key Mapper подписывался «обновлён»)
-				what += ": откат его не удаляет, удалить можно руками (docs/rollback.md)"
+				// Стороннее приложение ставится только там, где его не было. Откат его удаляет, кроме тех, у кого права
+				// администратора (Key Mapper): их снимают только руками (07.11: живой Key Mapper подписывался «обновлён»)
+				if s.Undo == "-" {
+					what += ": откат его не удаляет, удалить можно руками (docs/rollback.md)"
+				}
 				file = files[s.Package]
 			case s.Undo == "-":
 				what = "обновлён " + s.Package + " (" + s.Group + ", " + s.File + "): откат версии не делается, данные на месте"
@@ -306,7 +310,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			if err := journal(LedgerEntry{What: what, Do: s.Do, Undo: undo}); err != nil {
 				return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", err))
 			}
-			if err := installFile(tv, file); err != nil {
+			if err := installFile(tv, file, s.Installer); err != nil {
 				return fail(fmt.Errorf("%s: %w", s.Group, err))
 			}
 			res.Done++

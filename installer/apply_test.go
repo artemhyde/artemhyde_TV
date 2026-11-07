@@ -271,7 +271,7 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 	return "", nil
 }
 
-func (f *fakeTV) Install(apk string) (string, error) {
+func (f *fakeTV) Install(apk, installer string) (string, error) {
 	if !f.online {
 		return "error: device offline", errors.New("offline")
 	}
@@ -279,7 +279,7 @@ func (f *fakeTV) Install(apk string) (string, error) {
 	if pkg == "" {
 		return "Failure [unknown file " + apk + "]", errors.New("exit 1")
 	}
-	f.ran = append(f.ran, "install "+pkg)
+	f.ran = append(f.ran, "install "+pkg+prefixed(" от имени ", installer))
 	f.pkgs[pkg] = 10000
 	return "Performing Streamed Install\nSuccess\n", nil
 }
@@ -510,20 +510,51 @@ func TestDownloadThirdParty(t *testing.T) {
 	certOf = func(string) (string, error) { return "good", nil }
 	dir := t.TempDir()
 	tp := &ThirdParty{Name: "Тест", Download: srv.URL + "/km.apk", CertSha256: "good"}
-	p, err := downloadThirdParty(tp, dir, nil)
+	p, err := downloadThirdParty(tp, tp.Download, "", dir, nil)
 	if err != nil || filepath.Base(p) != "km.apk" {
 		t.Fatalf("скачивание: %v %s", err, p)
 	}
+	// Сумма файла со страницы релиза: совпала, ставим; другая, файл удаляется ещё до сверки подписи
+	good := "4b0f7ae5fd2a5e2e1db0c5b3d0e4b3c0fd8c8e7d3d6a2f55a4ae4f4c1a0c2fd1"
+	if h, _ := sha256File(p); h != "" {
+		good = h
+	}
+	if _, err := downloadThirdParty(tp, tp.Download, good, dir, nil); err != nil {
+		t.Fatalf("сумма совпала, а файл отклонён: %v", err)
+	}
+	if _, err := downloadThirdParty(tp, tp.Download, strings.Repeat("0", 64), dir, nil); err == nil || !strings.Contains(err.Error(), "не тот") {
+		t.Fatalf("файл с чужой суммой должен отклоняться: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "km.apk")); err == nil {
+		t.Fatal("файл с чужой суммой не удалён")
+	}
 	tp.CertSha256 = "other"
-	if _, err := downloadThirdParty(tp, dir, nil); err == nil || !strings.Contains(err.Error(), "не совпала") {
+	if _, err := downloadThirdParty(tp, tp.Download, "", dir, nil); err == nil || !strings.Contains(err.Error(), "не совпала") {
 		t.Fatalf("чужая подпись должна отклоняться: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "km.apk")); err == nil {
 		t.Fatal("файл с чужой подписью не удалён")
 	}
-	tp.Download = "http://example.org/km.apk"
-	if _, err := downloadThirdParty(tp, dir, nil); err == nil {
+	if _, err := downloadThirdParty(tp, "http://example.org/km.apk", "", dir, nil); err == nil {
 		t.Fatal("скачивание не по https")
+	}
+}
+
+// Файл под процессор ТВ: сначала основной процессор ТВ, потом общий; у записи без files одна ссылка download
+func TestThirdPartyFileFor(t *testing.T) {
+	tp := &ThirdParty{Files: []TPFile{{ABI: "armeabi-v7a", URL: "u32"}, {ABI: "arm64-v8a", URL: "u64"}, {ABI: "any", URL: "uall"}}}
+	for abis, want := range map[string]string{"armeabi-v7a,armeabi": "u32", "arm64-v8a,armeabi-v7a,armeabi": "u64", "x86_64,x86": "uall"} {
+		if f := tp.FileFor(strings.Split(abis, ",")); f == nil || f.URL != want {
+			t.Fatalf("%s: %+v, ждали %s", abis, f, want)
+		}
+	}
+	only := &ThirdParty{Files: []TPFile{{ABI: "armeabi-v7a", URL: "u32"}}}
+	if f := only.FileFor([]string{"x86_64"}); f != nil {
+		t.Fatalf("сборки под x86_64 нет, а файл нашёлся: %+v", f)
+	}
+	km := &ThirdParty{Download: "https://github.com/x/km.apk"}
+	if f := km.FileFor([]string{"armeabi-v7a"}); f == nil || f.URL != km.Download {
+		t.Fatalf("старая запись с одной ссылкой: %+v", f)
 	}
 }
 

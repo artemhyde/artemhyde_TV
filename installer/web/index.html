@@ -6,145 +6,392 @@
 <title>Установка HYDE TV</title>
 <style>
   :root {
-    --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea;
-    --accent: #0071e3; --accent-soft: #e8f1fd; --ok: #1e8e3e; --ok-soft: #e6f4ea; --warn: #b25e00; --warn-soft: #fff4e5;
-    --bad: #c5221f; --bad-soft: #fdecea; --radius: 18px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #000; --card: #1c1c1e; --text: #f5f5f7; --muted: #98989d; --line: #2c2c2e;
-      --accent: #0a84ff; --accent-soft: #0a2a4d; --ok: #30d158; --ok-soft: #0f2e18; --warn: #ffb340; --warn-soft: #3a2a0f;
-      --bad: #ff453a; --bad-soft: #3a1513; }
+    --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --faint: #86868b; --line: #e3e3e8;
+    --accent: #0071e3; --accent-soft: #e8f1fd; --ok: #1e8e3e; --ok-soft: #e7f5ec; --warn: #b25e00; --warn-soft: #fff4e5;
+    --bad: #c5221f; --bad-soft: #fdecea; --radius: 22px; --bar: rgba(245, 245, 247, .78);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 32px rgba(0, 0, 0, .07);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    /* Всегда светлое оформление в стиле Apple, и в тёмной теме Windows тоже (решение владельца проекта) */
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
-  main { max-width: 920px; margin: 0 auto; padding: 40px 16px 80px; }
-  h1 { font-size: 34px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 6px; }
-  .sub { color: var(--muted); margin: 0 0 28px; }
-  section { background: var(--card); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 16px;
-    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04); }
-  section.off { opacity: .45; pointer-events: none; }
-  h2 { font-size: 20px; letter-spacing: -0.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
-  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
-    display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .line { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); }
-  .line:first-of-type { border-top: 0; }
-  .line .k { color: var(--muted); }
-  .line .v { text-align: right; }
-  button { font: inherit; border: 0; border-radius: 980px; padding: 9px 18px; cursor: pointer; background: var(--accent); color: #fff; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  [hidden] { display: none !important; }
+
+  /* Полоса сверху: где я и сколько осталось */
+  .bar { position: sticky; top: 0; z-index: 10; background: var(--bar); border-bottom: 1px solid var(--line);
+    backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
+  .bar .in { max-width: 1000px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .brand { font: 700 18px/1 var(--display); letter-spacing: .04em; }
+  .stages { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+  .stages span { font-size: 13px; color: var(--faint); padding: 5px 11px; border-radius: 980px; transition: background-color .2s, color .2s; }
+  .stages span.done { color: var(--ok); }
+  .stages span.on { background: var(--text); color: var(--bg); }
+  main { max-width: 1000px; margin: 0 auto; padding: 28px 20px 110px; }
+
+  /* Кнопки */
+  button { font: inherit; border: 0; border-radius: 980px; padding: 10px 20px; cursor: pointer; background: var(--accent); color: #fff;
+    transition: transform .16s var(--ease-out), opacity .2s, background-color .2s; }
   button.ghost { background: var(--accent-soft); color: var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  button:active { transform: scale(.97); }
-  input[type=text] { font: inherit; padding: 9px 14px; border-radius: 12px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--text); min-width: 0; flex: 1 1 200px; }
-  .msg { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); }
-  .msg.ok { background: var(--ok-soft); color: var(--ok); }
-  .msg.warn { background: var(--warn-soft); color: var(--warn); }
-  .msg.bad { background: var(--bad-soft); color: var(--bad); }
-  .hint { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
-  .dev { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
-  .dev:first-child { border-top: 0; }
+  button.big { font-size: 18px; padding: 14px 30px; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:not(:disabled):active { transform: scale(.97); }
+  .link { background: none; color: var(--accent); padding: 8px 4px; }
+  input[type=text] { font: inherit; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; flex: 1 1 200px; }
+  input:focus-visible, button:focus-visible, .opt:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
+
+  /* ===== Вступление ===== */
+  .intro { position: relative; }
+  .slide { display: none; min-height: 560px; }
+  .slide.on { display: block; animation: enter .5s var(--ease-out) both; }
+  @keyframes enter { from { opacity: 0; transform: translateX(var(--from, 28px)); } to { opacity: 1; transform: none; } }
+  .kicker { font-size: 15px; font-weight: 600; color: var(--accent); margin: 8px 0 6px; text-align: center; }
+  .display { font: 700 clamp(48px, 9vw, 92px)/1 var(--display); letter-spacing: -0.035em; margin: 0; text-align: center; }
+  .title { font: 700 clamp(30px, 5vw, 46px)/1.08 var(--display); letter-spacing: -0.025em; margin: 6px 0 10px; text-align: center; }
+  .lede { font-size: clamp(18px, 2.2vw, 21px); line-height: 1.45; color: var(--muted); max-width: 720px; margin: 14px auto 0; text-align: center; }
+  .byline { text-align: center; color: var(--faint); font-size: 15px; margin: 10px 0 26px; }
+  .shot { display: block; width: 100%; border-radius: 22px; box-shadow: var(--shadow); background: #0b0d12; aspect-ratio: 16 / 9; object-fit: cover; }
+  .hero .shot { margin-top: 4px; }
+
+  /* До и после: верхний снимок обрезается по ползунку, ползунок обычный input range поверх (мышь, касание, стрелки) */
+  .cmp { position: relative; border-radius: 22px; overflow: hidden; aspect-ratio: 16 / 9; box-shadow: var(--shadow); background: #0b0d12;
+    margin-top: 22px; user-select: none; -webkit-user-select: none; --x: 50%; }
+  .cmp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .cmp .before { clip-path: inset(0 calc(100% - var(--x)) 0 0); }
+  .cmp .divider { position: absolute; top: 0; bottom: 0; left: var(--x); width: 2px; margin-left: -1px; background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .15); pointer-events: none; }
+  .cmp .knob { position: absolute; top: 50%; left: var(--x); width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .94); box-shadow: 0 4px 16px rgba(0, 0, 0, .3); display: grid; place-items: center; pointer-events: none;
+    color: #1d1d1f; font-size: 18px; letter-spacing: -2px; }
+  .cmp input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+  .cmp .tag { position: absolute; top: 16px; padding: 5px 13px; border-radius: 980px; font-size: 14px; font-weight: 600; color: #fff;
+    background: rgba(0, 0, 0, .45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); pointer-events: none; }
+  .cmp .tag.l { left: 16px; } .cmp .tag.r { right: 16px; }
+
+  /* Что внутри: четыре карточки, появляются по очереди */
+  .feat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 24px; }
+  .fc { background: var(--card); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); }
+  .fc img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #0b0d12; }
+  .fc .tx { padding: 14px 18px 18px; }
+  .fc b { display: block; font-size: 18px; margin-bottom: 2px; }
+  .fc span { color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 980px; background: var(--warn-soft); color: var(--warn); margin-left: 6px; vertical-align: 2px; }
+  .slide.on .fc { animation: rise .5s var(--ease-out) both; }
+  .slide.on .fc:nth-child(2) { animation-delay: 60ms; } .slide.on .fc:nth-child(3) { animation-delay: 120ms; } .slide.on .fc:nth-child(4) { animation-delay: 180ms; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .more { text-align: center; color: var(--muted); font-size: 15px; margin-top: 18px; }
+
+  /* Подойдёт ли телевизор */
+  .fit { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 26px; }
+  .fit > div { background: var(--card); border-radius: 20px; padding: 22px 24px; box-shadow: var(--shadow); }
+  .fit b { display: flex; align-items: center; gap: 10px; font-size: 20px; margin-bottom: 8px; }
+  .fit p { margin: 0; color: var(--muted); }
+  .mark { width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 17px; flex: none; }
+  .mark.y { background: var(--ok-soft); color: var(--ok); } .mark.n { background: var(--bad-soft); color: var(--bad); }
+  .note { text-align: center; color: var(--muted); max-width: 680px; margin: 22px auto 0; font-size: 15px; }
+
+  /* Перед началом */
+  .need { list-style: none; padding: 0; margin: 26px auto 0; max-width: 640px; display: grid; gap: 12px; }
+  .need li { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border-radius: 18px; padding: 16px 20px; box-shadow: var(--shadow); }
+  .safe { max-width: 640px; margin: 18px auto 0; padding: 16px 20px; border-radius: 18px; background: var(--ok-soft); color: var(--text); }
+
+  /* Низ вступления: назад, точки, пропустить и дальше. Всегда на одном месте внизу окна, кадр уходит под полосу с растворением */
+  .intro { padding-bottom: 120px; }
+  .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding: 30px 20px 22px;
+    background: linear-gradient(to top, var(--bg) 64%, rgba(245, 245, 247, 0)); }
+  .nav .in { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+  .nav #prev { justify-self: start; }
+  .nav .dots { margin: 0; }
+  .nav .end { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .display, .title, .lede { text-wrap: balance; }
+  .dots { display: flex; gap: 8px; margin: 0 auto; }
+  .dots button { width: 9px; height: 9px; padding: 0; border-radius: 50%; background: var(--line); }
+  .dots button.on { background: var(--text); width: 24px; border-radius: 9px; transition: width .3s var(--ease-out); }
+  .skip { font-size: 15px; padding: 10px 12px; }
+
+  /* ===== Мастер по шагам ===== */
+  section { background: var(--card); border-radius: var(--radius); padding: 26px 28px; margin-bottom: 18px; box-shadow: var(--shadow); }
+  section.off { opacity: .42; pointer-events: none; }
+  h2 { font: 700 23px/1.2 var(--display); letter-spacing: -0.015em; margin: 0 0 14px; display: flex; align-items: center; gap: 12px; }
+  .num { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); flex: none;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+  section.done .num { background: var(--ok-soft); color: var(--ok); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .hint { color: var(--muted); font-size: 15px; margin: 8px 0 0; }
+  .msg { margin-top: 12px; padding: 13px 16px; border-radius: 14px; background: var(--accent-soft); overflow-wrap: anywhere; }
+  .msg.ok { background: var(--ok-soft); color: var(--ok); } .msg.warn { background: var(--warn-soft); color: var(--warn); } .msg.bad { background: var(--bad-soft); color: var(--bad); }
+  .check { display: flex; gap: 12px; align-items: flex-start; padding: 6px 0; }
+  .check .m { width: 26px; height: 26px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 14px; background: var(--ok-soft); color: var(--ok); margin-top: 1px; }
+  .check .m.no { background: var(--bad-soft); color: var(--bad); }
+  details { margin-top: 12px; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 15px; list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: "›"; display: inline-block; width: 14px; transition: transform .2s var(--ease-out); }
+  details[open] summary::before { transform: rotate(90deg); }
+  .line { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+  .line:first-of-type { border-top: 0; }
+  .line .k { color: var(--muted); } .line .v { text-align: right; }
+
+  /* Телевизор: найденные, шаги с картинками, код */
+  .tvstat { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 15px; }
+  .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; flex: none; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .dev { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; margin-top: 10px; border-radius: 16px; background: var(--ok-soft); }
+  .dev .nm { font-weight: 600; }
+  .guide { display: grid; gap: 14px; margin-top: 18px; }
+  .g { display: grid; grid-template-columns: 300px 1fr; gap: 22px; align-items: center; padding: 16px; border-radius: 18px; background: var(--bg); }
+  .g img { width: 100%; border-radius: 12px; display: block; background: #0b0d12; }
+  .g .t { font-weight: 650; font-size: 18px; display: flex; gap: 10px; align-items: baseline; }
+  .g .t i { font-style: normal; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .g p { margin: 6px 0 0; color: var(--muted); font-size: 15.5px; }
+  .g q { quotes: "«" "»"; color: var(--text); font-weight: 500; }
+  .code { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .code input { flex: 0 0 auto; width: 8.6em; font: 600 30px/1 ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; letter-spacing: .18em;
+    text-align: center; padding: 12px 10px; border-radius: 14px; border: 2px solid var(--line); background: var(--card); color: var(--text); }
+  .code input:focus { border-color: var(--accent); outline: none; }
+
+  /* Паспорт */
+  .verdict { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 16px; background: var(--ok-soft); }
+  .verdict.bad { background: var(--bad-soft); } .verdict.warn { background: var(--warn-soft); } .verdict.info { background: var(--accent-soft); }
+  .verdict b { display: block; font-size: 19px; } .verdict span { color: var(--muted); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .chip { padding: 5px 12px; border-radius: 980px; font-size: 14px; background: var(--bg); }
+  .chip { padding: 5px 12px; border-radius: 980px; font-size: 14px; background: var(--bg); color: var(--muted); }
   .chip.yes { background: var(--ok-soft); color: var(--ok); }
-  .mod { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line); }
-  .mod:first-child { border-top: 0; }
+
+  /* Модули */
+  .group { margin: 22px 0 4px; font-weight: 700; font-size: 17px; }
+  .group + .hint { margin: 0 0 6px; }
+  .mod { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); }
+  .group + .mod, .group + .hint + .mod, .mods > .mod:first-child { border-top: 0; }
   .mod .t { font-weight: 600; }
-  .mod .w { color: var(--muted); font-size: 14px; }
-  .mod .why { color: var(--warn); font-size: 14px; }
-  .switch { position: relative; width: 46px; height: 28px; flex: none; margin-top: 2px; }
+  .mod .w { color: var(--muted); font-size: 15px; }
+  .mod .nt { color: var(--warn); font-size: 14px; margin-top: 2px; }
+  .mod .st { color: var(--ok); font-size: 14px; margin-top: 2px; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--bg); padding: 2px 8px; border-radius: 980px; margin-left: 6px; vertical-align: 2px; }
+  .switch { position: relative; width: 51px; height: 31px; flex: none; margin-top: 1px; }
   .switch input { opacity: 0; width: 0; height: 0; }
-  .switch span { position: absolute; inset: 0; border-radius: 28px; background: var(--line); transition: background .2s; cursor: pointer; }
-  .switch span::after { content: ""; position: absolute; width: 24px; height: 24px; left: 2px; top: 2px; border-radius: 50%;
-    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+  .switch span { position: absolute; inset: 0; border-radius: 31px; background: var(--line); transition: background-color .2s; cursor: pointer; }
+  .switch span::after { content: ""; position: absolute; width: 27px; height: 27px; left: 2px; top: 2px; border-radius: 50%; background: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .2); transition: transform .25s var(--ease-out); }
   .switch input:checked + span { background: var(--ok); }
-  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:checked + span::after { transform: translateX(20px); }
   .switch input:disabled + span { opacity: .5; cursor: default; }
-  .group { margin-top: 18px; font-weight: 600; }
-  .step { display: grid; grid-template-columns: 28px 1fr; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--line); }
-  .step .n { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .switch input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
+
+  /* Главный экран: два варианта */
+  .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .opt { text-align: left; display: block; background: var(--bg); color: var(--text); border: 2px solid transparent; border-radius: 18px; padding: 18px 20px; font: inherit; cursor: pointer;
+    transition: border-color .15s, background-color .15s, transform .16s var(--ease-out); }
+  .opt b { display: block; font-size: 18px; margin-bottom: 6px; }
+  .opt span { color: var(--muted); font-size: 15px; line-height: 1.45; display: block; }
+  .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .opt b span.pill { display: inline-block; color: var(--accent); background: var(--card); font-size: 12px; margin-left: 8px; vertical-align: 2px; }
+  @media (hover: hover) and (pointer: fine) { .opt:not(.sel):hover { border-color: var(--line); } }
+
+  /* План */
+  .sum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .sum div { background: var(--bg); border-radius: 16px; padding: 14px 16px; }
+  .sum b { display: block; font: 700 26px/1.1 var(--display); }
+  .sum span { color: var(--muted); font-size: 14px; }
+  .step { display: grid; grid-template-columns: 30px 1fr; gap: 4px 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+  .step .n { color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
   .step code { font: 12.5px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); word-break: break-all; }
-  .step .undo { font-size: 13px; color: var(--muted); }
-  .step .note { font-size: 13px; color: var(--warn); }
-  details summary { cursor: pointer; color: var(--accent); margin-top: 10px; }
-  .ev { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 5px 0; font-size: 15px; }
+  .step .undo { font-size: 13px; color: var(--muted); } .step .note { font-size: 13px; color: var(--warn); }
+  .sgroup { margin-top: 14px; font-weight: 600; font-size: 15px; }
+
+  /* Установка */
+  .consent { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; }
+  .consent input { width: 22px; height: 22px; margin-top: 1px; accent-color: var(--accent); flex: none; }
+  .prog { height: 10px; border-radius: 10px; background: var(--line); overflow: hidden; margin: 16px 0 8px; }
+  .prog i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 10px; transition: width .5s var(--ease-out); }
+  .now { font-size: 15px; color: var(--muted); }
+  .ev { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 4px 0; font-size: 14px; }
   .ev .m { text-align: center; }
   .ev.ok .m { color: var(--ok); } .ev.fail .m, .ev.lost .m { color: var(--bad); } .ev.warn .m { color: var(--warn); }
   .ev .d { color: var(--muted); font-size: 13px; }
-  .consent { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
-  .consent input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
-  a { color: var(--accent); }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .done-card { padding: 20px 22px; border-radius: 18px; background: var(--ok-soft); margin-top: 14px; }
+  .done-card b { display: block; font: 700 22px/1.2 var(--display); color: var(--ok); margin-bottom: 4px; }
+  ol.todo { margin: 10px 0 0; padding-left: 22px; } ol.todo li { margin: 6px 0; }
+
+  @media (max-width: 760px) {
+    .feat, .fit, .choice { grid-template-columns: 1fr; }
+    .sum { grid-template-columns: 1fr 1fr; }
+    .g { grid-template-columns: 1fr; }
+    .stages { display: none; }
+    section { padding: 22px 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slide.on, .slide.on .fc { animation: fade .2s ease both !important; }
+    @keyframes fade { from { opacity: 0; } }
+    *, .pulse { transition-duration: 0s !important; animation-iteration-count: 1 !important; }
+  }
 </style>
 </head>
 <body>
+<header class="bar"><div class="in">
+  <div class="brand">HYDE TV</div>
+  <nav class="stages" aria-label="Шаги">
+    <span data-st="0">Знакомство</span><span data-st="1">Компьютер</span><span data-st="2">Телевизор</span><span data-st="3">Выбор</span><span data-st="4">Установка</span>
+  </nav>
+</div></header>
+
 <main>
-  <h1>Установка HYDE TV</h1>
-  <p class="sub">Мастер найдёт ваш телевизор, прочитает, что он умеет, покажет план и поставит по нему. До кнопки «Установить» на телевизоре ничего не меняется, а каждое изменение потом пишется в журнал, из которого всё возвращается.</p>
+  <!-- ===== Вступление: пять кадров ===== -->
+  <div class="intro" id="intro">
 
-  <section id="s1">
-    <h2><span class="num">1</span>Компьютер</h2>
-    <div id="pc">Проверяю…</div>
-  </section>
-
-  <section id="s2" class="off">
-    <h2><span class="num">2</span>Телевизор</h2>
-    <p class="hint" style="margin-top:0">На телевизоре: Настройки, Система, Для разработчиков, включите «Беспроводная отладка». Компьютер и телевизор должны быть в одной сети.</p>
-    <details>
-      <summary>Как включить отладку, если пункта «Для разработчиков» нет</summary>
-      <ol class="hint">
-        <li>Настройки, Система, О системе: семь раз нажмите OK на строке «Сборка ОС Android TV» (на некоторых ТВ «Сборка»). Появится «Вы стали разработчиком».</li>
-        <li>Назад в «Система»: появился пункт «Для разработчиков». В нём включите «Отладка по USB» и «Беспроводная отладка».</li>
-        <li>Беспроводной отладке нужен включённый Wi-Fi, даже если телевизор подключён кабелем (так на TCL).</li>
-        <li>Телевизор спросит, разрешить ли отладку в этой сети: поставьте галочку «Всегда разрешать в этой сети» и нажмите «Разрешить».</li>
-        <li>Откройте сам пункт «Беспроводная отладка»: там адрес и порт телевизора, а кнопка «Подключить устройство с помощью кода» нужна для первого раза.</li>
-      </ol>
-    </details>
-    <div id="devs"></div>
-    <div class="row" style="margin-top:12px">
-      <button class="ghost" id="rescan">Поискать снова</button>
+    <div class="slide hero">
+      <div class="kicker">Знакомьтесь</div>
+      <h1 class="display">HYDE TV</h1>
+      <p class="lede">Главный экран для телевизора на Google TV. Спокойные фото по времени суток, часы, погода и ваши приложения. Без рекламы и лишнего.</p>
+      <p class="byline">Проект <a href="https://github.com/artemhyde" target="_blank" rel="noopener">@artemhyde</a></p>
+      <img class="shot" src="img/lock.jpg" alt="Экран блокировки HYDE TV: море, часы и погода">
     </div>
-    <details>
-      <summary>Ввести адрес вручную или сопрячь по коду</summary>
-      <p class="hint">Адрес и порт для подключения: главный экран «Беспроводная отладка», строка «IP-адрес и порт».</p>
-      <div class="row"><input type="text" id="addr" placeholder="192.168.1.20:37123"><button id="connect">Подключить</button></div>
-      <p class="hint">Первый раз телевизор не знает этот компьютер. На нём же нажмите «Подключить устройство с помощью кода»: там свои адрес, порт и шестизначный код.</p>
-      <div class="row"><input type="text" id="paddr" placeholder="адрес и порт окна сопряжения"><input type="text" id="pcode" placeholder="код из шести цифр" inputmode="numeric" style="flex:0 1 180px"><button id="pair">Сопрячь</button></div>
-    </details>
-    <div id="cmsg"></div>
-  </section>
 
-  <section id="s3" class="off">
-    <h2><span class="num">3</span>Что умеет телевизор</h2>
-    <div id="pass"></div>
-  </section>
+    <div class="slide" id="sl-cmp">
+      <h1 class="title">Было и стало</h1>
+      <p class="lede">Потяните ползунок. Слева обычный Google TV с рекламой, справа HYDE TV.</p>
+      <div class="cmp" id="cmp">
+        <img src="img/after.jpg" alt="Стало: главный экран HYDE TV">
+        <img class="before" src="img/before.jpg" alt="Было: обычный Google TV">
+        <span class="divider"></span><span class="knob">‹ ›</span>
+        <span class="tag l">Было</span><span class="tag r">Стало</span>
+        <input type="range" id="cmp-in" min="0" max="100" value="50" step="0.1" aria-label="Сравнить: было или стало">
+      </div>
+    </div>
 
-  <section id="s4" class="off">
-    <h2><span class="num">4</span>Что поставим</h2>
-    <div id="mods"></div>
-  </section>
+    <div class="slide">
+      <h1 class="title">Что внутри</h1>
+      <div class="feat">
+        <div class="fc"><img src="img/f-home.jpg" alt="Главный экран с плитками"><div class="tx"><b>Главный экран «Дом»</b><span>Плитки ваших приложений поверх фото. Два стиля на выбор: «Графит» и «Vision».</span></div></div>
+        <div class="fc"><img src="img/f-apps.jpg" alt="Все приложения"><div class="tx"><b>Все приложения</b><span>Поставить, убрать, переставить или скрыть пультом: удержите OK на плитке.</span></div></div>
+        <div class="fc"><img src="img/f-night.jpg" alt="Ночной режим"><div class="tx"><b>«Ночной режим»</b><span>Яркость одним ползунком, тёплая красная зона и таймер сна.</span></div></div>
+        <div class="fc"><img src="img/f-volna.jpg" alt="Музыка «Волна»"><div class="tx"><b>Музыка «Волна»<span class="badge">эксперимент</span></b><span>Подборка из YouTube Music без входа: «Моя волна» и новинки под ваш вкус.</span></div></div>
+      </div>
+      <p class="more">А ещё «Сторож»: бережёт настройки и сам обновляет приложения. По желанию клавиатура для пульта и браузер.</p>
+    </div>
 
-  <section id="s5" class="off">
-    <h2><span class="num">5</span>План изменений</h2>
-    <div id="plan"></div>
-  </section>
+    <div class="slide">
+      <h1 class="title">Подойдёт ли ваш телевизор</h1>
+      <div class="fit">
+        <div><b><span class="mark y">✓</span>Подойдёт</b><p>Телевизоры на Google TV или Android TV 12 и новее: TCL, Sony, Philips, Hisense, Xiaomi и другие. И приставки с Google TV: с ними HYDE будет на любом телевизоре.</p></div>
+        <div><b><span class="mark n">✕</span>Не подойдёт</b><p>Samsung и LG: у них своя система (Tizen и webOS), приложения для Android на них не ставятся. Выход для них: приставка с Google TV в разъём HDMI.</p></div>
+      </div>
+      <p class="note">Всё проверено на TCL 65C6K. На другой модели мастер сначала прочитает, что умеет телевизор, и честно скажет, что заработает, а что нет.</p>
+    </div>
 
-  <section id="s6" class="off">
-    <h2><span class="num">6</span>Установка</h2>
-    <div id="inst"></div>
-    <div id="prog"></div>
-    <div id="after"></div>
-  </section>
+    <div class="slide">
+      <h1 class="title">Перед началом</h1>
+      <ul class="need">
+        <li><span class="mark y">✓</span><span>Компьютер и телевизор в одной домашней сети Wi-Fi, есть интернет.</span></li>
+        <li><span class="mark y">✓</span><span>Пульт под рукой: на телевизоре один раз включим служебную настройку, чтобы он разрешил подключение с компьютера. Мастер покажет каждый шаг с картинками.</span></li>
+        <li><span class="mark y">✓</span><span>Телевизором в это время никто не пользуется.</span></li>
+      </ul>
+      <div class="safe">Ничего не делается молча. До кнопки «Установить» телевизор не меняется, а каждое изменение записывается. Не понравится: кнопка «Вернуть как было» вернёт телевизор к тому, что было до HYDE.</div>
+    </div>
+
+    <div class="nav"><div class="in">
+      <button class="ghost" id="prev">Назад</button>
+      <div class="dots" id="dots"></div>
+      <div class="end"><button class="link skip" id="skip">Пропустить</button><button id="next">Дальше</button></div>
+    </div></div>
+  </div>
+
+  <!-- ===== Мастер ===== -->
+  <div id="wizard" hidden>
+    <section id="s1">
+      <h2><span class="num">1</span>Компьютер</h2>
+      <div id="pc"><p class="hint" style="margin:0">Проверяю…</p></div>
+    </section>
+
+    <section id="s2" class="off">
+      <h2><span class="num">2</span>Подключите телевизор</h2>
+      <div class="tvstat" id="tvstat"><span class="pulse"></span><span>Ищу телевизор в сети…</span></div>
+      <div id="devs"></div>
+      <div id="guide">
+        <p class="hint">Сначала телевизору нужно разрешить подключение с этого компьютера. Это обычная служебная настройка Google TV, она нужна один раз: четыре шага пультом, пара минут. Если телевизор уже нашёлся выше, шаги не нужны.</p>
+        <div class="guide">
+          <div class="g"><img src="img/tv-1.jpg" alt="Экран «Об устройстве» с надписью «Вы стали разработчиком!»"><div>
+            <div class="t"><i>1</i>Включите режим разработчика</div>
+            <p>На телевизоре откройте Настройки, Система, <q>Об устройстве</q>. Внизу найдите строку <q>Сборка ОС Android TV</q> и нажмите на ней OK семь раз подряд. Появится надпись <q>Вы стали разработчиком!</q>: так и должно быть, это просто открывает служебное меню.</p>
+          </div></div>
+          <div class="g"><img src="img/tv-2.jpg" alt="Экран «Для разработчиков», пункт «Отладка по Wi-Fi»"><div>
+            <div class="t"><i>2</i>Откройте «Отладка по Wi-Fi»</div>
+            <p>Вернитесь в <q>Система</q>: внизу появился пункт <q>Для разработчиков</q>. В нём откройте <q>Отладка по Wi-Fi</q> (на некоторых телевизорах он называется <q>Беспроводная отладка</q>).</p>
+          </div></div>
+          <div class="g"><img src="img/tv-3.jpg" alt="«Отладка по Wi-Fi»: выбрано «Включено», фокус на «Подключить устройство с помощью кода подключения»"><div>
+            <div class="t"><i>3</i>Включите и попросите код</div>
+            <p>Выберите <q>Включено</q>. Если телевизор спросит, разрешить ли отладку в этой сети, отметьте <q>Всегда</q> и нажмите <q>Разрешить</q>. Затем нажмите <q>Подключить устройство с помощью кода подключения</q>. Отладке нужен Wi-Fi, даже если телевизор подключён кабелем.</p>
+          </div></div>
+          <div class="g"><img src="img/tv-4.jpg" alt="Окно «Подключение к устройству» с шестизначным кодом"><div>
+            <div class="t"><i>4</i>Введите код с экрана телевизора</div>
+            <p>Шесть цифр из строки <q>Код подключения по сети Wi-Fi</q>. Окно на телевизоре не закрывайте, пока не подключится. Код не подошёл: нажмите на телевизоре <q>Назад</q>, снова <q>Подключить устройство с помощью кода подключения</q> и введите новый код.</p>
+            <div class="code"><input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label="Код с экрана телевизора"><button id="pair">Подключить</button></div>
+            <div id="pairstat" class="hint"></div>
+          </div></div>
+        </div>
+      </div>
+      <div id="cmsg"></div>
+      <details>
+        <summary>Ввести адрес вручную</summary>
+        <p class="hint">Адрес для подключения: на телевизоре в <q>Отладка по Wi-Fi</q> строка <q>IP-адрес и порт</q>.</p>
+        <div class="row"><input type="text" id="addr" placeholder="192.168.1.20:37123"><button class="ghost" id="connect">Подключить</button></div>
+        <p class="hint">Адрес из окна с кодом (он другой, чем на главном экране отладки), если телевизор не нашёлся сам:</p>
+        <div class="row"><input type="text" id="paddr" placeholder="адрес и порт из окна с кодом"></div>
+        <div class="row" style="margin-top:10px"><button class="ghost" id="rescan">Поискать снова</button></div>
+      </details>
+    </section>
+
+    <section id="s3" class="off">
+      <h2><span class="num">3</span>Ваш телевизор</h2>
+      <div id="pass"></div>
+    </section>
+
+    <section id="s4" class="off">
+      <h2><span class="num">4</span>Что поставим</h2>
+      <div id="mods" class="mods"></div>
+      <div id="apps"></div>
+    </section>
+
+    <section id="s5" class="off">
+      <h2><span class="num">5</span>Главный экран</h2>
+      <div id="home"></div>
+    </section>
+
+    <section id="s6" class="off">
+      <h2><span class="num">6</span>План</h2>
+      <div id="plan"></div>
+    </section>
+
+    <section id="s7" class="off">
+      <h2><span class="num">7</span>Установка</h2>
+      <div id="inst"></div>
+      <div id="prog"></div>
+      <div id="after"></div>
+    </section>
+  </div>
 </main>
+
 <script>
 "use strict";
+if ("scrollRestoration" in history) history.scrollRestoration = "manual"; // после перезагрузки окно с начала, а не там, где листали
 const KEY = location.hash.slice(1);
-let serial = "", choice = { modules: {}, home: null }, showCmd = false;
+const REPO = "https://github.com/artemhyde/artemhyde_TV/blob/main/";
+// Главный экран: выбор виден человеку двумя карточками, заранее отмечен рекомендуемый «Сделать HYDE главным» (Codex 04:
+// без явного выбора человек ставил HYDE и оставался на старом экране)
+let serial = "", choice = { modules: {}, home: true }, showCmd = false, stepsOpen = false, lastPlan = null, jobShown = false, adbReady = false;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const on = (id, v = true) => $(id).classList.toggle("off", !v);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ipOf = (s) => (String(s).match(/^(\d+\.\d+\.\d+\.\d+):\d+$/) || [])[1];
+const mbText = (n) => !n ? "" : n >= 10485760 ? Math.round(n / 1048576) + " МБ" : (n / 1048576).toFixed(1).replace(".", ",") + " МБ";
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, {
@@ -158,35 +405,113 @@ async function api(path, body) {
 }
 const msg = (el, text, kind = "") => { $(el).innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : ""; };
 const line = (k, v) => `<div class="line"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;
+const check = (ok, html) => `<div class="check"><span class="m ${ok ? "" : "no"}">${ok ? "✓" : "✕"}</span><div>${html}</div></div>`;
 
+// Полоса шагов сверху: 0 знакомство, 1 компьютер, 2 телевизор, 3 выбор, 4 установка
+function stage(n) {
+  document.querySelectorAll(".stages span").forEach((s) => {
+    const i = +s.dataset.st;
+    s.classList.toggle("on", i === n);
+    s.classList.toggle("done", i < n);
+  });
+}
+
+// ===== Вступление =====
+const slides = [...document.querySelectorAll(".slide")];
+let cur = 0;
+$("dots").innerHTML = slides.map((_, i) => `<button aria-label="Кадр ${i + 1}" data-i="${i}"></button>`).join("");
+$("dots").querySelectorAll("button").forEach((b) => (b.onclick = () => show(+b.dataset.i)));
+function show(i) {
+  i = Math.max(0, Math.min(slides.length - 1, i));
+  const dir = i >= cur ? 1 : -1;
+  slides.forEach((s, n) => {
+    s.style.setProperty("--from", dir * 28 + "px");
+    s.classList.toggle("on", n === i);
+  });
+  cur = i;
+  window.scrollTo({ top: 0, behavior: "instant" }); // новый кадр всегда с начала, а не с того места, где листали прошлый
+  $("dots").querySelectorAll("button").forEach((b, n) => b.classList.toggle("on", n === i));
+  $("prev").style.visibility = i === 0 ? "hidden" : "visible";
+  $("skip").style.visibility = i === slides.length - 1 ? "hidden" : "visible";
+  $("next").textContent = i === slides.length - 1 ? "Начать установку" : "Дальше";
+  $("next").classList.toggle("big", i === slides.length - 1);
+  if (slides[i].id === "sl-cmp") nudge();
+}
+$("next").onclick = () => (cur === slides.length - 1 ? startWizard() : show(cur + 1));
+$("prev").onclick = () => show(cur - 1);
+$("skip").onclick = () => startWizard();
+document.addEventListener("keydown", (e) => {
+  if ($("intro").hidden || e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowRight") show(cur + 1);
+  if (e.key === "ArrowLeft") show(cur - 1);
+});
+
+// До и после: ползунок двигает границу; при первом показе он сам чуть качнётся, подсказывая, что его можно тянуть
+const cmp = $("cmp"), cmpIn = $("cmp-in");
+let touched = false, nudged = false;
+const setX = (v) => cmp.style.setProperty("--x", v + "%");
+cmpIn.addEventListener("input", () => { touched = true; setX(cmpIn.value); });
+cmpIn.addEventListener("pointerdown", () => (touched = true));
+function nudge() {
+  if (nudged || reduce) return;
+  nudged = true;
+  const t0 = performance.now() + 450, D = 1300;
+  const f = (t) => {
+    if (touched) return;
+    const p = Math.max(0, Math.min(1, (t - t0) / D));
+    const v = 50 - 16 * Math.sin(p * Math.PI) * (1 - p * 0.35);
+    setX(v.toFixed(2)); cmpIn.value = v;
+    if (p < 1) requestAnimationFrame(f);
+  };
+  requestAnimationFrame(f);
+}
+
+function startWizard() {
+  $("intro").hidden = true;
+  $("wizard").hidden = false;
+  stage(serial ? 3 : adbReady ? 2 : 1);
+  window.scrollTo({ top: 0 });
+  if (adbReady && !serial) watch(true);
+}
+
+// ===== Шаг 1: компьютер =====
 async function hello() {
   try {
     const h = await api("hello");
-    let html = "";
-    if (h.pc) {
-      html += line("Компьютер", esc(`${h.pc.os}, ${h.pc.arch}`));
-      if (h.pc.free_mb >= 0) html += line("Свободно на диске", esc(h.pc.free_mb >= 1024 ? (h.pc.free_mb / 1024).toFixed(1).replace(".", ",") + " ГБ" : h.pc.free_mb + " МБ")) + (h.pc.free_mb < 200 ? '<div class="msg warn">Места мало: для adb и журналов нужно около 100 МБ.</div>' : "");
-    }
-    html += line("adb (связь с телевизором)", h.adb ? esc("есть, версия " + h.adb.version) : h.adb_offer ? "нет, можно скачать" : `<span style="color:var(--bad)">${esc(h.adb_error)}</span>`);
-    if (!h.adb && h.adb_offer) {
+    let html = "", ok = true;
+    if (h.adb) html += check(true, "Программа для связи с телевизором на месте");
+    else if (h.adb_offer) {
+      ok = false;
       const o = h.adb_offer;
-      html += `<div class="msg">Установщик говорит с телевизором через adb, программу Google. Вместе с HYDE TV её раздавать нельзя, поэтому её нужно скачать с сайта Google: ${esc(o.name)} ${esc(o.version)}, ${esc(o.size)}, с ${esc(o.host)}. Файл сверяется с официальной контрольной суммой Google и ляжет в ${esc(o.dest)}.</div>`
+      html += `<div class="msg">Для связи с телевизором нужна программа Google <b>adb</b> (${esc(o.size)}). Раздавать её вместе с HYDE нельзя, поэтому установщик скачает её сам с ${esc(o.host)} и сверит с официальной суммой Google. Ляжет в ${esc(o.dest)}.</div>`
         + `<label class="consent"><input type="checkbox" id="ok-adb"><span>Принимаю <a href="${esc(o.terms)}" target="_blank" rel="noopener">условия Google для Android SDK</a> и разрешаю скачать adb.</span></label>`
         + '<div class="row"><button id="getadb" disabled>Скачать adb</button></div><div id="adbprog"></div>';
-    }
+    } else { ok = false; html += check(false, esc(h.adb_error)); }
     if (h.release) {
       const bad = h.release.problems || [];
-      html += line("Выпуск HYDE TV", esc(`${h.release.version}, ${h.release.apps} файлов`) + (bad.length ? "" : ", все целы"));
-      if (bad.length) html += `<div class="msg bad">${bad.map(esc).join("<br>")}</div>`;
-    } else {
-      html += `<div class="msg bad">${esc(h.release_error)}</div>`;
+      html += check(!bad.length, bad.length ? `Файлы HYDE TV ${esc(h.release.version)} повреждены:<br>${bad.map(esc).join("<br>")}` : `Файлы HYDE TV ${esc(h.release.version)} на месте, все целы`);
+      if (bad.length) ok = false;
+    } else { ok = false; html += check(false, esc(h.release_error)); }
+    let more = "";
+    if (h.pc) {
+      more += line("Компьютер", esc(`${h.pc.os}, ${h.pc.arch}`));
+      if (h.pc.free_mb >= 0) more += line("Свободно на диске", esc(h.pc.free_mb >= 1024 ? (h.pc.free_mb / 1024).toFixed(1).replace(".", ",") + " ГБ" : h.pc.free_mb + " МБ"));
+      if (h.pc.free_mb >= 0 && h.pc.free_mb < 200) html += '<div class="msg warn">Места на диске мало: для adb и журналов нужно около 100 МБ.</div>';
     }
+    if (h.adb) more += line("adb", esc("версия " + h.adb.version));
+    if (h.release) more += line("Выпуск", esc(`${h.release.version}, ${h.release.apps} файлов, коммит ${h.release.commit}`));
+    html += `<details><summary>Подробнее</summary>${more}</details>`;
     $("pc").innerHTML = html;
+    $("s1").classList.toggle("done", ok);
     if ($("getadb")) {
       $("ok-adb").onchange = (e) => { $("getadb").disabled = !e.target.checked; };
       $("getadb").onclick = getADB;
     }
-    if (h.adb) { on("s2"); scan(); }
+    if (h.adb) {
+      adbReady = true;
+      on("s2");
+      if (!$("wizard").hidden) { stage(2); watch(true); }
+    }
   } catch (e) { $("pc").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
 
@@ -199,7 +524,7 @@ async function getADB() {
   const tick = async () => {
     let j;
     try { j = await api("job"); } catch (e) { msg("adbprog", e.message, "bad"); return; }
-    const evs = j.events || [], cur = evs[evs.length - 1];
+    const evs = j.events || [];
     $("adbprog").innerHTML = evs.filter((e, i) => e.status !== "start" || i === evs.length - 1)
       .map((e) => `<div class="ev ${e.status}"><span class="m">${e.status === "start" ? "…" : MARK[e.status] || "·"}</span><div>${esc(e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
     if (j.running) { setTimeout(tick, 700); return; }
@@ -209,41 +534,66 @@ async function getADB() {
   tick();
 }
 
+// ===== Шаг 2: телевизор =====
+// Пока телевизор не выбран, список обновляется сам раз в 2,5 с: включили отладку, и телевизор появляется без кнопок.
+// Уже знакомый телевизор (с ним сопрягались раньше) подключается сам; новый ждёт код из окна сопряжения
+let watchTimer = null, pairAddr = "", connectSvc = {}, tried = {}, lastDevs = "";
+function watch(onOff) {
+  clearInterval(watchTimer);
+  watchTimer = null;
+  if (onOff) { scan(); watchTimer = setInterval(() => { if (!serial && !$("wizard").hidden) scan(); }, 2500); }
+}
+
 async function scan() {
-  $("devs").innerHTML = '<p class="hint" style="margin:0">Ищу телевизоры в сети…</p>';
-  try {
-    const d = await api("devices");
-    // Один ТВ бывает подключён дважды (по адресу и через mDNS) и ещё объявлен в сети: показываем его один раз, по адресу
-    const ipOf = (s) => (String(s).match(/^(\d+\.\d+\.\d+\.\d+):\d+$/) || [])[1];
-    const mdnsIp = {};
-    for (const x of d.mdns || []) { const ip = ipOf(x.addr); if (ip) mdnsIp[x.name] = ip; }
-    const devIp = (serial) => ipOf(serial) || mdnsIp[String(serial).replace(/\._adb-tls-connect\._tcp$/, "")];
-    const items = [], seen = new Set();
-    const live = (d.devices || []).filter((x) => x.state === "device").sort((a, b) => (ipOf(b.serial) ? 1 : 0) - (ipOf(a.serial) ? 1 : 0));
-    for (const x of live) {
-      const ip = devIp(x.serial), key = ip || x.serial;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      items.push({ label: x.model || x.serial, sub: "уже подключён" + (ip ? ", " + ip : ""), act: "use", val: x.serial });
+  let d;
+  try { d = await api("devices"); } catch (e) { msg("cmsg", e.message, "bad"); return; }
+  const mdnsIp = {};
+  pairAddr = "";
+  for (const x of d.mdns || []) {
+    const ip = ipOf(x.addr);
+    if (ip) mdnsIp[x.name] = ip;
+    if (x.type === "_adb-tls-pairing._tcp") pairAddr = x.addr;
+    if (x.type === "_adb-tls-connect._tcp" && ip) connectSvc[ip] = x.addr;
+  }
+  const devIp = (s) => ipOf(s) || mdnsIp[String(s).replace(/\._adb-tls-connect\._tcp$/, "")];
+  // Один ТВ бывает подключён дважды (по адресу и через mDNS): показываем один раз, по адресу
+  const items = [], seen = new Set();
+  const live = (d.devices || []).filter((x) => x.state === "device").sort((a, b) => (ipOf(b.serial) ? 1 : 0) - (ipOf(a.serial) ? 1 : 0));
+  for (const x of live) {
+    const ip = devIp(x.serial), key = ip || x.serial;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ label: x.model || "Телевизор", sub: ip || x.serial, val: x.serial });
+  }
+  // Знакомый ТВ объявил отладку, но ещё не подключён: одна тихая попытка подключиться
+  for (const ip in connectSvc) {
+    if (!seen.has(ip) && !tried[ip]) {
+      tried[ip] = true;
+      api("connect", { addr: connectSvc[ip] }).then((r) => {
+        if (r.result === "ok") scan();
+        else if (r.result === "allow") msg("cmsg", r.say, "warn");
+      }).catch(() => {});
     }
-    for (const x of d.mdns || []) {
-      if (x.type === "_adb-tls-connect._tcp" && !seen.has(ipOf(x.addr))) { seen.add(ipOf(x.addr)); items.push({ label: x.addr, sub: "объявил беспроводную отладку", act: "connect", val: x.addr }); }
-      if (x.type === "_adb-tls-pairing._tcp") $("paddr").value = x.addr;
-    }
-    if (!items.length) {
-      $("devs").innerHTML = '<p class="hint" style="margin:0">Пока никого не видно. Включите на телевизоре «Беспроводную отладку» или введите адрес вручную ниже.</p>';
-      return;
-    }
-    $("devs").innerHTML = items.map((i, n) => `<div class="dev"><div><div>${esc(i.label)}</div><div class="hint" style="margin:0">${esc(i.sub)}</div></div><button data-n="${n}">${i.act === "use" ? "Выбрать" : "Подключить"}</button></div>`).join("");
-    $("devs").querySelectorAll("button").forEach((b) => b.onclick = () => {
-      const i = items[+b.dataset.n];
-      if (i.act === "use") pick(i.val); else connect(i.val);
-    });
-  } catch (e) { msg("cmsg", e.message, "bad"); }
+  }
+  const sig = JSON.stringify(items) + pairAddr;
+  if (sig !== lastDevs) {
+    lastDevs = sig;
+    $("devs").innerHTML = items.map((i, n) => `<div class="dev"><div><div class="nm">${esc(i.label)}</div><div class="hint" style="margin:0">${esc(i.sub)}</div></div><button data-n="${n}">Это мой телевизор</button></div>`).join("");
+    $("devs").querySelectorAll("button").forEach((b) => (b.onclick = () => pick(items[+b.dataset.n].val)));
+  }
+  $("tvstat").innerHTML = items.length
+    ? `<span class="mark y" style="width:22px;height:22px;font-size:13px">✓</span><span>${items.length > 1 ? "Нашлись телевизоры: нажмите на своём" : "Нашли телевизор: нажмите, если это он"}</span>`
+    : '<span class="pulse"></span><span>Телевизор пока не нашёлся. Включите его и сделайте четыре шага ниже: как только он разрешит подключение, появится здесь сам.</span>';
+  if (pairAddr) {
+    if (!$("paddr").value) $("paddr").value = pairAddr;
+    $("pairstat").textContent = "Телевизор показывает окно с кодом: введите шесть цифр.";
+  } else if (!$("pairstat").dataset.busy) {
+    $("pairstat").textContent = "";
+  }
 }
 
 async function connect(addr) {
-  msg("cmsg", "Подключаюсь к " + addr + "…");
+  msg("cmsg", "Подключаюсь…");
   try {
     const r = await api("connect", { addr });
     msg("cmsg", r.say, r.result === "ok" ? "ok" : "warn");
@@ -251,142 +601,223 @@ async function connect(addr) {
   } catch (e) { msg("cmsg", e.message, "bad"); }
 }
 
-async function pair() {
-  const addr = $("paddr").value.trim(), code = $("pcode").value.trim();
-  if (!addr || !code) return msg("cmsg", "Нужны адрес и порт окна сопряжения и код с экрана телевизора.", "warn");
-  msg("cmsg", "Сопрягаю…");
+// Код из окна сопряжения: сопряжение, затем подключение к главному экрану отладки того же ТВ (его адрес из mDNS)
+async function pairCode() {
+  const code = $("code").value.replace(/\D/g, "");
+  if (code.length !== 6) return msg("cmsg", "Нужны шесть цифр из окна на телевизоре.", "warn");
+  const addr = $("paddr").value.trim() || pairAddr;
+  if (!addr) return msg("cmsg", "Не вижу на телевизоре окна с кодом. Откройте «Отладка по Wi-Fi», нажмите «Подключить устройство с помощью кода подключения» и подождите пару секунд.", "warn");
+  $("pair").disabled = true;
+  $("pairstat").dataset.busy = "1";
+  msg("cmsg", "Сопрягаю компьютер с телевизором…");
   try {
     const r = await api("pair", { addr, code });
-    msg("cmsg", r.ok ? "Сопряжение прошло. Теперь подключитесь: адрес и порт с главного экрана «Беспроводная отладка»." : "Не вышло: " + r.raw, r.ok ? "ok" : "bad");
-    if (r.ok) scan();
+    if (!r.ok) { msg("cmsg", "Не получилось. Проверьте код: он меняется, если окно на телевизоре закрыть и открыть снова. Ответ: " + r.raw, "bad"); return; }
+    msg("cmsg", "Сопряжение прошло, подключаюсь…", "ok");
+    const ip = ipOf(addr);
+    for (let i = 0; i < 6; i++) {
+      await scan();
+      if (serial) return;
+      if (connectSvc[ip]) return connect(connectSvc[ip]);
+      await sleep(1500);
+    }
+    connect(ip); // адрес подключения не объявился: установщик сам поищет порт
   } catch (e) { msg("cmsg", e.message, "bad"); }
+  finally { $("pair").disabled = false; delete $("pairstat").dataset.busy; }
 }
 
+// ===== Шаг 3: паспорт =====
+const HOMES = { "com.google.android.apps.tv.launcherx": "Google TV", "com.google.android.tvlauncher": "Android TV", "app.glasstv.home": "HYDE «Дом»" };
 async function pick(s) {
   serial = s;
-  on("s3"); $("pass").innerHTML = '<p class="hint" style="margin:0">Читаю паспорт телевизора, это несколько секунд…</p>';
+  watch(false);
+  $("s2").classList.add("done");
+  $("guide").hidden = true;
+  stage(3);
+  on("s3");
+  $("pass").innerHTML = '<p class="hint" style="margin:0">Читаю, что умеет телевизор, это несколько секунд…</p>';
+  $("s3").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   try {
     const r = await api("inspect", { serial });
     const c = r.caps;
+    const name = c.model || "Телевизор";
+    let head;
+    if (c.why) head = `<div class="verdict bad"><span class="mark n">✕</span><div><b>Этот телевизор не подходит</b><span>${esc(c.why)}</span></div></div>`;
+    else if (c.profile === "tcl-gtv" && c.level === "проверено") head = `<div class="verdict"><span class="mark y">✓</span><div><b>${esc(name)}: подходит</b><span>HYDE проверен на такой модели: работает всё.</span></div></div>`;
+    else if (c.profile === "tcl-gtv") head = `<div class="verdict"><span class="mark y">✓</span><div><b>${esc(name)}: подходит</b><span>Заработает всё основное. Функции TCL (подсветка, «Картинка», Dolby) на этой серии или прошивке пока не проверены.</span></div></div>`;
+    else head = `<div class="verdict info"><span class="mark y">✓</span><div><b>${esc(name)}: подходит</b><span>Заработает: главный экран, приложения, «Сторож». Не будет: подсветки и «Картинки», они только для TCL. Эту модель мы ещё не проверяли: если что-то пойдёт не так, кнопка «Вернуть как было» всё вернёт.</span></div></div>`;
     const chip = (t, yes) => `<span class="chip ${yes ? "yes" : ""}">${esc(t)}: ${yes ? "есть" : "нет"}</span>`;
-    let html = line("Телевизор", esc(c.model || "?")) + line("Android", esc(`${c.android} (API ${c.sdk})`)) +
-      line("Профиль", esc(c.profile === "tcl-gtv" ? "TCL Google TV" : c.profile === "generic-gtv" ? "Google TV или Android TV" : "не подходит")) +
-      line("Проверка на таком ТВ", esc(c.level)) + line("Главный экран сейчас", esc(c.home_holder || "не определён"));
-    if (c.why) html += `<div class="msg bad">Этот телевизор не подходит: ${esc(c.why)}</div>`;
-    html += `<div class="chips">${chip("Подсветка TCL", c.display_lib)}${chip("Dolby", c.dolby)}${chip("Панель TCL", c.quick_panel)}${chip("Key Mapper", c.keymapper)}</div>`;
-    $("pass").innerHTML = html;
-    if (!c.why) { on("s4"); on("s5"); plan(); }
+    const more = line("Модель", esc(c.model || "?")) + line("Android", esc(`${c.android} (API ${c.sdk})`))
+      + line("Профиль", esc(c.profile === "tcl-gtv" ? "TCL Google TV" : c.profile === "generic-gtv" ? "Google TV или Android TV" : "не подходит"))
+      + line("Проверка на таком ТВ", esc(c.level)) + line("Главный экран сейчас", esc(HOMES[c.home_holder] || c.home_holder || "не определён"))
+      + `<div class="chips">${chip("Подсветка TCL", c.display_lib)}${chip("Dolby", c.dolby)}${chip("Панель TCL", c.quick_panel)}${chip("Key Mapper", c.keymapper)}</div>`;
+    $("pass").innerHTML = head + `<details><summary>Подробнее о телевизоре</summary>${more}</details>`;
+    $("s3").classList.toggle("done", !c.why);
+    if (!c.why) { on("s4"); on("s5"); on("s6"); plan(); }
     installsBox(r.installs);
   } catch (e) { $("pass").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
 
-function sw(id, checked, disabled) {
-  return `<label class="switch"><input type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}><span></span></label>`;
+function sw(id, checked, disabled, label) {
+  return `<label class="switch"><input type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} aria-label="${esc(label)}"><span></span></label>`;
 }
 
-let lastPlan = null;
-
+// ===== Шаги 4–6: что поставим, главный экран, план =====
 async function plan() {
   try {
     const p = await api("plan", { serial, modules: choice.modules, home: choice.home });
     lastPlan = p;
-    let mods = "";
-    for (const m of p.modules) {
-      if (m.module === "aura") continue; // плеер «Волны» ставится вместе с ней
-      const note = !m.available ? `<div class="why">Недоступно: ${esc(m.why)}</div>` : m.why ? `<div class="why">${esc(m.why)}</div>` : m.state ? `<div class="w">${esc(m.state)}</div>` : "";
-      mods += `<div class="mod">${sw("m-" + m.module, m.chosen, !m.available || m.required)}<div><div class="t">${esc(m.title)}${m.required ? '<span class="w"> · обязательно</span>' : ""}</div><div class="w">${esc(m.what)}</div>${note}</div></div>`;
-    }
-    mods += `<div class="mod">${sw("m-home-switch", p.home, false)}<div><div class="t">${esc(p.home_title)}</div><div class="w">${esc(p.home_what)}</div></div></div>`;
-    $("mods").innerHTML = mods;
-    for (const m of p.modules) {
+    const row = (m) => {
+      let sub = "";
+      if (!m.available) sub = `<div class="nt">Недоступно: ${esc(m.why)}</div>`;
+      else if (m.why) sub = `<div class="nt">${esc(m.why)}</div>`;
+      if (m.available && m.note) sub += `<div class="nt">${esc(m.note)}</div>`;
+      if (m.available && m.state) sub += `<div class="st">${esc(m.state)}</div>`;
+      return `<div class="mod">${sw("m-" + m.module, m.chosen, !m.available || m.required, m.title)}<div><div class="t">${esc(m.title)}${m.required ? '<span class="pill">входит всегда</span>' : ""}</div><div class="w">${esc(m.what)}</div>${sub}</div></div>`;
+    };
+    const vis = p.modules.filter((m) => m.module !== "aura"); // плеер «Волны» ставится вместе с ней
+    $("mods").innerHTML = '<p class="hint" style="margin:0 0 4px">Всё нужное уже отмечено. Не уверены: ничего не меняйте.</p>' + vis.filter((m) => m.group !== "apps").map(row).join("");
+    const apps = vis.filter((m) => m.group === "apps");
+    $("apps").innerHTML = apps.length ? '<div class="group">Приложения по желанию</div><p class="hint">Необязательно, можно пропустить. Включённые скачаются со страниц их авторов и встанут, только если файл и подпись совпали со списком. «Вернуть как было» их удалит, а новые версии потом поставит «Сторож».</p>' + apps.map(row).join("") : "";
+    for (const m of vis) {
       const el = $("m-" + m.module);
       if (el) el.onchange = () => { choice.modules[m.module] = el.checked; plan(); };
     }
-    $("m-home-switch").onchange = (e) => { choice.home = e.target.checked; plan(); };
-
-    let html = "";
-    for (const x of p.problems || []) html += `<div class="msg bad">${esc(x)}</div>`;
-    // Сводка словами: сколько поставим, сколько поменяем, что откат не вернёт
-    const inst = p.steps.filter((s) => s.host && /^adb install/.test(s.do || ""));
-    const tiles = inst.filter((s) => s.group.startsWith("Плитки")).length;
-    const changes = p.steps.filter((s) => !s.run && !s.host).length;
-    const keep = [...new Set(p.steps.filter((s) => s.undo === "-").map((s) => s.group))];
-    html += `<div class="msg">Поставим приложений: ${inst.length - tiles}${tiles ? `, плиток: ${tiles}` : ""}. Прав и настроек изменим: ${changes}. Главный экран: ${p.home ? (p.caps && p.caps.home_holder === "app.glasstv.home" ? "уже «Дом»" : "станет «Дом»") : "останется прежним"}.<br>`
-      + (keep.length ? `Всё вернёт откат, кроме: ${esc(keep.join(", "))} (подробнее в шагах ниже).` : "Всё это вернёт откат.") + "</div>";
-    html += `<div class="mod" style="border:0">${sw("show-cmd", showCmd, false)}<div><div class="t">Показать команды</div><div class="w">что именно выполнится и чем вернуть</div></div></div>`;
-    let g = "", n = 0;
-    for (const s of p.steps) {
-      if (s.group !== g) { g = s.group; html += `<div class="group">${esc(g)}</div>`; }
-      n++;
-      const where = s.host ? "компьютер" : "телевизор";
-      let tail = "";
-      if (showCmd) {
-        if (s.do) tail += `<div><code>${esc(where + ": " + s.do)}</code></div>`;
-        if (!s.run && s.undo && s.undo !== "-") tail += `<div class="undo">Вернуть: <code>${esc(s.undo)}</code></div>`;
-      }
-      if (!s.run && s.undo === "-") tail += '<div class="undo">Откатом не возвращается</div>';
-      if (s.note) tail += `<div class="note">${esc(s.note)}</div>`;
-      html += `<div class="step"><span class="n">${n}</span><div>${esc(s.what)}${tail}</div></div>`;
-    }
-    for (const x of p.notes || []) html += `<p class="hint">${esc(x)}</p>`;
-    $("plan").innerHTML = html;
-    $("show-cmd").onchange = (e) => { showCmd = e.target.checked; plan(); };
+    homeBox(p);
+    planBox(p);
     installBox(p);
   } catch (e) { $("plan").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
 
-// Шаг 6: согласия, кнопка установки, ход по шагам, итог, проверка и откат
+function homeBox(p) {
+  const holder = p.caps && p.caps.home_holder;
+  if (holder === "app.glasstv.home") {
+    choice.home = true;
+    $("home").innerHTML = '<div class="verdict"><span class="mark y">✓</span><div><b>HYDE уже главный экран</b><span>Так и останется. Вернуть прежний можно кнопкой «Вернуть как было».</span></div></div>';
+    $("s5").classList.add("done");
+    return;
+  }
+  const was = HOMES[holder] || holder || "прежний экран";
+  $("home").innerHTML = '<p class="hint" style="margin:0 0 14px">Это решаете вы: выберите вариант.</p><div class="choice">'
+    + `<button class="opt ${choice.home === true ? "sel" : ""}" data-v="1" aria-pressed="${choice.home === true}"><b>Сделать HYDE главным экраном<span class="pill">рекомендуем</span></b><span>Кнопка «Домой» на пульте будет открывать HYDE. Установщик сам проверит это, а если не выйдет, вернёт ${esc(was)}.</span></button>`
+    + `<button class="opt ${choice.home === false ? "sel" : ""}" data-v="0" aria-pressed="${choice.home === false}"><b>Сначала попробовать</b><span>Главным останется ${esc(was)}, HYDE найдётся в списке приложений. Захотите сменить: запустите мастер ещё раз.</span></button></div>`;
+  $("home").querySelectorAll(".opt").forEach((b) => (b.onclick = () => { choice.home = b.dataset.v === "1"; plan(); }));
+  $("s5").classList.toggle("done", choice.home !== null);
+}
+
+function planBox(p) {
+  let html = "";
+  for (const x of p.problems || []) html += `<div class="msg bad">${esc(x)}</div>`;
+  const inst = p.steps.filter((s) => s.host && /^adb install/.test(s.do || ""));
+  const tiles = inst.filter((s) => s.group.startsWith("Плитки")).length;
+  const changes = p.steps.filter((s) => !s.run && !s.host).length;
+  const keep = [...new Set(p.steps.filter((s) => s.undo === "-").map((s) => s.group))];
+  const homeWord = p.home ? (p.caps && p.caps.home_holder === "app.glasstv.home" ? "уже HYDE" : "HYDE") : choice.home === null ? "не выбран" : "прежний";
+  html += `<div class="sum"><div><b>${inst.length - tiles}</b><span>приложений</span></div><div><b>${tiles}</b><span>плиток на главном экране</span></div><div><b>${changes}</b><span>настроек</span></div><div><b style="font-size:20px;line-height:1.4">${esc(homeWord)}</b><span>главный экран</span></div></div>`;
+  const keepWhy = keep.includes("Key Mapper") ? " Key Mapper останется на телевизоре: у него права администратора, удалить его можно вручную." : "";
+  html += `<p class="hint">${keep.length ? `Кнопка «Вернуть как было» вернёт всё, кроме: ${esc(keep.join(", "))}.${keepWhy}` : "Всё это можно вернуть одной кнопкой «Вернуть как было»."} Пока это только план: на телевизоре ничего не менялось.</p>`;
+  let steps = `<div class="mod" style="border:0;padding-bottom:4px">${sw("show-cmd", showCmd, false, "Показать команды")}<div><div class="t">Показать команды</div><div class="w">что именно выполнится и чем вернуть</div></div></div>`;
+  let g = "", n = 0;
+  for (const s of p.steps) {
+    if (s.group !== g) { g = s.group; steps += `<div class="sgroup">${esc(g)}</div>`; }
+    n++;
+    let tail = "";
+    if (showCmd) {
+      if (s.do) tail += `<div><code>${esc((s.host ? "компьютер" : "телевизор") + ": " + s.do)}</code></div>`;
+      if (!s.run && s.undo && s.undo !== "-") tail += `<div class="undo">Вернуть: <code>${esc(s.undo)}</code></div>`;
+    }
+    if (!s.run && s.undo === "-") tail += '<div class="undo">Кнопкой «Вернуть как было» не возвращается</div>';
+    if (s.note) tail += `<div class="note">${esc(s.note)}</div>`;
+    steps += `<div class="step"><span class="n">${n}</span><div>${esc(s.what)}${tail}</div></div>`;
+  }
+  for (const x of p.notes || []) steps += `<p class="hint">${esc(x)}</p>`;
+  html += `<details id="steps" ${stepsOpen ? "open" : ""}><summary>Показать все шаги (${p.steps.length})</summary>${steps}</details>`;
+  $("plan").innerHTML = html;
+  $("steps").ontoggle = (e) => (stepsOpen = e.target.open);
+  $("show-cmd").onchange = (e) => { showCmd = e.target.checked; planBox(lastPlan); };
+  $("s6").classList.toggle("done", !(p.problems || []).length);
+}
+
+// ===== Шаг 7: согласия, установка, ход, итог, проверка и откат =====
 function installBox(p) {
-  on("s6");
+  on("s7");
   if (jobShown) return;
-  const needDl = p.steps.some((s) => s.kind === "download"), needFree = p.steps.some((s) => s.kind === "home_role");
-  if ((p.problems || []).length) { $("inst").innerHTML = '<div class="msg bad">Установка невозможна, пока есть помехи в плане.</div>'; return; }
+  if ((p.problems || []).length) { $("inst").innerHTML = '<div class="msg bad">Установка невозможна, пока в плане есть помехи (шаг 6).</div>'; return; }
+  const dls = p.steps.filter((s) => s.kind === "download");
+  const needFree = p.steps.some((s) => s.kind === "home_role");
   let h = "";
-  if (needDl) h += '<label class="consent"><input type="checkbox" id="ok-dl"><span>Разрешаю скачать Key Mapper 4.6.2 с GitHub. Подпись файла сверяется со списком: чужой файл не встанет.</span></label>';
-  if (needFree) h += '<label class="consent"><input type="checkbox" id="ok-free"><span>Телевизор свободен: установщик откроет «Дом» и нажмёт «Домой», чтобы проверить главный экран.</span></label>';
-  h += '<p class="hint">Перед первым изменением установщик снимет состояние телевизора и дальше пишет каждое изменение в журнал: из него соберётся откат. Обрыв связи не страшен: запустите установку ещё раз, она продолжит с того же места.</p>';
-  h += '<div class="row" style="margin-top:8px"><button id="go">Установить по плану</button></div>';
+  if (choice.home === null) h += '<div class="msg warn">Сначала выберите в шаге 5, каким будет главный экран.</div>';
+  const total = dls.reduce((a, s) => a + (s.size || 0), 0);
+  if (dls.length) h += `<label class="consent"><input type="checkbox" id="ok-dl"><span>Разрешаю скачать со страниц авторов на GitHub${total ? ` около ${mbText(total)}` : ""}: ${dls.map((s) => esc(s.group)).join(", ")}. Каждый файл проверяется: чужой не встанет.</span></label>`;
+  if (needFree) h += '<label class="consent"><input type="checkbox" id="ok-free"><span>Телевизор свободен: мастер сам откроет HYDE и нажмёт «Домой», чтобы проверить главный экран.</span></label>';
+  h += '<p class="hint">Перед первым изменением установщик запомнит, как всё было, и дальше записывает каждое изменение: так кнопка «Вернуть как было» всё вернёт. Связь оборвалась: нажмите «Установить» ещё раз, установка продолжит с того же места.</p>';
+  h += '<div class="row" style="margin-top:14px"><button class="big" id="go">Установить</button><span class="hint" id="gowhy" style="margin:0"></span></div>';
   $("inst").innerHTML = h;
   const boxes = ["ok-dl", "ok-free"].map($).filter(Boolean);
-  const sync = () => { $("go").disabled = boxes.some((b) => !b.checked); };
+  const sync = () => {
+    const off = choice.home === null || boxes.some((b) => !b.checked);
+    $("go").disabled = off;
+    $("gowhy").textContent = off && boxes.length ? (boxes.length > 1 ? "Отметьте оба пункта выше, чтобы продолжить." : "Отметьте пункт выше, чтобы продолжить.") : "";
+  };
   boxes.forEach((b) => (b.onchange = sync));
   sync();
   $("go").onclick = async () => {
     $("go").disabled = true;
     try {
       await api("apply", { serial, modules: choice.modules, home: choice.home, allow_download: !!$("ok-dl")?.checked, tv_free: !!$("ok-free")?.checked });
-      jobShown = true; $("after").innerHTML = ""; poll();
+      jobShown = true;
+      stage(4);
+      $("inst").innerHTML = "";
+      $("after").innerHTML = "";
+      $("prog").innerHTML = '<div class="msg">Не закрывайте это окно и не нажимайте кнопки на пульте, пока идёт установка. На телевизоре могут мелькать окна: так и должно быть. Обычно это несколько минут.</div>'
+        + '<div class="prog"><i id="bar"></i></div><div class="now" id="now">Начинаю…</div><details id="log"><summary>Подробный ход</summary><div id="evs"></div></details>';
+      poll();
     } catch (e) { $("go").disabled = false; msg("prog", e.message, "bad"); }
   };
 }
 
-let jobShown = false;
-const MARK = { ok: "✓", skip: "·", warn: "!", fail: "✗", lost: "✗", info: "·" };
+const MARK = { ok: "✓", skip: "·", warn: "!", fail: "✕", lost: "✕", info: "·" };
 
 async function poll() {
   let j;
-  try { j = await api("job"); } catch (e) { msg("prog", e.message, "bad"); return; }
-  const evs = (j.events || []).filter((e) => e.status !== "start");
-  const cur = (j.events || []).slice(-1)[0];
-  let h = evs.map((e) => `<div class="ev ${e.status}"><span class="m">${MARK[e.status] || "·"}</span><div>${esc((e.n ? e.n + ". " : "") + (e.group && e.n ? e.group + ": " : "") + e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
-  if (j.running && cur && cur.status === "start") h += `<div class="ev"><span class="m">…</span><div>${esc((cur.group ? cur.group + ": " : "") + cur.what)}</div></div>`;
-  $("prog").innerHTML = h;
+  try { j = await api("job"); } catch (e) { msg("after", e.message, "bad"); return; }
+  const all = j.events || [];
+  const evs = all.filter((e) => e.status !== "start");
+  const cur = all.slice(-1)[0];
+  const last = [...all].reverse().find((e) => e.total);
+  if ($("bar")) $("bar").style.width = (last ? Math.max(4, Math.round(100 * last.n / last.total)) : 4) + "%";
+  // Сейчас: чем занят установщик словами группы («Дом», «Сторож», Lampa), подробности шага только в «Подробный ход»
+  if ($("now")) $("now").textContent = j.running && cur ? (cur.group ? (j.kind === "откат" ? "Возвращаю: " : "Сейчас: ") + cur.group : cur.what) + (last ? ` (шаг ${last.n} из ${last.total})` : "") : "";
+  if ($("evs")) $("evs").innerHTML = evs.map((e) => `<div class="ev ${e.status}"><span class="m">${MARK[e.status] || "·"}</span><div>${esc((e.n ? e.n + ". " : "") + (e.group && e.n ? e.group + ": " : "") + e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
   if (j.running) { setTimeout(poll, 1000); return; }
   jobShown = false;
+  const warn = $("prog").querySelector(".msg"); // «не закрывайте окно» нужно только пока идёт работа
+  if (warn) warn.remove();
   const r = j.result || {};
   let installed = false;
   if (j.kind === "установка") {
     if (r.error) {
-      $("after").innerHTML = `<div class="msg ${r.lost ? "warn" : "bad"}">${esc(r.error)}</div>` + (r.backup ? `<p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>` : "");
-      if ($("go")) $("go").disabled = false;
+      if ($("log")) $("log").open = true;
+      $("after").innerHTML = `<div class="msg ${r.lost ? "warn" : "bad"}">${esc(r.error)}</div>` + (r.backup ? `<p class="hint">Запись установки: ${esc(r.backup)}</p>` : "");
+      if (lastPlan) installBox(lastPlan);
     } else {
       installed = true;
+      if ($("bar")) $("bar").style.width = "100%";
+      $("s7").classList.add("done");
+      const ph = $("plan").querySelector(".hint");
+      if (ph) ph.textContent = "Установлено по этому плану.";
       $("after").innerHTML = (r.backup
-        ? `<div class="msg ok">Установлено${r.resumed ? " (продолжение прерванной установки)" : ""}: изменений ${r.done}, уже было ${r.skipped}${r.warnings ? ", предупреждений " + r.warnings : ""}.</div><p class="hint">Журнал и снимок «до»: ${esc(r.backup)}</p>`
-        : `<div class="msg ok">На телевизоре всё уже так, как в плане: менять было нечего (проверено шагов: ${r.skipped}).</div>`) + nextSteps();
+        ? `<div class="done-card"><b>Готово, HYDE TV установлен</b>Не понравится: кнопка «Вернуть как было» внизу вернёт телевизор к тому, что было до HYDE.</div>`
+          + `<details><summary>Подробнее</summary><p class="hint">Изменений: ${r.done}, уже было так: ${r.skipped}${r.warnings ? ", предупреждений: " + r.warnings : ""}${r.resumed ? ". Это продолжение прерванной установки" : ""}.<br>Запись установки: ${esc(r.backup)}</p></details>`
+        : `<div class="done-card"><b>Всё уже стоит</b>На телевизоре всё так, как в плане: менять было нечего.</div>`) + nextSteps();
     }
   } else {
-    $("after").innerHTML = `<div class="msg ${r.ok ? "ok" : "bad"}" style="white-space:pre-line">${esc(r.text || "")}</div>`;
+    // Откат: сначала итог словами, подробности (какие настройки сверены и вернулись) по желанию
+    const head = r.ok ? "<b>Готово: телевизор вернулся к тому, как было до HYDE TV.</b>" : "<b>Вернулось не всё.</b> Что осталось, написано ниже: это можно вернуть руками или нажать «Вернуть как было» ещё раз.";
+    const ph = $("plan").querySelector(".hint");
+    if (ph && r.ok) ph.textContent = "Телевизор возвращён к тому, что было до HYDE. Поставить снова можно той же кнопкой «Установить».";
+    $("after").innerHTML = `<div class="msg ${r.ok ? "ok" : "bad"}">${head}</div>`
+      + (r.text ? `<details ${r.ok ? "" : "open"}><summary>Подробнее</summary><div class="hint" style="white-space:pre-line;overflow-wrap:anywhere">${esc(r.text)}</div></details>` : "");
   }
   afterButtons();
   if (installed) guardPanel();
@@ -394,24 +825,34 @@ async function poll() {
 
 // «Проверить телевизор» и «Откатить всё»: после установки и сразу после подключения, если HYDE на этом ТВ уже ставили
 function afterButtons() {
-  $("after").insertAdjacentHTML("beforeend", '<div class="row" style="margin-top:12px"><button class="ghost" id="chk">Проверить телевизор</button><button class="ghost" id="undo">Откатить всё</button></div><div id="chks"></div>');
+  $("after").insertAdjacentHTML("beforeend", '<div class="row" style="margin-top:16px"><button class="ghost" id="chk">Проверить телевизор</button><button class="ghost" id="undo">Вернуть как было</button></div><div id="chks"></div>');
   $("chk").onclick = verify;
-  $("undo").onclick = async () => {
-    if (!confirm("Вернуть телевизор как было до установки HYDE TV? Приложения HYDE удалятся, права и настройки вернутся, главный экран станет прежним. Если HYDE ставили несколько раз (обновления), откат пройдёт по всем установкам от новой к старой.")) return;
-    try {
-      const r = await api("restore", { serial });
-      if (r.note) { msg("chks", r.note); return; }
-      jobShown = true; poll();
-    } catch (e) { msg("chks", e.message, "bad"); }
+  // Подтверждение отката прямо в окне, а не системным окошком браузера: понятнее и не пугает
+  $("undo").onclick = () => {
+    $("chks").innerHTML = '<div class="msg warn"><b>Вернуть телевизор как было до HYDE TV?</b><br>Приложения HYDE и то, что поставил установщик, удалятся, права и настройки вернутся, главный экран станет прежним.'
+      + '<div class="row" style="margin-top:12px"><button id="undo-yes" style="background:var(--bad)">Да, вернуть</button><button class="ghost" id="undo-no">Отмена</button></div></div>';
+    $("undo-no").onclick = () => ($("chks").innerHTML = "");
+    $("undo-yes").onclick = async () => {
+      $("undo-yes").disabled = true;
+      try {
+        const r = await api("restore", { serial });
+        if (r.note) { msg("chks", r.note); return; }
+        $("chks").innerHTML = "";
+        jobShown = true;
+        $("after").innerHTML = "";
+        $("prog").innerHTML = '<div class="prog"><i id="bar"></i></div><div class="now" id="now">Возвращаю как было…</div><details id="log"><summary>Подробный ход</summary><div id="evs"></div></details>';
+        poll();
+      } catch (e) { msg("chks", e.message, "bad"); }
+    };
   };
 }
 
 // Прежние установки этого ТВ с этого компьютера: показать сразу, чтобы откатить или проверить можно было без новой установки
 function installsBox(list) {
   if (!list || !list.length || jobShown) return;
-  on("s6");
-  const rows = list.map((x) => esc(`${x.release ? "выпуск " + x.release + ", " : ""}${x.started} (${x.state})`)).join("<br>");
-  $("after").innerHTML = `<div class="msg">На этом телевизоре уже стоит HYDE TV, установки с этого компьютера:<br>${rows}<br>Можно проверить или откатить всё, а можно поставить по плану ниже: это обновит то, что устарело, и не тронет то, что уже так.</div>`;
+  on("s7");
+  const rows = list.map((x) => esc(`${x.release ? "выпуск " + x.release + ", " : ""}${x.started}: ${x.state === "закончена" ? "установка завершена" : "установка не завершена"}`)).join("<br>");
+  $("after").innerHTML = `<div class="msg">На этом телевизоре HYDE TV уже ставили с этого компьютера:<br>${rows}<br>Можно проверить его или вернуть как было, а можно поставить по плану выше: обновится то, что устарело, остальное не тронется.</div>`;
   afterButtons();
 }
 
@@ -419,22 +860,25 @@ function installsBox(list) {
 function nextSteps() {
   const p = lastPlan || {}, mods = Object.fromEntries((p.modules || []).map((m) => [m.module, m]));
   const items = [];
-  if (p.home) items.push("Нажмите на пульте «Домой»: должен открыться «Дом». Если открылось другое, нажмите «Откатить всё» или напишите, что видите.");
-  items.push("Город для погоды, цвет стекла, курсы, стихи и музыка выбираются на телевизоре: плитка «Настройки «Дома»» в конце ряда.");
-  if (mods.keymapper && mods.keymapper.chosen) items.push("Кнопка пульта для полосы HYDE (на TCL обычно шестерёнка): откройте на телевизоре Key Mapper, «New key map», «Tap to record trigger», нажмите эту кнопку, затем «Add action», «Launch app» (если спросит, «Ignore») и выберите «Дом». Тогда кнопка открывает полосу HYDE, повторное нажатие её закрывает.");
+  if (p.home) items.push("Нажмите на пульте «Домой»: должен открыться HYDE. Если открылось другое, нажмите здесь «Проверить телевизор»: мастер покажет, что не так.");
+  else items.push("HYDE открывается из списка приложений: «Дом». Сделать его главным экраном можно потом: запустите мастер снова и выберите первый вариант.");
+  items.push("Город для погоды, цвет стекла, стихи и музыку выберите на телевизоре: плитка «Настройки «Дома»» в конце ряда.");
+  if (mods.keymapper && mods.keymapper.chosen) items.push("Кнопка пульта для быстрой полосы HYDE (на TCL обычно шестерёнка): откройте на телевизоре Key Mapper, «New key map», «Tap to record trigger», нажмите эту кнопку, затем «Add action», «Launch app» (если спросит, «Ignore») и выберите «Дом».");
+  if (mods.lampa && mods.lampa.chosen) items.push(`Lampa: в её настройках есть пара пунктов для удобства с пультом, они в <a href="${REPO}docs/lampa.md" target="_blank" rel="noopener">памятке по Lampa</a>.`);
+  if (mods.torrserve && mods.torrserve.chosen) items.push(`TorrServe: при первом запуске он сам предложит поставить сервер, подробно в <a href="${REPO}docs/torrserve.md" target="_blank" rel="noopener">памятке по TorrServe</a>.`);
   items.push("Проверьте настоящим пультом: громкость, вход HDMI, YouTube.");
-  return '<div class="group">Что сделать на телевизоре</div>' + items.map((t, i) => `<div class="step"><span class="n">${i + 1}</span><div>${esc(t)}</div></div>`).join("");
+  return '<div class="group">Что сделать на телевизоре</div><ol class="todo">' + items.map((t) => `<li>${t.includes("<a ") ? t : esc(t)}</li>`).join("") + "</ol>";
 }
 
-// Выключатели «Сторожа» с фактическим состоянием (шаг 9 мастера из плана): отладка по сети и записки с телефона
+// Выключатели «Сторожа» с фактическим состоянием: отладка по сети и записки с телефона
 function guardPanel() {
-  $("after").insertAdjacentHTML("beforeend", '<div class="group">«Сторож»</div>'
+  $("after").insertAdjacentHTML("beforeend", '<details><summary>Безопасность: отладка по сети и записки с телефона</summary>'
     + '<div class="line"><span class="k">Отладка по сети</span><span class="v" id="g-adb">читаю…</span></div>'
-    + '<p class="hint">Нужна, чтобы потом обновлять и откатывать HYDE с этого компьютера. Можно выключить: «Сторож» подержит её ещё 2 часа и выключит. Для следующего обновления включите на телевизоре «Беспроводную отладку» снова.</p>'
+    + '<p class="hint">Нужна, чтобы потом обновлять HYDE и возвращать как было с этого компьютера. Можно выключить: «Сторож» подержит её ещё 2 часа и выключит. Для следующего обновления включите на телевизоре «Отладка по Wi-Fi» снова.</p>'
     + '<div class="row"><button class="ghost" id="adb-service">Выключить через 2 часа</button><button class="ghost" id="adb-always">Держать всегда</button></div>'
     + '<div class="line" style="margin-top:12px"><span class="k">Записки с телефона</span><span class="v" id="g-notes">читаю…</span></div>'
     + '<p class="hint">Устройство в домашней сети, которое знает код с экрана «Сторожа», может показать на телевизоре текст. Больше ничего записки не умеют.</p>'
-    + '<div class="row"><button class="ghost" id="notes-off">Выключить записки</button><button class="ghost" id="notes-on">Включить</button></div>');
+    + '<div class="row"><button class="ghost" id="notes-off">Выключить записки</button><button class="ghost" id="notes-on">Включить</button></div></details>');
   const g = async (what, set, el) => {
     $(el).textContent = "…";
     try { $(el).textContent = (await api("guard", { serial, what, set })).text; } catch (e) { $(el).textContent = e.message; }
@@ -453,14 +897,23 @@ async function verify() {
     const r = await api("verify", { serial });
     if (r.note) { msg("chks", r.note); return; }
     const bad = r.checks.filter((c) => !c.ok);
-    $("chks").innerHTML = `<div class="msg ${bad.length ? "bad" : "ok"}">Проверено: ${r.checks.length}, не держится: ${bad.length}</div>` +
-      r.checks.map((c) => `<div class="ev ${c.ok ? "ok" : "fail"}"><span class="m">${c.ok ? "✓" : "✗"}</span><div>${esc(c.what)}${c.detail ? `<div class="d">${esc(c.detail)}</div>` : ""}</div></div>`).join("");
+    $("chks").innerHTML = `<div class="msg ${bad.length ? "bad" : "ok"}">${bad.length ? `Не держится: ${bad.length} из ${r.checks.length}` : `Всё на месте: проверено ${r.checks.length}`}</div>` +
+      r.checks.map((c) => `<div class="ev ${c.ok ? "ok" : "fail"}"><span class="m">${c.ok ? "✓" : "✕"}</span><div>${esc(c.what)}${c.detail ? `<div class="d">${esc(c.detail)}</div>` : ""}</div></div>`).join("");
   } catch (e) { msg("chks", e.message, "bad"); }
 }
 
-$("rescan").onclick = scan;
+$("rescan").onclick = () => { lastDevs = ""; tried = {}; scan(); };
 $("connect").onclick = () => { const a = $("addr").value.trim(); if (a) connect(a); };
-$("pair").onclick = pair;
+$("pair").onclick = pairCode;
+$("code").addEventListener("input", (e) => {
+  const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+  e.target.value = v;
+  if (v.length === 6 && !$("pair").disabled) pairCode();
+});
+$("code").addEventListener("keydown", (e) => { if (e.key === "Enter") pairCode(); });
+
+stage(0);
+show(0);
 if (!KEY) document.querySelector("main").insertAdjacentHTML("afterbegin", '<div class="msg bad">Откройте адрес из окна установщика целиком: в нём ключ после знака #.</div>');
 else hello();
 </script>

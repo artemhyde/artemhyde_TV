@@ -87,7 +87,7 @@ func cmdDevices() error {
 	ss, _ := a.Mdns()
 	fmt.Println("ТВ, которые объявили беспроводную отладку в этой сети:")
 	if len(ss) == 0 {
-		fmt.Println("  никого (включите на ТВ «Беспроводную отладку»; компьютер и ТВ должны быть в одной сети)")
+		fmt.Println("  никого (включите на ТВ «Отладка по Wi-Fi», на некоторых ТВ «Беспроводная отладка»; компьютер и ТВ должны быть в одной сети)")
 	}
 	for _, s := range ss {
 		kind := map[string]string{"_adb-tls-connect._tcp": "подключение", "_adb-tls-pairing._tcp": "окно сопряжения открыто", "_adb._tcp": "старая отладка"}[s.Type]
@@ -133,7 +133,7 @@ func cmdPair(args []string) error {
 	if !ok {
 		return errors.New("сопряжение не прошло: " + out)
 	}
-	fmt.Println("Сопряжение прошло. Теперь подключитесь с адресом и портом главного экрана «Беспроводная отладка».")
+	fmt.Println("Сопряжение прошло. Теперь подключитесь с адресом и портом главного экрана «Отладка по Wi-Fi» (строка «IP-адрес и порт»).")
 	return nil
 }
 
@@ -393,7 +393,7 @@ func cmdApply(args []string) error {
 	without := fs.String("without", "", "убрать модули через запятую")
 	home := fs.Bool("home", false, "сделать «Дом» главным экраном")
 	root := fs.String("backup", "", "папка журналов (по умолчанию ~/.glasstv/backup)")
-	allowDl := fs.Bool("allow-download", false, "разрешить скачать сторонние приложения из описи (Key Mapper с GitHub)")
+	allowDl := fs.Bool("allow-download", false, "разрешить скачать сторонние приложения из описи со страниц авторов (Key Mapper и выбранные приложения по желанию с GitHub)")
 	tvFree := fs.Bool("tv-free", false, "ТВ свободен: можно открыть «Дом» и нажать «Домой»")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
 	if err := fs.Parse(args); err != nil {

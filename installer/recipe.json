@@ -5,7 +5,7 @@
     {
       "module": "guard",
       "title": "«Сторож»",
-      "what": "фоновая служба: подсветка в 22:00 и 7:00, таймер простоя, держит отладку по сети",
+      "what": "работает на телевизоре тихо: следит, чтобы HYDE не отключался, держит подключение с компьютера для обновлений, на TCL в 22:00 приглушает подсветку",
       "default": true,
       "required": true,
       "steps": [
@@ -22,9 +22,11 @@
     {
       "module": "keymapper",
       "title": "Key Mapper",
-      "what": "кнопки пульта: что открывает шестерёнка и другие кнопки",
+      "what": "настройка кнопок пульта: например, чтобы шестерёнка открывала быструю полосу HYDE",
       "default": true,
       "third_party": "io.github.sds100.keymapper",
+      "keep": "откат Key Mapper не удаляет: у него права администратора, они снимаются только руками (docs/rollback.md)",
+      "installed": "не обновляем, раскладка кнопок проверена на версии 4.6.2-foss",
       "steps": [
         {"what": "право менять защищённые настройки", "do": "pm grant io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS", "undo": "pm revoke io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS"},
         {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +io.github.sds100.keymapper", "undo": "dumpsys deviceidle whitelist -io.github.sds100.keymapper"},
@@ -105,6 +107,7 @@
       "module": "volna",
       "title": "«Волна»",
       "what": "музыка из YouTube Music без входа: «Моя волна» и «Новое для вас»",
+      "note": "экспериментальная: трек переключается не мгновенно, бывают паузы",
       "default": false,
       "steps": [
         {"what": "читать уведомления плеера", "do": "cmd notification allow_listener app.glasstv.volna/app.glasstv.volna.Listener", "undo": "cmd notification disallow_listener app.glasstv.volna/app.glasstv.volna.Listener"},
@@ -117,6 +120,58 @@
       "title": "HYDE Browser",
       "what": "браузер для пульта (TV Bro с нашими правками)",
       "default": false,
+      "steps": []
+    },
+    {
+      "module": "smarttube",
+      "title": "SmartTube",
+      "what": "YouTube для пульта без рекламы; на главном экране плитка YouTube",
+      "note": "неофициальное приложение, YouTube его не одобряет; вход в аккаунт по желанию, его делаете вы",
+      "default": false,
+      "group": "apps",
+      "third_party": "org.smarttube.stable",
+      "updates": "guard",
+      "steps": []
+    },
+    {
+      "module": "lampa",
+      "title": "Lampa",
+      "what": "каталог фильмов и сериалов; на главном экране плитки «Фильмы» и «Сериалы»",
+      "note": "источники и расширения не ставятся: только само приложение (docs/lampa.md)",
+      "default": false,
+      "group": "apps",
+      "third_party": "top.rootu.lampa",
+      "updates": "guard",
+      "steps": []
+    },
+    {
+      "module": "torrserve",
+      "title": "TorrServe",
+      "what": "помощник для Lampa: смотреть торренты, не скачивая целиком (сам сервер ставится кнопкой внутри TorrServe). Нужен не всем: не знаете, что это, пропускайте",
+      "default": false,
+      "group": "apps",
+      "third_party": "ru.yourok.torrserve",
+      "updates": "guard",
+      "steps": []
+    },
+    {
+      "module": "localsend",
+      "title": "LocalSend",
+      "what": "присылать на ТВ файлы и приложения с телефона или компьютера",
+      "default": false,
+      "group": "apps",
+      "third_party": "org.localsend.localsend_app",
+      "updates": "guard",
+      "steps": []
+    },
+    {
+      "module": "files",
+      "title": "Material Files",
+      "what": "файлы на ТВ: открыть скачанное, поставить приложение из файла; на главном экране плитка «Файлы»",
+      "default": false,
+      "group": "apps",
+      "third_party": "me.zhanghai.android.files",
+      "updates": "guard",
       "steps": []
     }
   ],

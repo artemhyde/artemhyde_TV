@@ -81,6 +81,11 @@ func cmdUI(args []string) error {
 	}
 	mux := http.NewServeMux()
 	page, _ := fs.Sub(webFS, "web")
+	// Правка окна без пересборки (только для разработки): HYDE_WEB_DIR указывает на папку installer/web
+	if d := os.Getenv("HYDE_WEB_DIR"); d != "" {
+		page = os.DirFS(d)
+		fmt.Println("Окно берётся из папки " + d + " (HYDE_WEB_DIR)")
+	}
 	mux.Handle("GET /", http.FileServerFS(page))
 	mux.HandleFunc("GET /api/hello", s.api(s.hello))
 	mux.HandleFunc("GET /api/devices", s.api(s.devices))
