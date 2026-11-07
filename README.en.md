@@ -52,12 +52,15 @@ Only what you choose gets installed. The only required third-party app is Key Ma
 | Key Mapper 4.6.2 foss | remote buttons | without root it is the only way to give special buttons your own actions; the version is pinned, the mapping was tested on it | if you map buttons |
 | SmartTube | YouTube for TV | easier with a remote than the stock app, sign-in with a code on your phone | optional |
 | Lampa | film and series catalogue | descriptions, ratings and seasons, "Films" and "Series" tiles; details in [docs/lampa.md](docs/lampa.md) | optional |
+| TorrServe | helper for Lampa | watch torrents in Lampa without downloading them whole; details in [docs/torrserve.md](docs/torrserve.md) | optional |
 | Just Player | video player | hardware playback of heavy 4K HDR files, opens video from other apps | optional |
 | HYDE Browser (TV Bro) | browser for the remote | sites with players, address entry with a remote; our patched TV Bro build or the regular TV Bro from Google Play | optional |
 | Material Files | files | video and photos from a USB stick | optional |
+| LocalSend | file transfer | send files and apps to the TV from a phone or computer on the home network | optional |
 | NewPipe | YouTube in a window | a small window over other apps | optional |
 | Twitch | streams | official, from Google Play only | optional |
 | Aurora Store | Google Play catalogue without sign-in | install apps without a Google account (grey zone of Google terms) | optional |
+| ByeByeDPI | YouTube when throttled | for viewers whose ISP throttles YouTube; runs on the TV itself, details in [docs/byedpi.md](docs/byedpi.md) | optional |
 
 **Accounts and sign-in**  
 Only you type passwords, the wizard never sees or types them. Signing in is optional everywhere.
@@ -116,6 +119,8 @@ Pills strip on the remote's gear button: Night, Sound, Picture, Volna, Style, TC
 HYDE Browser, TV Bro with our patches (optional, built on your computer): site players, input suggestions, a separate panel for editing the address with a yellow caret and a "Cut the link" button, a flat dark look without extra frames. The screenshot shows the start page with Russian sites; this build has a neutral set there (Bing, Reddit, Wikipedia, IMDb, BBC News, DuckDuckGo).  
 ![Browser](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/browser.png?v=0411b)
 
+ByeByeDPI: for viewers whose ISP throttles YouTube. Runs on the TV itself with no server; only YouTube clients and Volna go through it, everything else stays direct. Does not help with every ISP ([docs/byedpi.md](docs/byedpi.md)).
+
 Remote buttons: mapped through Key Mapper, any special button can open the app you want.
 
 **Compatibility**
@@ -154,6 +159,9 @@ We do not copy or distribute other people's apps, only links. The full list with
 - Key Mapper (GPL-3.0): remote buttons, github.com/keymapperorg/KeyMapper (formerly sds100/KeyMapper), version 4.6.2 foss is installed
 - SmartTube (MIT): YouTube client, github.com/yuliskov/SmartTube
 - Lampa: film catalogue, github.com/lampa-app/LAMPA (no license stated on the page, link only)
+- TorrServe (GPL-3.0): torrent server for Lampa, github.com/YouROK/TorrServe
+- ByeByeDPI (GPL-3.0): YouTube when the ISP throttles it, github.com/romanvht/ByeByeDPI
+- LocalSend (Apache-2.0): files from a phone to the TV, github.com/localsend/localsend
 - TV Bro (own license): browser, github.com/truefedex/tv-bro, our changes are kept as patches, our build is called HYDE Browser
 - Aura Music (GPL-3.0): the player for Volna, github.com/TeamAuraMusic/AuraMusic, our changes are patches in the `aura/` folder, which is under GPL-3.0
 - Inter (SIL OFL 1.1): font, github.com/rsms/inter

@@ -17,6 +17,7 @@ MIT, см. [LICENSE](LICENSE). Строка авторства: «Copyright (c) 
 | Just Player | com.brouken.player | GPL-3.0 (по памяти, перепроверить) | Видеоплеер, по желанию | github.com/moneytoo/Player |
 | Aurora Store | com.aurora.store | GPL-3.0 (по памяти, перепроверить); подпись F-Droid | Каталог Google Play без входа, по желанию | f-droid.org/packages/com.aurora.store |
 | Material Files | me.zhanghai.android.files | GPL-3.0 (по памяти, перепроверить) | Файловый менеджер, по желанию | github.com/zhanghai/MaterialFiles |
+| LocalSend | org.localsend.localsend_app | Apache-2.0 (проверено по LICENSE) | Файлы и приложения с телефона или компьютера на ТВ, по желанию | github.com/localsend/localsend |
 | Aura Music | github.com/TeamAuraMusic/AuraMusic, тег v3.2.0 | GPL-3.0, форк Metrolist (проверено по LICENSE) | Играет звук для «Волны», по желанию. Своя сборка из исходников с патчами папки aura/ (пакет app.glasstv.aura), папка aura/ под GPL-3.0 | github.com/TeamAuraMusic/AuraMusic |
 | Twitch | tv.twitch.android.app | закрытое приложение, только из Google Play, копий нет | Официальный клиент, по желанию | play.google.com |
 | NewPipe | org.schabi.newpipe | GPL-3.0 (по памяти, перепроверить) | YouTube в окне поверх всего, по желанию | github.com/TeamNewPipe/NewPipe |
