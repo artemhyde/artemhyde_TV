@@ -172,7 +172,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 			} else {
 				add(Step{Group: g, What: fmt.Sprintf("скачать %s %s с GitHub и сверить подпись (SHA-256 сертификата %s…)", tp.Name, tp.PinnedVersion, prefix(tp.CertSha256, 12)),
 					Do: tp.Download, Host: true, Run: true, Kind: "download", URL: tp.Download, Cert: tp.CertSha256, Package: tp.Package})
-				add(Step{Group: g, What: "поставить " + tp.Name, Do: "adb install " + path.Base(tp.Download), Undo: "-", Host: true,
+				add(Step{Group: g, What: "поставить " + tp.Name, Do: "adb install --user 0 " + path.Base(tp.Download), Undo: "-", Host: true,
 					Kind: "install3p", File: path.Base(tp.Download), Package: tp.Package, Cert: tp.CertSha256,
 					Note: "откат Key Mapper не удаляет: у него права администратора, они снимаются только руками (docs/rollback.md)"})
 			}
@@ -366,7 +366,7 @@ func addInstall(pl *Plan, add func(Step), g string, m *Manifest, a *ManifestApp,
 	switch {
 	case !installed:
 		pl.InstallMB += float64(a.Size) / 1048576
-		add(Step{Group: g, What: fmt.Sprintf("поставить %s (%s)", a.File, mb(a.Size)), Do: "adb install -r " + a.File, Undo: "pm uninstall --user 0 " + a.Package, Host: true,
+		add(Step{Group: g, What: fmt.Sprintf("поставить %s (%s)", a.File, mb(a.Size)), Do: "adb install --user 0 -r " + a.File, Undo: "pm uninstall --user 0 " + a.Package, Host: true,
 			Kind: "install", File: a.File, Package: a.Package})
 	case vc > a.VersionCode:
 		add(Step{Group: g, What: fmt.Sprintf("на ТВ версия новее (versionCode %d), старую Android поставить не даст: оставляем как есть", vc), Run: true, Package: a.Package})
@@ -378,7 +378,7 @@ func addInstall(pl *Plan, add func(Step), g string, m *Manifest, a *ManifestApp,
 			add(Step{Group: g, What: "снять права администратора перед обновлением (иначе система зависнет на минуту и перезагрузится)",
 				Do: "am start -n " + a.Package + "/.MainActivity --ez unadmin true; sleep 5", Run: true, Kind: "unadmin", Package: a.Package})
 		}
-		add(Step{Group: g, What: fmt.Sprintf("обновить до %s (стоит versionCode %d)", a.VersionName, vc), Do: "adb install -r " + a.File, Undo: "-", Host: true,
+		add(Step{Group: g, What: fmt.Sprintf("обновить до %s (стоит versionCode %d)", a.VersionName, vc), Do: "adb install --user 0 -r " + a.File, Undo: "-", Host: true,
 			Kind: "install", File: a.File, Package: a.Package,
 			Note: "откат обновление не снимает: прежняя версия поверх не ставится (docs/rollback.md). Если стоящая сборка подписана своим ключом, Android поверх не поставит: переход по docs/release.md, «Переход с личной сборки»"})
 	}

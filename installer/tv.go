@@ -26,8 +26,10 @@ func (t *adbTV) Shell(script string, timeout time.Duration) (string, error) {
 	return t.a.Shell(t.serial, script, timeout)
 }
 
+// Install: только основному пользователю (--user 0). У TCL есть служебный второй пользователь прошивки: приложение,
+// поставленное всем, после отката «pm uninstall --user 0» осталось бы числиться за ним (07.11, настоящий TCL 65C6K)
 func (t *adbTV) Install(apk string) (string, error) {
-	return t.a.run(10*time.Minute, "-s", t.serial, "install", "-r", apk)
+	return t.a.run(10*time.Minute, "-s", t.serial, "install", "--user", "0", "-r", apk)
 }
 
 func (t *adbTV) Pull(remote, local string) error {

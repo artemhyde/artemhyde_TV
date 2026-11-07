@@ -239,3 +239,22 @@ func TestApplyKeyMapperFreshInstall(t *testing.T) {
 		t.Fatalf("список «делайте руками»: %q", manual)
 	}
 }
+
+// Установка только основному пользователю: у TCL есть служебный второй пользователь, и поставленное всем приложение
+// после отката «pm uninstall --user 0» осталось бы за ним (07.11, настоящий TCL 65C6K)
+func TestInstallStepsMainUserOnly(t *testing.T) {
+	f, m, rec := applyEnv(t, true)
+	pl := buildPlan(rec, m, parsePassport(f.passport()), Choices{}, false)
+	n := 0
+	for _, s := range pl.Steps {
+		if s.Kind == "install" || s.Kind == "install3p" {
+			n++
+			if !strings.HasPrefix(s.Do, "adb install --user 0 ") {
+				t.Fatalf("установка не только основному пользователю: %s", s.Do)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("в плане нет установок")
+	}
+}

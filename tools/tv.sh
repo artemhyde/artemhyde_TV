@@ -149,7 +149,9 @@ off() {
     fi
 }
 
-# inst файл.apk пакет ["что"]: поставить apk (adb install -r) и записать в журнал обратную команду.
+# inst файл.apk пакет ["что"]: поставить apk (adb install --user 0 -r) и записать в журнал обратную команду.
+# Только основному пользователю: у TCL есть служебный второй пользователь прошивки, и приложение, поставленное
+# всем, после отката pm uninstall --user 0 осталось бы числиться за ним (07.11, настоящий TCL 65C6K).
 # Установка (приложения до этого на ТВ не было): обратная pm uninstall. Обновление (приложение уже стояло, в том числе наше app.glasstv.*):
 # обратной команды нет. Удалять ради отката обновления нельзя: вместе с приложением пропадут его данные и настройки, а вернуть
 # прежнюю версию поверх Android не даёт. Запись попадёт в список «делать руками» с версиями «было → стало».
@@ -165,7 +167,7 @@ inst() {
         echo "ОТКАЗ: у $p включены права администратора устройства. Сначала сними их (шаг 7 мастера, «Правило обновления»), потом обновляй."
         return 1
     fi
-    out="$(tv_adb install -r "$(gt_native "$apk")" 2>&1 | tr -d '\r')"
+    out="$(tv_adb install --user 0 -r "$(gt_native "$apk")" 2>&1 | tr -d '\r')"
     if ! printf '%s' "$out" | grep -q 'Success'; then
         case "$out" in
             *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
@@ -184,8 +186,8 @@ inst() {
         act="установлен"; inv="pm uninstall --user 0 $p"
         [ "$p" = io.github.sds100.keymapper ] && inv=""
     fi
-    if ! ledger "$act $p${what:+ ($what)}" "adb install -r $(basename "$apk")" "$inv"; then
-        echo "ОШИБКА: $p стоит, но запись в журнал не удалась. Допиши её вручную: ledger \"$act $p\" \"adb install -r\" \"$inv\""; return 1
+    if ! ledger "$act $p${what:+ ($what)}" "adb install --user 0 -r $(basename "$apk")" "$inv"; then
+        echo "ОШИБКА: $p стоит, но запись в журнал не удалась. Допиши её вручную: ledger \"$act $p\" \"adb install --user 0 -r\" \"$inv\""; return 1
     fi
     if [ -n "$inv" ]; then echo "$act: $p (откат: pm uninstall)"; elif [ "$had" = 1 ]; then echo "$act: $p ($what)"; else echo "$act: $p (откат только руками)"; fi
 }
