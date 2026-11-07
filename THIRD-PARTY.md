@@ -13,6 +13,7 @@ MIT, см. [LICENSE](LICENSE). Строка авторства: «Copyright (c) 
 | SmartTube | org.smarttube.stable | MIT (Copyright 2020-present yuliskov) | YouTube-клиент, по желанию | github.com/yuliskov/SmartTube |
 | Lampa | top.rootu.lampa | у Android-приложения на странице не указана (права на раздачу нет, только ссылка); веб-часть GPL-2.0 | Каталог фильмов, по желанию; меняем только её собственные настройки | github.com/lampa-app/LAMPA, github.com/yumata/lampa-source |
 | TorrServe | ru.yourok.torrserve | GPL-3.0 (клиент и сервер TorrServer) | Сервер торрентов для Lampa, необязательный модуль (docs/torrserve.md) | github.com/YouROK/TorrServe, github.com/YouROK/TorrServer |
+| ByeByeDPI | io.github.romanvht.byedpi | GPL-3.0 (проверено по LICENSE); внутри ByeDPI (hufrea) и hev-socks5-tunnel | Необязательный модуль: YouTube при замедлении у провайдера, работает на самом ТВ без сервера (docs/byedpi.md). Ставится файл автора без изменений, список приложений загружается его же импортом настроек | github.com/romanvht/ByeByeDPI |
 | Just Player | com.brouken.player | GPL-3.0 (по памяти, перепроверить) | Видеоплеер, по желанию | github.com/moneytoo/Player |
 | Aurora Store | com.aurora.store | GPL-3.0 (по памяти, перепроверить); подпись F-Droid | Каталог Google Play без входа, по желанию | f-droid.org/packages/com.aurora.store |
 | Material Files | me.zhanghai.android.files | GPL-3.0 (по памяти, перепроверить) | Файловый менеджер, по желанию | github.com/zhanghai/MaterialFiles |
