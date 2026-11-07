@@ -226,6 +226,10 @@ func runRestore(tv TV, dir string, emit func(Event)) (r RestoreResult) {
 			}
 		}
 	}
+	if !r.Lost {
+		// Возвращённые права сразу на диск: Android пишет их с задержкой до 30 минут (как и при установке, plan.go)
+		_, _ = runTVCmd(tv, "appops write-settings")
+	}
 	if !r.Lost && r.Fail == 0 {
 		if s, err := loadSession(dir); err == nil {
 			s.Restored = time.Now().Format("2006-01-02 15:04:05")

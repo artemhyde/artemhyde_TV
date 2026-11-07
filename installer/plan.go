@@ -332,6 +332,15 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 		}
 	}
 
+	// Выданные права сразу на диск: Android пишет appops с задержкой до 30 минут, и при резком выключении ТВ после установки
+	// пропадали согласие на VPN и окно поверх других у «Сторожа» (07.11, находка сессии ByeByeDPI на виртуальном Google TV)
+	for _, s := range pl.Steps {
+		if strings.HasPrefix(s.Do, "appops set") {
+			add(Step{Group: "Завершение", What: "записать выданные права на диск сразу, а не через полчаса", Do: "appops write-settings", Run: true})
+			break
+		}
+	}
+
 	// Заметки и помехи
 	switch c.Level {
 	case levelVerified:

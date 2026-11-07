@@ -285,6 +285,10 @@ func TestApplyOptionalAppLampa(t *testing.T) {
 	if tile == nil {
 		t.Fatal("плитка Lampa не встала вместе с ней")
 	}
+	// Права appops сразу на диск последним шагом: иначе Android пишет их с задержкой до 30 минут
+	if last := pl.Steps[len(pl.Steps)-1]; last.Do != "appops write-settings" || !last.Run {
+		t.Fatalf("последний шаг плана: %+v", last)
+	}
 	for _, mc := range pl.Modules {
 		if mc.Module == "localsend" && (mc.Available || mc.Chosen || !strings.Contains(mc.Why, "процессор")) {
 			t.Fatalf("LocalSend без сборки под процессор ТВ: %+v", mc)
