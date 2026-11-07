@@ -25,10 +25,10 @@
 
 | Ваш компьютер | Какой файл скачать |
 |---|---|
-| Windows | **HYDE-TV-1.0.0-Windows.zip** |
-| Mac на процессоре Apple (M1 и новее) | **HYDE-TV-1.0.0-macOS-Apple.zip** |
-| Mac на процессоре Intel | **HYDE-TV-1.0.0-macOS-Intel.zip** |
-| Linux | **HYDE-TV-1.0.0-Linux-x64.tar.gz** |
+| Windows | **HYDE-TV-1.0.1-Windows.zip** |
+| Mac на процессоре Apple (M1 и новее) | **HYDE-TV-1.0.1-macOS-Apple.zip** |
+| Mac на процессоре Intel | **HYDE-TV-1.0.1-macOS-Intel.zip** |
+| Linux | **HYDE-TV-1.0.1-Linux-x64.tar.gz** |
 
 ### 2. Распакуйте
 
