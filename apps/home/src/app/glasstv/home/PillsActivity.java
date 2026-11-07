@@ -33,7 +33,13 @@ public class PillsActivity extends Activity {
     static final long IDLE_MS = 10_000;   // у панели TCL 15 с
     static final String PREFS = "pills", LAST = "last";
     static final String HINT = "Шестерёнка ещё раз: закрыть · долго: панель TCL";
-    static final String PICTURE = "app.glasstv.picture";
+    static final String PICTURE = "app.glasstv.picture", NIGHT = "app.glasstv.nightmode", SOUND = "app.glasstv.sound";
+    private String music;
+
+    boolean has(String pkg) {
+        try { getPackageManager().getPackageInfo(pkg, 0); return true; }
+        catch (Exception e) { return false; }
+    }
 
     // Одна таблетка: что показать и как запустить
     private static final class Pill {
@@ -56,11 +62,14 @@ public class PillsActivity extends Activity {
         dp = getResources().getDisplayMetrics().density;
         Fonts.init(this);
 
-        pills.add(new Pill("night", "Ночь", PillView.MOON));
-        pills.add(new Pill("sound", "Звук", PillView.SOUND));
-        // «Картинки» может не быть на этом телевизоре: тогда таблетки нет вовсе
+        // Таблетка только к приложению, которое стоит (07.11: в выпуске «Звук» ставится только с Dolby, «Волна» по желанию,
+        // а таблетка без приложения ничего не открывала). «Картинки» может не быть на этом телевизоре: тогда таблетки нет вовсе
+        if (has(NIGHT)) pills.add(new Pill("night", "Ночь", PillView.MOON));
+        if (has(SOUND)) pills.add(new Pill("sound", "Звук", PillView.SOUND));
         if (getPackageManager().getLaunchIntentForPackage(PICTURE) != null) pills.add(new Pill("picture", "Картинка", PillView.SUN));
-        pills.add(new Pill("volna", "Волна", PillView.WAVE));
+        // Музыка: что выбрал человек («Настройки «Дома»», «Музыка»), без выбора «Волна», если стоит; нет ничего: таблетки нет
+        music = Setup.musicApp(this);
+        if (music != null) pills.add(new Pill("volna", Setup.VOLNA.equals(music) ? "Волна" : "Музыка", PillView.WAVE));
         pills.add(new Pill("style", "Стиль", PillView.SHAPE));   // вид «Дома»: «Графит» или «Vision», по кругу
         // Панель TCL только на TCL и только если её служба есть в прошивке (план Codex, блок 5); иначе обычные настройки Android
         if (tclPanel()) pills.add(new Pill("tcl", "Панель TCL", PillView.GRID));
@@ -159,7 +168,10 @@ public class PillsActivity extends Activity {
                     // Стиль «Дома»: запоминается сразу, «Дом» перестроится, как только покажется (он же под полосой)
                     Style.toggle(this);
                     return true;
-                case "volna": return open(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.MenuActivity"));
+                case "volna":
+                    if (Setup.VOLNA.equals(music)) return open(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.MenuActivity"));
+                    Intent mi = music == null ? null : Go.plain(this, music);
+                    return mi != null && open(mi);
                 case "tcl":
                     // Системная панель TCL: служба открыта без разрешения, Key Mapper запускал её так же
                     // Нет службы (другая прошивка): null, и полоса закроется обычным плавным уходом

@@ -190,6 +190,7 @@ public class SetupActivity extends Activity {
                 new String[]{"С 22:00 до 7:00", "С 21:00 до 7:00", "С 23:00 до 7:00", "С 22:00 до 8:00", "Не затемнять"},
                 new String[]{"22-7", "21-7", "23-7", "22-8", "off"}, Setup.night(this),
                 v -> { Setup.put(this, "night", v); Setup.sendNight(this, v); })));
+        row("Музыка", musicTitle(), () -> open(this::musicPage));
         if (getPackageManager().getLaunchIntentForPackage("app.glasstv.volna") != null)
             row("Имена вкусов «Волны»", "", () -> open(this::namesPage));
         row("Облегчённый режим", Setup.lite(this) ? "включён" : "выключен", () -> open(() -> choice(
@@ -501,6 +502,17 @@ public class SetupActivity extends Activity {
         page("Плитка «" + tileLabel + "» открывает", "OK выбирает приложение");
         String cur = Setup.tileApp(this, tile);
         View sel = row("Как было: " + label(def), cur == null ? "выбрано" : "", () -> { Setup.setTileApp(this, tile, null); goBack(); });
+        for (Map.Entry<String, String> a : launchableApps()) {
+            if (a.getKey().equals(def)) continue;
+            View r = row(a.getValue(), a.getKey().equals(cur) ? "выбрано" : "", () -> { Setup.setTileApp(this, tile, a.getKey()); goBack(); });
+            if (a.getKey().equals(cur)) sel = r;
+        }
+        final View f = sel;
+        list.post(f::requestFocus);
+    }
+
+    // Приложения, которые можно открыть с пульта, по названию: без самого «Дома» и без плиток-ярлыков
+    List<Map.Entry<String, String>> launchableApps() {
         PackageManager pm = getPackageManager();
         Map<String, String> apps = new LinkedHashMap<>();
         for (String cat : new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER}) {
@@ -508,16 +520,54 @@ public class SetupActivity extends Activity {
                 String p = r.activityInfo.packageName;
                 Bundle md = r.activityInfo.metaData;
                 boolean isTile = md != null && md.getString("target") != null;
-                if (isTile || p.equals(getPackageName()) || p.equals(def) || apps.containsKey(p)) continue;
+                if (isTile || p.equals(getPackageName()) || apps.containsKey(p)) continue;
                 apps.put(p, String.valueOf(r.loadLabel(pm)));
             }
         }
         List<Map.Entry<String, String>> sorted = new ArrayList<>(apps.entrySet());
         sorted.sort((a, b) -> a.getValue().compareToIgnoreCase(b.getValue()));
-        for (Map.Entry<String, String> a : sorted) {
-            View r = row(a.getValue(), a.getKey().equals(cur) ? "выбрано" : "", () -> { Setup.setTileApp(this, tile, a.getKey()); goBack(); });
+        return sorted;
+    }
+
+    // ===== Музыка (07.11): что открывают капсула на главном экране и таблетка в полосе шестерёнки =====
+
+    // Известные музыкальные приложения (наверх списка); остальные узнаются по категории «музыка» в самом приложении
+    static final java.util.Set<String> MUSIC = new java.util.HashSet<>(java.util.Arrays.asList(
+            "com.google.android.youtube.tvmusic", "com.google.android.apps.youtube.music", "com.spotify.tv.android",
+            "com.spotify.music", "ru.yandex.music", "com.uma.musicvk", "com.zvooq.openplay", "com.apple.android.music",
+            "deezer.android.tv", "deezer.android.app", "com.soundcloud.android", "com.auramusic.app"));
+
+    String musicTitle() {
+        String m = Setup.music(this), app = Setup.musicApp(this);
+        if ("off".equals(m)) return "не показывать";
+        if (app == null) return "не выбрана";
+        return Setup.VOLNA.equals(app) ? "«Волна»" : label(app);
+    }
+
+    void musicPage() {
+        page("Музыка", "Что открывают капсула на главном экране и таблетка в полосе шестерёнки");
+        String m = Setup.music(this), cur = "off".equals(m) ? "off" : Setup.musicApp(this);
+        View sel = null;
+        if (Setup.launchable(this, Setup.VOLNA)) {
+            View r = row("«Волна»", Setup.VOLNA.equals(cur) ? "выбрано" : "", () -> { Setup.setMusic(this, "volna"); goBack(); });
+            if (Setup.VOLNA.equals(cur)) sel = r;
+        }
+        java.util.Set<String> byCategory = new java.util.HashSet<>();
+        for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MUSIC), 0))
+            byCategory.add(r.activityInfo.packageName);
+        List<Map.Entry<String, String>> music = new ArrayList<>(), other = new ArrayList<>();
+        for (Map.Entry<String, String> a : launchableApps()) {
+            if (a.getKey().equals(Setup.VOLNA)) continue;
+            (MUSIC.contains(a.getKey()) || byCategory.contains(a.getKey()) ? music : other).add(a);
+        }
+        music.addAll(other);
+        for (Map.Entry<String, String> a : music) {
+            View r = row(a.getValue(), a.getKey().equals(cur) ? "выбрано" : "", () -> { Setup.setMusic(this, a.getKey()); goBack(); });
             if (a.getKey().equals(cur)) sel = r;
         }
+        View off = row("Не показывать музыку", "off".equals(cur) ? "выбрано" : "", () -> { Setup.setMusic(this, "off"); goBack(); });
+        if ("off".equals(cur)) sel = off;
+        if (sel == null) { focusFirst(); return; }
         final View f = sel;
         list.post(f::requestFocus);
     }

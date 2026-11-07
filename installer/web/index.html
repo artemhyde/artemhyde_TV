@@ -420,7 +420,7 @@ function nextSteps() {
   const p = lastPlan || {}, mods = Object.fromEntries((p.modules || []).map((m) => [m.module, m]));
   const items = [];
   if (p.home) items.push("Нажмите на пульте «Домой»: должен открыться «Дом». Если открылось другое, нажмите «Откатить всё» или напишите, что видите.");
-  items.push("Город для погоды, цвет стекла, курсы и стихи выбираются на телевизоре: плитка «Настройки «Дома»» в конце ряда.");
+  items.push("Город для погоды, цвет стекла, курсы, стихи и музыка выбираются на телевизоре: плитка «Настройки «Дома»» в конце ряда.");
   if (mods.keymapper && mods.keymapper.chosen) items.push("Кнопка пульта для полосы HYDE (на TCL обычно шестерёнка): откройте на телевизоре Key Mapper, «New key map», «Tap to record trigger», нажмите эту кнопку, затем «Add action», «Launch app» (если спросит, «Ignore») и выберите «Дом». Тогда кнопка открывает полосу HYDE, повторное нажатие её закрывает.");
   items.push("Проверьте настоящим пультом: громкость, вход HDMI, YouTube.");
   return '<div class="group">Что сделать на телевизоре</div>' + items.map((t, i) => `<div class="step"><span class="n">${i + 1}</span><div>${esc(t)}</div></div>`).join("");

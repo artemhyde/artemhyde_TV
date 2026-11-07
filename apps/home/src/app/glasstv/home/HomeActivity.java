@@ -526,9 +526,11 @@ public class HomeActivity extends Activity {
             });
         }
         Drawable volna = cap("app.glasstv.volna");
-        // «Волну» ставят по желанию: без неё капсула «Моя волна» ничего бы не включала (07.11, установка без «Волны»
-        // на виртуальном ТВ). Прячется, как «Продолжить»; появится сама, когда «Волну» поставят (loadApps на установку)
-        if (Now.title.isEmpty() && !installed("app.glasstv.volna")) {
+        // Что открывает музыку, выбирает человек («Настройки «Дома»», «Музыка»): «Волна», другое приложение или ничего.
+        // Без выбора «Волна», если она стоит. «Волну» ставят по желанию: без неё и без выбора капсула прячется, как
+        // «Продолжить» (07.11, установка без «Волны»); появится сама, когда «Волну» поставят (loadApps на установку)
+        final String music = Setup.musicApp(this);
+        if (Now.title.isEmpty() && music == null) {
             if (play.isFocused()) {
                 View back = lastDock != null ? lastDock : (dockTiles.isEmpty() ? null : dockTiles.get(0));
                 if (back != null) back.requestFocus();
@@ -541,12 +543,25 @@ public class HomeActivity extends Activity {
             // OK открывает плеер «Волны» сразу на весь экран
             play.set(Now.playing ? "Играет" : "На паузе", Now.title + (Now.artist.isEmpty() ? "" : " · " + Now.artist), volna);
             play.setOnClickListener(v -> openVolnaPlayer());
-        } else {
+        } else if (Setup.VOLNA.equals(music)) {
             play.set("Включить", "Моя волна", volna);
             play.setOnClickListener(v -> {
                 try { sendBroadcast(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.AppCmd").putExtra("do", "my")); }
                 catch (Exception ignored) { }
             });
+        } else {
+            // Своё музыкальное приложение: капсула просто открывает его
+            play.set("Музыка", appLabel(music), cap(music));
+            play.setOnClickListener(v -> launch(music, v));
+        }
+    }
+
+    String appLabel(String pkg) {
+        try {
+            PackageManager pm = getPackageManager();
+            return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
+        } catch (Exception e) {
+            return pkg;
         }
     }
 

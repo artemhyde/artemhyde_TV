@@ -87,6 +87,30 @@ final class Setup {
         bump(c);
     }
 
+    // ===== Музыка (07.11, план Codex: человек сам выбирает музыку, «альтернативный запуск музыки») =====
+
+    // Что открывают капсула на главном экране и таблетка в полосе шестерёнки. Пусто: как было, «Волна», если она стоит.
+    // «volna»: «Волна» (в файле переноса слово, а не пакет: файл один и для личной сборки, и для выпуска).
+    // «off»: музыки на главном экране и в полосе нет. Иначе пакет выбранного приложения
+    static final String VOLNA = "app.glasstv.volna";
+
+    static String music(Context c) { return sp(c).getString("music", ""); }
+
+    static void setMusic(Context c, String v) { put(c, "music", v == null ? "" : v); }
+
+    static boolean launchable(Context c, String pkg) {
+        android.content.pm.PackageManager pm = c.getPackageManager();
+        return pm.getLeanbackLaunchIntentForPackage(pkg) != null || pm.getLaunchIntentForPackage(pkg) != null;
+    }
+
+    /** Пакет, который сейчас открывает музыку, или null: выбранное приложение, пока оно стоит, иначе «Волна», если стоит */
+    static String musicApp(Context c) {
+        String m = music(c);
+        if ("off".equals(m)) return null;
+        if (!m.isEmpty() && !"volna".equals(m) && launchable(c, m)) return m;
+        return launchable(c, VOLNA) ? VOLNA : null;
+    }
+
     // Номер правки: «Дом» по нему видит, что настройки меняли, и перерисовывает экран
     static int rev(Context c) { return sp(c).getInt("rev", 0); }
 
