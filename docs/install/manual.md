@@ -22,9 +22,9 @@ hyde-install restore                        откат всех установо
 
 **Ключи**  
 `--tv <адрес>`: какой телевизор, если подключено несколько (без него установщик молча не выбирает).  
-`--with volna,browser` и `--without keymapper`: модули сверх выбора по умолчанию или без них. Модули: guard и home (обязательны), keymapper, nightmode, sound, picture, clip, keyboard, volna, browser.  
+`--with volna,browser` и `--without keymapper`: модули сверх выбора по умолчанию или без них. Модули: guard и home (обязательны), keymapper, nightmode, sound, picture, clip, keyboard, volna, browser. Приложения по желанию (качаются со страниц авторов, нужен `--allow-download`): smarttube, lampa, torrserve, localsend, files, byedpi.  
 `--home`: сделать «Дом» главным экраном (по умолчанию главный экран остаётся прежним, если «Дом» уже не главный).  
-`--allow-download`: согласие скачать Key Mapper 4.6.2 с GitHub (подпись сверяется с описью).  
+`--allow-download`: согласие скачать Key Mapper 4.6.2 и выбранные приложения по желанию со страниц авторов (сумма файла и подпись сверяются с описью).  
 `--tv-free`: телевизор свободен, установщик может открыть «Дом» и нажать «Домой» (нужно при смене главного экрана).  
 `--yes`: не спрашивать подтверждение. `--json` у inspect и plan: ответ для программ. `--release <папка>`: другой выпуск. `--backup <папка>`: другая папка журналов, у restore и verify ещё и одна папка журнала вместо всех.
 

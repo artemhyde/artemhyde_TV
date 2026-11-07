@@ -76,6 +76,7 @@ const usage = `hyde-install: установщик HYDE TV
   hyde-install guard adb [always|service] [--tv адрес]   отладка по сети: держать всегда или ещё 2 часа, потом выключить
   hyde-install guard notes [on|off] [--tv адрес]         записки с телефона; без значения: только показать
 Модули: guard keymapper home nightmode sound picture clip keyboard volna browser
+Приложения по желанию (--with, качаются со страниц авторов, нужен --allow-download): smarttube lampa torrserve localsend files byedpi
 Повторный apply после обрыва продолжает незаконченную установку этого ТВ с того же места.
 Журналы и снимки «до»: ~/.glasstv/backup (папка HYDE TV: GLASSTV_HOME)`
 

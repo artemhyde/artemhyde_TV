@@ -237,7 +237,26 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 		}
 		return b.String(), nil
 	case strings.HasPrefix(cmd, "cmd notification allow_listener"):
-		f.settings["secure:enabled_notification_listeners"] = w[3]
+		// Как в Android: слушатели списком через двоеточие, новый дописывается
+		const k = "secure:enabled_notification_listeners"
+		if cur := f.settings[k]; cur == "" {
+			f.settings[k] = w[3]
+		} else if !strings.Contains(":"+cur+":", ":"+w[3]+":") {
+			f.settings[k] = cur + ":" + w[3]
+		}
+	case strings.HasPrefix(cmd, "cmd notification disallow_listener"):
+		const k = "secure:enabled_notification_listeners"
+		var keep []string
+		for _, c := range strings.Split(f.settings[k], ":") {
+			if c != "" && c != w[3] {
+				keep = append(keep, c)
+			}
+		}
+		if len(keep) == 0 {
+			delete(f.settings, k)
+		} else {
+			f.settings[k] = strings.Join(keep, ":")
+		}
 	case strings.HasPrefix(cmd, "appops set "):
 		f.grants[w[2]+" "+w[3]] = w[4] == "allow"
 		return pkgOK(w[2])

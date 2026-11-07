@@ -11,6 +11,8 @@
       "steps": [
         {"what": "право менять защищённые настройки", "do": "pm grant app.glasstv.guard android.permission.WRITE_SECURE_SETTINGS", "undo": "pm revoke app.glasstv.guard android.permission.WRITE_SECURE_SETTINGS"},
         {"what": "право читать состояние системы (таймер простоя в чужих окнах)", "do": "pm grant app.glasstv.guard android.permission.DUMP", "undo": "pm revoke app.glasstv.guard android.permission.DUMP"},
+        {"what": "видеть, какое приложение открыто: обновления не трогают открытое", "do": "appops set app.glasstv.guard GET_USAGE_STATS allow", "undo": "appops set app.glasstv.guard GET_USAGE_STATS default"},
+        {"what": "видеть, идёт ли видео или музыка: обновления ждут конца (сами уведомления не читает)", "do": "cmd notification allow_listener app.glasstv.guard/app.glasstv.guard.Listen", "undo": "cmd notification disallow_listener app.glasstv.guard/app.glasstv.guard.Listen"},
         {"what": "окно поверх других приложений", "do": "appops set app.glasstv.guard SYSTEM_ALERT_WINDOW allow", "undo": "appops set app.glasstv.guard SYSTEM_ALERT_WINDOW default"},
         {"what": "менять настройки экрана", "do": "appops set app.glasstv.guard WRITE_SETTINGS allow", "undo": "appops set app.glasstv.guard WRITE_SETTINGS default"},
         {"what": "обновлять приложения не из Google Play", "do": "appops set app.glasstv.guard REQUEST_INSTALL_PACKAGES allow", "undo": "appops set app.glasstv.guard REQUEST_INSTALL_PACKAGES default"},
@@ -41,6 +43,7 @@
       "required": true,
       "steps": [
         {"what": "видеть, какие приложения открывали (подсказки на главном экране)", "do": "appops set app.glasstv.home GET_USAGE_STATS allow", "undo": "appops set app.glasstv.home GET_USAGE_STATS default"},
+        {"what": "помнить, где остановили видео: капсула «Продолжить» (сами уведомления не читает)", "do": "cmd notification allow_listener app.glasstv.home/app.glasstv.home.Watch", "undo": "cmd notification disallow_listener app.glasstv.home/app.glasstv.home.Watch"},
         {"what": "автозапуск (прошивка TCL)", "do": "appops set app.glasstv.home AUTO_START allow", "undo": "appops set app.glasstv.home AUTO_START default", "when": "tcl"}
       ]
     },
