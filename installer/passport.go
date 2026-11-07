@@ -17,7 +17,7 @@ echo '##features'; pm list features
 echo '##libraries'; pm list libraries
 echo '##packages'; pm list packages --show-versioncode
 echo '##disabled'; pm list packages -d
-echo '##home'; cmd role get-role-holders --user 0 android.app.role.HOME
+echo '##home'; h=$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo "$h" || dumpsys role | grep -A1 'name=android.app.role.HOME$' | sed -n 's/^ *holders=//p'
 echo '##display_service'; service check tcl_tv_display
 echo '##quickpanel'; cmd package query-services --brief -a com.tcl.settings.SHOW_WINDOW
 echo '##tkl'; ls /tclconfig/tvcust/aio_resources/resource/common_overseas/input_key/ 2>/dev/null

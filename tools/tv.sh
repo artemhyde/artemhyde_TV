@@ -74,8 +74,8 @@ dpad_pick() { dpad_to "$@" || return 1; tv_sh "input keyevent KEYCODE_DPAD_CENTE
 # Пакет приложения сверху экрана (пусто, если прочитать не удалось)
 _top_pkg() { tv_sh "dumpsys activity activities" 2>/dev/null | tr -d '\r' | grep -m1 topResumedActivity | sed -E 's/.* u[0-9]+ ([^/ ]+)\/.*/\1/'; }
 
-# Владелец главного экрана (роль HOME)
-_home_holder() { tv_sh "cmd role get-role-holders --user 0 android.app.role.HOME" 2>/dev/null | tr -d '\r' | head -1 | tr -d ' '; }
+# Владелец главного экрана (роль HOME). cmd role get-role-holders есть только с Android 13, на 12 владелец берётся из dumpsys role
+_home_holder() { tv_sh "h=\$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo \"\$h\" || dumpsys role | grep -A1 'name=android.app.role.HOME\$' | sed -n 's/^ *holders=//p'" 2>/dev/null | tr -d '\r' | head -1 | tr -d ' '; }
 
 # Версия приложения на ТВ (versionName), пусто, если его нет
 _pkg_ver() { tv_sh "dumpsys package $1" 2>/dev/null | tr -d '\r' | grep -m1 'versionName=' | sed 's/.*versionName=//'; }

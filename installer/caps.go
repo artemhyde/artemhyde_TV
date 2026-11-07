@@ -136,6 +136,9 @@ func (c Caps) Has(flag string) bool {
 		return c.DisplayLib
 	case "quick_panel":
 		return c.QuickPanel
+	case "android13":
+		// Право POST_NOTIFICATIONS есть только с Android 13: на 12 pm grant его не знает и падает (проверено 07.11 на виртуальном Google TV 12)
+		return c.SDK >= 33
 	case "":
 		return true
 	}

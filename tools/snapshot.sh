@@ -63,7 +63,7 @@ grab features.txt            "pm list features"
 
 # Состояние, которое мастер потом меняет и должен уметь вернуть: одним файлом «ключ: значение»
 {
-    echo "home_role_holder: $(tv_sh "cmd role get-role-holders --user 0 android.app.role.HOME" 2>&1 | tr -d '\r')"
+    echo "home_role_holder: $(tv_sh "h=\$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo \"\$h\" || dumpsys role | grep -A1 'name=android.app.role.HOME\$' | sed -n 's/^ *holders=//p'" 2>&1 | tr -d '\r')"
     for k in screensaver_components screensaver_enabled screensaver_activate_on_sleep screensaver_activate_on_dock \
              enabled_accessibility_services accessibility_enabled default_input_method; do
         echo "secure.$k: $(tv_sh "settings get secure $k" 2>&1 | tr -d '\r')"

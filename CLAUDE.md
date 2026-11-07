@@ -84,7 +84,7 @@ Python без прав администратора: Windows: embeddable zip с 
 `pm list features | grep -E 'leanback|television'`  
 `pm list libraries`, `service list`  
 `pm list packages | grep -E 'dolby|keymapper|launcherx|setupwraith|tvlauncher'`  
-`cmd role get-role-holders --user 0 android.app.role.HOME`  
+`cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`)  
 `settings get secure screensaver_components`, `settings get secure screensaver_enabled`, `settings get system screen_off_timeout`, `settings get secure enabled_accessibility_services`, `settings get global private_dns_mode`  
 `settings get global window_animation_scale`, `transition_animation_scale`, `animator_duration_scale`  
 `dumpsys device_policy | grep -A8 "Enabled Device Admins"`  
@@ -206,7 +206,7 @@ Lampa: её собственные настройки по памятке docs/l
 TorrServe: по памятке docs/torrserve.md. Клиент `ru.yourok.torrserve` только с релизов автора, сверка подписи по data/third-party-sources.json, `inst`. Сервер ставит человек кнопкой в клиенте или запускает на своём устройстве. Проверка с ТВ: `adb shell "printf 'GET /echo HTTP/1.0\r\n\r\n' | nc 127.0.0.1 8090"` (ответ: версия сервера). Адрес в Lampa вписывает человек, или ты по его слову, пока ТВ свободен. Присмотр «Сторожа» по желанию командой из памятки, в журнал с обратной `am broadcast -n app.glasstv.guard/.Cmd --es do svc --es url ""`.
 
 **Шаг 12. Проверка**
-- Главный экран: `cmd role get-role-holders --user 0 android.app.role.HOME`
+- Главный экран: `cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`)
 - «Сторож» жив: `dumpsys activity services app.glasstv.guard`; право на таймер простоя: `dumpsys package app.glasstv.guard | grep "android.permission.DUMP: granted=true"`
 - Key Mapper в `settings get secure enabled_accessibility_services`
 - Записки «Сторожа»: слушает ли порт 8765 (вопрос 11 шага 5), и скажи человеку то, что показала проверка

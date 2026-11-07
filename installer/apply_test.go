@@ -108,7 +108,7 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 	}
 	w := strings.Fields(cmd)
 	read := strings.HasPrefix(cmd, "settings get") || strings.HasPrefix(cmd, "settings list") || strings.HasPrefix(cmd, "pm path") ||
-		strings.HasPrefix(cmd, "pm list") || strings.HasPrefix(cmd, "cmd role get") || strings.HasPrefix(cmd, "dumpsys") || strings.HasPrefix(cmd, "cmd package resolve") ||
+		strings.HasPrefix(cmd, "pm list") || strings.HasPrefix(cmd, "cmd role get") || cmd == homeHolderCmd || strings.HasPrefix(cmd, "dumpsys") || strings.HasPrefix(cmd, "cmd package resolve") ||
 		strings.HasPrefix(cmd, "appops get") || strings.Contains(cmd, "echo \"home_role_holder")
 	if !read {
 		f.ran = append(f.ran, cmd)
@@ -154,7 +154,7 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 			b.WriteString("package:" + p + "\n")
 		}
 		return b.String(), nil
-	case strings.HasPrefix(cmd, "cmd role get-role-holders"):
+	case strings.HasPrefix(cmd, "cmd role get-role-holders") || cmd == homeHolderCmd:
 		return f.home + "\n", nil
 	case strings.HasPrefix(cmd, "dumpsys activity activities"):
 		return fmt.Sprintf("  topResumedActivity=ActivityRecord{abc u0 %s/.Main t1}\n", f.top), nil

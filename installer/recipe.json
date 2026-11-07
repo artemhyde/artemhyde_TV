@@ -57,7 +57,7 @@
         {"what": "права администратора (выключать экран по таймеру сна)", "do": "dpm set-active-admin --user 0 app.glasstv.nightmode/.AdminReceiver", "undo": "am start -n app.glasstv.nightmode/.MainActivity --ez unadmin true; sleep 5"},
         {"what": "окно поверх других приложений", "do": "appops set app.glasstv.nightmode SYSTEM_ALERT_WINDOW allow", "undo": "appops set app.glasstv.nightmode SYSTEM_ALERT_WINDOW default"},
         {"what": "менять яркость", "do": "appops set app.glasstv.nightmode WRITE_SETTINGS allow", "undo": "appops set app.glasstv.nightmode WRITE_SETTINGS default"},
-        {"what": "уведомления", "do": "pm grant app.glasstv.nightmode android.permission.POST_NOTIFICATIONS", "undo": "pm revoke app.glasstv.nightmode android.permission.POST_NOTIFICATIONS"},
+        {"what": "уведомления", "do": "pm grant app.glasstv.nightmode android.permission.POST_NOTIFICATIONS", "undo": "pm revoke app.glasstv.nightmode android.permission.POST_NOTIFICATIONS", "when": "android13"},
         {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +app.glasstv.nightmode", "undo": "dumpsys deviceidle whitelist -app.glasstv.nightmode"}
       ]
     },
@@ -188,7 +188,7 @@
       "installed": "его настройки и подобранное человеком тоже не трогаем",
       "steps": [
         {"what": "разрешение на режим VPN без окна на экране", "do": "appops set io.github.romanvht.byedpi ACTIVATE_VPN allow && appops write-settings", "undo": "appops set io.github.romanvht.byedpi ACTIVATE_VPN default && appops write-settings"},
-        {"what": "уведомления без окна с вопросом при первом запуске", "do": "pm grant io.github.romanvht.byedpi android.permission.POST_NOTIFICATIONS", "undo": "pm revoke io.github.romanvht.byedpi android.permission.POST_NOTIFICATIONS"},
+        {"what": "уведомления без окна с вопросом при первом запуске", "do": "pm grant io.github.romanvht.byedpi android.permission.POST_NOTIFICATIONS", "undo": "pm revoke io.github.romanvht.byedpi android.permission.POST_NOTIFICATIONS", "when": "android13"},
         {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +io.github.romanvht.byedpi", "undo": "dumpsys deviceidle whitelist -io.github.romanvht.byedpi"},
         {"what": "автозапуск (прошивка TCL)", "do": "appops set io.github.romanvht.byedpi AUTO_START allow && appops write-settings", "undo": "appops set io.github.romanvht.byedpi AUTO_START default && appops write-settings", "when": "tcl"},
         {"what": "список приложений для ByeByeDPI (файл на ТВ)", "do": "mkdir -p '/sdcard/0 HYDE TV' && echo '{\"app\":\"io.github.romanvht.byedpi\",\"apps\":[\"com.google.android.youtube.tv\",\"com.google.android.youtube.tvkids\",\"com.google.android.youtube.tvmusic\",\"org.smarttube.stable\",\"com.liskovsoft.smarttubetv.beta\",\"app.glasstv.volna\",\"app.glasstv.aura\"],\"settings\":{\"byedpi_mode\":\"vpn\",\"applist_type\":\"whitelist\",\"autostart\":true}}' > '/sdcard/0 HYDE TV/ByeByeDPI-HYDE.json'", "undo": "rm -rf '/sdcard/0 HYDE TV'"},

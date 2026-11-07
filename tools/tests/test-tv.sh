@@ -74,7 +74,7 @@ tv_sh() {
             for p in $HOMECAP; do has "$(sg disabled)" "$p" || echo "    $p/.Home"; done ;;
         "cmd package resolve-activity"*)
             p="${c##* }"; if has "$HOMECAP" "$p" && ! has "$(sg disabled)" "$p"; then echo "priority=0"; echo "$p/.Home"; fi ;;
-        "cmd role get-role-holders"*) sg holder; echo ;;
+        *"get-role-holders"*) sg holder; echo ;;
         "cmd role add-role-holder"*) ss holder "${c##* }" ;;
         "am start -n "*) p="${c#am start -n }"; p="${p%%/*}"; [ "$HOME_LAUNCHES" = 1 ] && ss top "$p" ;;
         "cmd package set-home-activity "*)

@@ -38,7 +38,7 @@
 Браузер HYDE Browser (TV Bro с нашими правками) собирается отдельно (tvbro/), живёт под своим пакетом `app.glasstv.browser` рядом с обычным TV Bro.
 
 **Роли и права (всё без root, выдаётся с компьютера)** [общее]
-- Главный экран: `cmd package set-home-activity app.glasstv.home/.HomeActivity`, проверка `cmd role get-role-holders --user 0 android.app.role.HOME`
+- Главный экран: `cmd package set-home-activity app.glasstv.home/.HomeActivity`, проверка `cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`)
 - Заставка Android выключена: `settings put secure screensaver_enabled 0`, `screensaver_activate_on_sleep 0`, `screensaver_activate_on_dock 0`, `settings put system screen_off_timeout 2147483647`. Простой ведут «Дом» (`FLAG_KEEP_SCREEN_ON`, 1 минута на плитках, 5 в сетке) и «Сторож» (раз в минуту читает `dumpsys power`: 10 минут без нажатий, нет замка экрана и видео, тогда главный экран с extra `idle`)
 - Слушатель уведомлений: `cmd notification allow_listener app.glasstv.volna/app.glasstv.volna.Listener`
 - Админ устройства: `dpm set-active-admin app.glasstv.nightmode/.AdminReceiver` (нужен для блокировки экрана в конце таймера)

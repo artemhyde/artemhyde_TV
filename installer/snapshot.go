@@ -39,7 +39,7 @@ func takeSnapshot(tv TV, dir, passportRaw string, a *ADB) error {
 			return err
 		}
 	}
-	state := `echo "home_role_holder: $(cmd role get-role-holders --user 0 android.app.role.HOME)"
+	state := `echo "home_role_holder: $(h=$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo "$h" || dumpsys role | grep -A1 'name=android.app.role.HOME$' | sed -n 's/^ *holders=//p')"
 for k in screensaver_components screensaver_enabled screensaver_activate_on_sleep screensaver_activate_on_dock enabled_accessibility_services accessibility_enabled default_input_method; do echo "secure.$k: $(settings get secure $k)"; done
 for k in private_dns_mode private_dns_specifier window_animation_scale transition_animation_scale animator_duration_scale adb_enabled adb_wifi_enabled stay_on_while_plugged_in; do echo "global.$k: $(settings get global $k)"; done
 for k in screen_brightness screen_off_timeout; do echo "system.$k: $(settings get system $k)"; done

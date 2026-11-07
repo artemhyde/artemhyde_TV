@@ -46,9 +46,14 @@ func (t *adbTV) State() string {
 	return strings.TrimSpace(out)
 }
 
+// homeHolderCmd: владелец роли «Домой». Команда cmd role get-role-holders есть только с Android 13; на Android 12 она
+// отвечает «Unknown command», и владелец берётся из dumpsys role (блок name=android.app.role.HOME, строка holders=).
+// Проверено 07.11 на виртуальном Google TV 12 и на TCL с Android 14
+const homeHolderCmd = `h=$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo "$h" || dumpsys role | grep -A1 'name=android.app.role.HOME$' | sed -n 's/^ *holders=//p'`
+
 // homeHolder: владелец роли «Домой»
 func homeHolder(tv TV) string {
-	out, _ := tv.Shell("cmd role get-role-holders --user 0 android.app.role.HOME", 20*time.Second)
+	out, _ := tv.Shell(homeHolderCmd, 20*time.Second)
 	return strings.TrimSpace(firstLine(out))
 }
 
