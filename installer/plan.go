@@ -324,9 +324,11 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 				// Обычный Android TV: роль меняется, а «Домой» открывает его главный экран (07.11, виртуальный Android TV 13)
 				for _, d := range rec.HomeSwitch.Intercept {
 					if p.Has(d.Package) && !p.Disabled[d.Package] {
+						// Отключается, только если «Домой» перехватил именно он: на Google TV 14 этот экран тоже есть, но
+						// «Домой» там уходит к launcherx, и трогать его незачем (07.11, круг из архива на hyde_tv)
 						add(Step{Group: g, What: "отключить " + d.Why + ": только если «Домой» всё равно откроет его",
 							Do: "pm disable-user --user 0 " + d.Package, Undo: "pm enable --user 0 " + d.Package,
-							Kind: "home_disable_if", Package: d.Package})
+							Kind: "home_disable_top", Package: d.Package})
 					}
 				}
 			}

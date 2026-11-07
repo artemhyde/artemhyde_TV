@@ -85,7 +85,7 @@ func testManifest(t *testing.T) *Manifest {
 					"size": 11741704, "sha256": ""}},
 				"cert_sha256": "8adaaa27bf99293ec260fe372e77d142ac9166fe339f348f1148a3bf987d9872"},
 			map[string]any{"name": "LocalSend", "package": "org.localsend.localsend_app", "pinned_version": "1.18.2",
-				"files": []any{map[string]any{"abi": "arm64-v8a", "url": "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-android-arm64v8.apk"}},
+				"files":       []any{map[string]any{"abi": "arm64-v8a", "url": "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-android-arm64v8.apk"}},
 				"cert_sha256": "3220c353a73cfbd0c2f3052471c445324cf452bcba26de1c473a52fe5c44e1d6"}}}
 	b, _ := json.Marshal(m)
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0o644); err != nil {

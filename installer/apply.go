@@ -257,13 +257,15 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 	}
 
 	homeDone, homeCand := false, ""
-	var disables, ifNeeded []string
+	var disables, ifNeeded, ifTop []string
 	for _, s := range pl.Steps {
 		switch s.Kind {
 		case "home_disable":
 			disables = append(disables, s.Package)
 		case "home_disable_if":
 			ifNeeded = append(ifNeeded, s.Package)
+		case "home_disable_top":
+			ifTop = append(ifTop, s.Package)
 		case "home_role":
 			homeCand = s.Package // новый главный экран: из шага смены роли, а не из первого шага группы (07.11, тест на TCL)
 		}
@@ -274,7 +276,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		switch {
 		case s.Kind == "download":
 			continue
-		case s.Kind == "home_disable" || s.Kind == "home_role" || s.Kind == "home_disable_if":
+		case s.Kind == "home_disable" || s.Kind == "home_role" || s.Kind == "home_disable_if" || s.Kind == "home_disable_top":
 			if homeDone {
 				continue
 			}
@@ -283,7 +285,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			if homeCand == "" {
 				return fail(errors.New("в плане нет шага смены главного экрана"))
 			}
-			if err := homeSwitch(tv, journal, homeCand, disables, ifNeeded); err != nil {
+			if err := homeSwitch(tv, journal, homeCand, disables, ifNeeded, ifTop); err != nil {
 				return fail(err)
 			}
 			res.Done++
@@ -434,8 +436,9 @@ func installedCertOK(tv TV, pkg, want string) error {
 }
 
 // homeSwitch: «Дом» главным экраном, как home_switch в tools/tv.sh. disables отключаются до смены роли (TCL: иначе роль
-// не меняется), ifNeeded после, только если роль сменилась, а «Домой» всё равно открывает главный экран Google TV
-func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, ifNeeded []string) error {
+// не меняется), ifNeeded после, только если роль сменилась, а «Домой» всё равно открывает главный экран Google TV;
+// ifTop (главные экраны других ТВ) после, и только тот, к которому ушла кнопка «Домой»
+func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, ifNeeded, ifTop []string) error {
 	out, _ := tv.Shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME "+cand, 30*time.Second)
 	act := ""
 	for _, ln := range strings.Split(out, "\n") {
@@ -507,11 +510,35 @@ func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, i
 	if tv.State() != "device" {
 		return errLost
 	}
-	if holder == cand && len(ifNeeded) > 0 { // роль наша, но «Домой» перехватывает главный экран Google TV
+	has := func(l []string, p string) bool {
+		for _, x := range l {
+			if x == p {
+				return true
+			}
+		}
+		return false
+	}
+	// Роль наша, но «Домой» перехватывает главный экран Google TV: он и его страховка отключаются вместе, как раньше,
+	// если только «Домой» не ушёл явно к главному экрану другого ТВ из ifTop
+	if holder == cand && len(ifNeeded) > 0 && (has(ifNeeded, top) || !has(ifTop, top)) {
 		for _, d := range ifNeeded {
 			if err := disable(d); err != nil {
 				return err
 			}
+		}
+		_, _ = tv.Shell("input keyevent KEYCODE_HOME", 20*time.Second)
+		time.Sleep(homeWait)
+		if top = topPackage(tv); top == cand {
+			return nil
+		}
+		if tv.State() != "device" {
+			return errLost
+		}
+	}
+	// Обычный Android TV: отключается только тот главный экран, к которому ушла кнопка «Домой»
+	if holder == cand && has(ifTop, top) {
+		if err := disable(top); err != nil {
+			return err
 		}
 		_, _ = tv.Shell("input keyevent KEYCODE_HOME", 20*time.Second)
 		time.Sleep(homeWait)
