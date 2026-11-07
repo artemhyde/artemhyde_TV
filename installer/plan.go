@@ -273,6 +273,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 			}
 			if c.TCL {
 				for _, s := range gtv {
+					s.What += ": на TCL без этого главный экран не сменится"
 					add(s)
 				}
 			}
@@ -282,7 +283,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 			}
 			add(Step{Group: g, What: "кнопка «Домой» открывает «Дом» (прежний главный экран: " + nonEmpty(c.HomeHolder, "не определён") + ")",
 				Do: "cmd package set-home-activity app.glasstv.home/.HomeActivity", Undo: undo, Kind: "home_role", Package: "app.glasstv.home",
-				Note: "смена идёт с проверкой кнопки «Домой» и возвратом при неудаче, как home_switch в tools/tv.sh"})
+				Note: "установщик откроет «Дом», нажмёт «Домой» и проверит, что открылся он; не вышло: всё вернётся как было"})
 			if !c.TCL {
 				for _, s := range gtv {
 					s.Kind, s.What = "home_disable_if", s.What+": только если «Домой» всё равно откроет Google TV"
@@ -309,7 +310,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 		pl.Notes = append(pl.Notes, "ТВ не TCL: подсветки TCL, «Картинки» и панели TCL нет, «Ночной режим» затемняет экран вуалью, ночная подсветка «Сторожа» выключена. Кнопки пульта назначаются записью настоящей кнопкой.")
 	}
 	if c.ABI32 {
-		pl.Notes = append(pl.Notes, "ТВ 32-битный: чужие приложения без сборки armeabi-v7a на нём не встанут.")
+		pl.Notes = append(pl.Notes, "ТВ 32-битный: чужие приложения без 32-битной сборки на нём не встанут.")
 	}
 	if !pl.Home && chosen["home"] {
 		pl.Notes = append(pl.Notes, "Главный экран остаётся прежним: «Дом» открывается из списка приложений. Сделать его главным можно потом.")

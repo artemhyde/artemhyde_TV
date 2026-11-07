@@ -74,6 +74,7 @@
   .ev .d { color: var(--muted); font-size: 13px; }
   .consent { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
   .consent input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+  a { color: var(--accent); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -310,7 +311,7 @@ async function plan() {
     const tiles = inst.filter((s) => s.group.startsWith("Плитки")).length;
     const changes = p.steps.filter((s) => !s.run && !s.host).length;
     const keep = [...new Set(p.steps.filter((s) => s.undo === "-").map((s) => s.group))];
-    html += `<div class="msg">Поставим приложений: ${inst.length - tiles}${tiles ? `, плиток: ${tiles}` : ""}. Прав и настроек изменим: ${changes}. Главный экран: ${p.home ? "станет «Дом»" : "останется прежним"}.<br>`
+    html += `<div class="msg">Поставим приложений: ${inst.length - tiles}${tiles ? `, плиток: ${tiles}` : ""}. Прав и настроек изменим: ${changes}. Главный экран: ${p.home ? (p.caps && p.caps.home_holder === "app.glasstv.home" ? "уже «Дом»" : "станет «Дом»") : "останется прежним"}.<br>`
       + (keep.length ? `Всё вернёт откат, кроме: ${esc(keep.join(", "))} (подробнее в шагах ниже).` : "Всё это вернёт откат.") + "</div>";
     html += `<div class="mod" style="border:0">${sw("show-cmd", showCmd, false)}<div><div class="t">Показать команды</div><div class="w">что именно выполнится и чем вернуть</div></div></div>`;
     let g = "", n = 0;

@@ -130,7 +130,7 @@
     "what": "кнопка «Домой» открывает «Дом», заставки Android нет, простой ведут «Дом» и «Сторож»",
     "default": false,
     "tcl_disable": [
-      {"package": "com.google.android.apps.tv.launcherx", "why": "главный экран Google TV (иначе на TCL роль не меняется)"},
+      {"package": "com.google.android.apps.tv.launcherx", "why": "главный экран Google TV"},
       {"package": "com.google.android.tungsten.setupwraith", "why": "страховка Google TV, которая возвращает его главный экран"}
     ],
     "settings": [
