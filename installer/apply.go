@@ -289,11 +289,14 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		case s.Kind == "install" || s.Kind == "install3p":
 			file := filepath.Join(m.Dir, s.File)
 			what := "установлен " + s.Package + " (" + s.Group + ", " + s.File + ")"
-			if s.Undo == "-" {
-				what = "обновлён " + s.Package + " (" + s.Group + ", " + s.File + "): откат версии не делается, данные на месте"
-			}
-			if s.Kind == "install3p" {
+			switch {
+			case s.Kind == "install3p":
+				// Стороннее приложение ставится только там, где его не было, и откат его не удаляет: у Key Mapper права
+				// администратора, они снимаются только руками (07.11: живой Key Mapper подписывался «обновлён»)
+				what += ": откат его не удаляет, удалить можно руками (docs/rollback.md)"
 				file = files[s.Package]
+			case s.Undo == "-":
+				what = "обновлён " + s.Package + " (" + s.Group + ", " + s.File + "): откат версии не делается, данные на месте"
 			}
 			say("start", "")
 			undo := s.Undo

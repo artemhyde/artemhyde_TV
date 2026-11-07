@@ -4,6 +4,8 @@ package main
 // настройки, сбой посередине восстанавливается»). Подставной ТВ, к настоящему ничего не подключается
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -188,5 +190,52 @@ func TestApplyNoopLeavesNoJournal(t *testing.T) {
 	}
 	if ds := sessionsOf(root, "abc123", false); len(ds) != 1 || ds[0] != first.Backup {
 		t.Fatalf("журналы после повтора: %v", ds)
+	}
+}
+
+// Key Mapper со своего адреса (подставной сервер): в журнале «установлен», а не «обновлён», откат его не удаляет,
+// а службу кнопок и права снимает (07.11, живой Key Mapper с GitHub подписывался «обновлён… данные на месте»)
+func TestApplyKeyMapperFreshInstall(t *testing.T) {
+	f, m, rec := applyEnv(t, false)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("km apk")) }))
+	defer srv.Close()
+	tp := &m.ThirdParty[0]
+	tp.Download = srv.URL + "/keymapper-4.6.2-foss.apk"
+	old := certOf
+	certOf = func(p string) (string, error) {
+		if strings.HasSuffix(p, "keymapper-4.6.2-foss.apk") {
+			return tp.CertSha256, nil
+		}
+		return "cafe", nil
+	}
+	defer func() { certOf = old }()
+	f.files["keymapper-4.6.2-foss.apk"] = "io.github.sds100.keymapper"
+	res := runApply(f, nil, rec, m, Choices{}, ApplyOpts{AllowDownload: true, BackupRoot: t.TempDir()})
+	if !res.Finished {
+		t.Fatalf("установка с Key Mapper: %+v", res)
+	}
+	var km *LedgerEntry
+	for _, e := range ledgerOf(t, res.Backup) {
+		if strings.Contains(e.What, "io.github.sds100.keymapper") && reInstalled.MatchString(e.What) {
+			e := e
+			km = &e
+		}
+	}
+	if km == nil || !strings.HasPrefix(km.What, "установлен ") || !strings.Contains(km.What, "откат его не удаляет") || km.Undo != "" {
+		t.Fatalf("запись о Key Mapper: %+v", km)
+	}
+	r := runRestore(f, res.Backup, nil)
+	if r.Fail != 0 {
+		t.Fatalf("откат: %+v", r)
+	}
+	if _, ok := f.pkgs["io.github.sds100.keymapper"]; !ok {
+		t.Fatal("откат удалил Key Mapper")
+	}
+	if f.grants["io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS"] {
+		t.Fatal("откат не снял право Key Mapper")
+	}
+	manual := strings.Join(r.Manual, "\n")
+	if !strings.Contains(manual, "установлен io.github.sds100.keymapper") || strings.Contains(manual, "обновлён io.github.sds100.keymapper") {
+		t.Fatalf("список «делайте руками»: %q", manual)
 	}
 }
