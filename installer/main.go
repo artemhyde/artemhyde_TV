@@ -483,6 +483,10 @@ func cmdVerify(args []string) error {
 		return err
 	}
 	ds, err := sessionDirs(tv, *dir)
+	if errors.Is(err, errAllRestored) { // HYDE на этом ТВ откачен целиком: не ошибка, проверять нечего
+		fmt.Println("Проверять нечего: " + err.Error())
+		return nil
+	}
 	if err != nil {
 		return err
 	}

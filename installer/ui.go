@@ -449,6 +449,9 @@ func (s *uiServer) verify(r *http.Request) (any, error) {
 	}
 	tv := s.adbTVFor(q.Serial)
 	ds, err := sessionDirs(tv, "")
+	if errors.Is(err, errAllRestored) {
+		return map[string]any{"checks": []Check{}, "note": "Проверять нечего: " + err.Error()}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -466,6 +469,9 @@ func (s *uiServer) restore(r *http.Request) (any, error) {
 	}
 	tv := s.adbTVFor(q.Serial)
 	ds, err := sessionDirs(tv, "")
+	if errors.Is(err, errAllRestored) {
+		return map[string]any{"started": false, "note": "Откатывать нечего: " + err.Error()}, nil
+	}
 	if err != nil {
 		return nil, err
 	}

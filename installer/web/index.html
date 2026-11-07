@@ -398,7 +398,11 @@ function afterButtons() {
   $("chk").onclick = verify;
   $("undo").onclick = async () => {
     if (!confirm("Вернуть телевизор как было до установки HYDE TV? Приложения HYDE удалятся, права и настройки вернутся, главный экран станет прежним. Если HYDE ставили несколько раз (обновления), откат пройдёт по всем установкам от новой к старой.")) return;
-    try { await api("restore", { serial }); jobShown = true; poll(); } catch (e) { msg("chks", e.message, "bad"); }
+    try {
+      const r = await api("restore", { serial });
+      if (r.note) { msg("chks", r.note); return; }
+      jobShown = true; poll();
+    } catch (e) { msg("chks", e.message, "bad"); }
   };
 }
 
@@ -447,6 +451,7 @@ async function verify() {
   $("chks").innerHTML = '<p class="hint">Проверяю…</p>';
   try {
     const r = await api("verify", { serial });
+    if (r.note) { msg("chks", r.note); return; }
     const bad = r.checks.filter((c) => !c.ok);
     $("chks").innerHTML = `<div class="msg ${bad.length ? "bad" : "ok"}">Проверено: ${r.checks.length}, не держится: ${bad.length}</div>` +
       r.checks.map((c) => `<div class="ev ${c.ok ? "ok" : "fail"}"><span class="m">${c.ok ? "✓" : "✗"}</span><div>${esc(c.what)}${c.detail ? `<div class="d">${esc(c.detail)}</div>` : ""}</div></div>`).join("");
