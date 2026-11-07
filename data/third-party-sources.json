@@ -199,6 +199,26 @@
       "cert_sha256": "cb84069bd68116bafae5ee4ee5b08a567aa6d898404e7cb12f9e756df5cf5cab",
       "cert_subject": "CN=Christian Schabesberger",
       "note": "YouTube в маленьком окне поверх всего. Серая зона условий сервиса: по желанию."
+    },
+    {
+      "name": "ByeByeDPI",
+      "package": "io.github.romanvht.byedpi",
+      "version_seen": "1.8.2",
+      "releases": "https://github.com/romanvht/ByeByeDPI/releases/tag/v.1.8.2",
+      "license": "GPL-3.0",
+      "license_checked": true,
+      "cert_sha256": "77451075acea406406475d74d459883a49a64051faf32e42f718f3f9777a8dfb",
+      "cert_subject": "CN=Roman Kostin, OU=romanvht, O=romanvht",
+      "note": "Необязательный модуль (docs/byedpi.md): YouTube при замедлении у провайдера, работает на самом ТВ без сервера. Отпечаток публикует сам автор в README проекта, совпал с файлом 1.8.2 (07.11.2026). Ставить 1.8.2: загрузка списка без нажатий (tools/byedpi-import.sh) проверена только на ней. «Сторож» его пока не обновляет. Файл universal подходит для любого процессора.",
+      "pinned_version": "1.8.2",
+      "files": [
+        {
+          "abi": "any",
+          "url": "https://github.com/romanvht/ByeByeDPI/releases/download/v.1.8.2/ByeByeDPI-v1.8.2-universal-release.apk",
+          "size": 3332888,
+          "sha256": "3df9570313c9fb03de19fde7dbf7e56b943fd0845b2d57b687c5859aff4e0001"
+        }
+      ]
     }
   ]
 }

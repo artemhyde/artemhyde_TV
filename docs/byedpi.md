@@ -45,7 +45,7 @@ Android держит включённым только один VPN. Если у
 Вручную: Настройки ТВ, Приложения, ByeByeDPI, Удалить.
 
 **Для мастера и разработчика**  
-Пакет `io.github.romanvht.byedpi`, проверенная версия 1.8.2 (файл universal), отпечаток сертификата в data/third-party-sources.json.  
+Пакет `io.github.romanvht.byedpi`, проверенная версия 1.8.2 (файл universal), отпечаток сертификата в data/third-party-sources.json. В установщике это модуль `byedpi` (`hyde-install plan --with byedpi`), шаги в installer/recipe.json.  
 Список приложений: файл `/sdcard/0 HYDE TV/ByeByeDPI-HYDE.json` в формате экспорта ByeByeDPI (`app`, `apps`, `settings`: режим VPN, фильтр приложений «белый список», автозапуск). Загружает его и включает туннель сценарий tools/byedpi-import.sh: в 1.8.2 меню «⋮» пультом не достать, поэтому оно открывается кнопкой MENU, «Импорт» берётся вторым пунктом по номеру (язык не важен), файл и «ОК» нажимаются только после проверки экрана. На время импорта ByeByeDPI получает доступ к файлам и сразу его теряет. Туннель включается только после удачного импорта.  
 Обновления: ставится проверенная 1.8.2, «Сторож» ByeByeDPI пока не обновляет; новую версию человек ставит с релизов автора сам (подпись та же, настройки сохраняются).  
 Включить без окна: `am start -n io.github.romanvht.byedpi/.activities.ToggleActivity --ez only_start true` (`only_stop` выключает). Работает ли: `dumpsys connectivity | grep 'VPN CONNECTED'`, кто внутри: строка `Uids` той же сети.  
