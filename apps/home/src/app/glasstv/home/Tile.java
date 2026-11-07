@@ -99,8 +99,51 @@ final class Tile extends View {
         setOutlineProvider(null);
         // Перспектива как в макете (1100 точек): камера View меряется в дюймах по 72 точки
         setCameraDistance(1100f * c.getResources().getDisplayMetrics().densityDpi / 72f);
-        setOnFocusChangeListener((v, f) -> focus(f));
+        setOnFocusChangeListener((v, f) -> { if (fx == null || !fx.take(this, f)) focus(f); });
     }
+
+    // Фокус плиток «Все приложения» ведёт «Дом» (HomeActivity, «Двойники фокуса»): сетка лежит готовым слоем видеокарты,
+    // а движение фокуса рисует двойник плитки поверх слоя. take отвечает true, если взял фокус на себя
+    interface FocusFx { boolean take(Tile t, boolean focused); }
+    static FocusFx fx;
+
+    // Двойник плитки сетки: то же содержимое, стекло и подсветка, но не ловит фокус и не нажимается
+    Tile(Tile o) {
+        super(o.getContext());
+        pkg = o.pkg;
+        label = o.label;
+        raw = o.raw;
+        rawBox.set(o.rawBox);
+        fullH = o.fullH;
+        full = o.full;
+        tint = o.tint;
+        grow = o.grow;
+        glowRx = o.glowRx;
+        glowRy = o.glowRy;
+        glowRest = o.glowRest;
+        glowFocus = o.glowFocus;
+        content = o.content;
+        box.set(o.box);
+        badge = o.badge;
+        setFocusable(false);
+        setClickable(false);
+        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        setOutlineProvider(null);
+        setCameraDistance(o.getCameraDistance());
+        // Двойник встаёт ровно в то состояние, в каком была плитка: её уход мог ещё не доиграть
+        focus = o.focus;
+        setScaleX(o.getScaleX());
+        setScaleY(o.getScaleY());
+        setTranslationY(o.getTranslationY());
+        setTranslationZ(o.getTranslationZ());
+        setRotationX(o.getRotationX());
+        setRotationY(o.getRotationY());
+    }
+
+    boolean isLit() { return lit; }
+
+    // Плитка в покое: рост и стекло фокуса доиграли уход
+    boolean resting() { return focus < 0.01f && Math.abs(getScaleX() - 1f) < 0.002f; }
 
     // Плитка ряда главного экрана: подсветка шире, у серого значка слабее (как в макете)
     Tile row() {
@@ -658,26 +701,7 @@ final class Tile extends View {
 
     @Override protected void onDraw(Canvas c) {
         if (orb) { drawOrb(c); return; }
-        if (chrome != null) {
-            float k = getWidth() / W0, f = quiet ? focus * 0.35f : focus;
-            if (f < 0.999f) {
-                paint.setAlpha(Math.round(255 * (1f - f)));
-                c.drawBitmap(chrome[0], -Math.round(PAD_X[0] * k), -Math.round(PAD_TOP[0] * k), paint);
-            }
-            if (f > 0.001f) {
-                paint.setAlpha(Math.round(255 * f));
-                c.drawBitmap(chrome[1], -Math.round(PAD_X[1] * k), -Math.round(PAD_TOP[1] * k), paint);
-            }
-            paint.setAlpha(255);
-            if (Theme.TILE_GLOW) {
-                glowShader(k);
-                int a = Math.round(255 * (glowFocus - glowRest) * f);   // подсветка покоя уже в картинке содержимого
-                if (a > 0) {
-                    glow.setAlpha(a);
-                    c.drawRect((200 - glowRx) * k, (87 - glowRy) * k, (200 + glowRx) * k, (87 + glowRy) * k, glow);
-                }
-            }
-        }
+        drawChrome(c);
         if (content != null) {
             float s = getWidth() / (float) full;
             dst.set(Math.round(box.left * s), Math.round(box.top * s), Math.round(box.right * s), Math.round(box.bottom * s));
@@ -696,6 +720,29 @@ final class Tile extends View {
             c.restore();
         }
         drawChevrons(c, getWidth() / 2f, getHeight() / 2f, getWidth() / 2f);
+    }
+
+    // Стекло покоя и фокуса с тенями и подсветка цвета значка, в точках плитки (стекло выходит за её края)
+    void drawChrome(Canvas c) {
+        if (chrome == null) return;
+        float k = getWidth() / W0, f = quiet ? focus * 0.35f : focus;
+        if (f < 0.999f) {
+            paint.setAlpha(Math.round(255 * (1f - f)));
+            c.drawBitmap(chrome[0], -Math.round(PAD_X[0] * k), -Math.round(PAD_TOP[0] * k), paint);
+        }
+        if (f > 0.001f) {
+            paint.setAlpha(Math.round(255 * f));
+            c.drawBitmap(chrome[1], -Math.round(PAD_X[1] * k), -Math.round(PAD_TOP[1] * k), paint);
+        }
+        paint.setAlpha(255);
+        if (Theme.TILE_GLOW) {
+            glowShader(k);
+            int a = Math.round(255 * (glowFocus - glowRest) * f);   // подсветка покоя уже в картинке содержимого
+            if (a > 0) {
+                glow.setAlpha(a);
+                c.drawRect((200 - glowRx) * k, (87 - glowRy) * k, (200 + glowRx) * k, (87 + glowRy) * k, glow);
+            }
+        }
     }
 
     private int full = 1;   // ширина исходной картинки содержимого
@@ -735,10 +782,10 @@ final class Tile extends View {
     void keepLit(boolean on) {
         if (lit == on) return;
         lit = on;
-        if (!on && !isFocused()) focus(false);
+        if (!on && !isFocused() && (fx == null || !fx.take(this, false))) focus(false);
     }
 
-    private void focus(boolean f) {
+    void focus(boolean f) {
         if (!f && lit) return;
         float k = getWidth() > 0 ? getWidth() / W0 : 1f;
         if (orb) {

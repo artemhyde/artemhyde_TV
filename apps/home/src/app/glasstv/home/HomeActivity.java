@@ -54,6 +54,7 @@ public class HomeActivity extends Activity {
     static final int PAD = 26;   // запас вокруг ряда: рост плитки, свечение и тень не обрезаются
     static final int IDLE = 0, ACTIVE = 1, GRID = 2;
     static final int GRID_TOP = 96;   // верх первой строки «Всех приложений»
+    static final int GRID_SPARE = 26; // добавка к запасу сетки сверху: стекло плитки в фокусе не обрезается слоем
 
     Ambient amb;
     FrameLayout root, gridLayer;
@@ -265,11 +266,86 @@ public class HomeActivity extends Activity {
         gridBox.setOrientation(LinearLayout.VERTICAL);
         gridBox.setClipChildren(false);
         gridBox.setClipToPadding(false);
-        gridBox.setPadding(px(Grid.MARGIN), px(PAD), px(Grid.MARGIN), px(80));
+        // Запас сверху и снизу под стекло плитки в фокусе (оно выше и с тенью ниже): сетка в слое видеокарты, а слой
+        // обрезает всё, что за его краями. Сама сетка стоит там же, где была: верхний отступ уменьшен на тот же запас
+        gridBox.setPadding(px(Grid.MARGIN), px(PAD + GRID_SPARE), px(Grid.MARGIN), px(110));
         FrameLayout.LayoutParams gl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        gl.topMargin = px(GRID_TOP - PAD);
+        gl.topMargin = px(GRID_TOP - PAD - GRID_SPARE);
         gridLayer.addView(gridBox, gl);
+        // Двойники фокуса лежат поверх сетки в той же системе точек, что и её ряды, и едут вместе с ней
+        gridFx = new FrameLayout(this) {
+            @Override public boolean hasOverlappingRendering() { return false; }
+        };
+        gridFx.setClipChildren(false);
+        gridFx.setClipToPadding(false);
+        FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1, Gravity.TOP);
+        fl.topMargin = gl.topMargin;
+        gridLayer.addView(gridFx, fl);
         root.addView(gridLayer, new FrameLayout.LayoutParams(-1, -1));
+        Tile.fx = this::takeFocus;
+    }
+
+    // ===== Двойники фокуса в сетке «Все приложения» (07.11) =====
+    // Кадр на этом ТВ всегда рисуется целиком (частичной перерисовки прошивка не даёт), а видеоядро слабое: сетка из
+    // 16 плиток со стеклом и тенями стоила 25–32 мс на кадр (замер gfxinfo и atrace на TCL), фокус и прокрутка шли около
+    // 30 кадров в секунду. Теперь сетка лежит готовым слоем видеокарты и в каждом кадре рисуется одной картинкой, а плитку
+    // в фокусе и ту, с которой он ушёл, рисуют их двойники поверх слоя (на время двойника плитка в слое прозрачна).
+    // Слой перерисовывается только когда плитка уходит в двойника или возвращается из него: раз за шаг, а не каждый кадр
+    FrameLayout gridFx;
+    final java.util.LinkedHashMap<Tile, Tile> twins = new java.util.LinkedHashMap<>();
+
+    boolean takeFocus(Tile t, boolean f) {
+        Tile w = twins.get(t);
+        if (w == null) {
+            // Без двойника плитка ведёт фокус сама: сетка закрыта, плитка ещё не разложена (первая после открытия)
+            // или уходит фокус с плитки, которая и выросла сама
+            if (!f || state != GRID || t.getWidth() == 0 || !(t.getParent() instanceof View)
+                    || ((View) t.getParent()).getParent() != gridBox) return false;
+            restoreTwins(t, false);
+            View row = (View) t.getParent();
+            w = new Tile(t);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(t.getWidth(), t.getHeight());
+            lp.leftMargin = row.getLeft() + t.getLeft();
+            lp.topMargin = row.getTop() + t.getTop();
+            gridFx.addView(w, lp);
+            twins.put(t, w);
+        } else if (f) {
+            restoreTwins(t, false);
+        }
+        if (f) {
+            t.setAlpha(0f);
+            w.focus(true);
+        } else if (!t.isLit()) {
+            w.focus(false);
+            h.removeCallbacks(settleTwins);
+            h.postDelayed(settleTwins, M.t(700));   // фокус остановился: последние двойники возвращаются в слой
+        }
+        return true;
+    }
+
+    final Runnable settleTwins = () -> restoreTwins(null, true);
+
+    // Вернуть в слой двойников, которые уже доиграли уход (все, если force), кроме плитки keep, плитки в фокусе и
+    // плитки с открытым меню. Возврат идёт в том же кадре, что и новый двойник: слой перерисовывается раз за шаг.
+    // Двойник посреди ухода остаётся, иначе при быстрой ходьбе плитка прыгала бы из полуувеличенной в обычную
+    void restoreTwins(Tile keep, boolean force) {
+        for (java.util.Iterator<java.util.Map.Entry<Tile, Tile>> it = twins.entrySet().iterator(); it.hasNext(); ) {
+            java.util.Map.Entry<Tile, Tile> e = it.next();
+            Tile t = e.getKey();
+            if (t == keep || t.isFocused() || t.isLit() || (!force && !e.getValue().resting())) continue;
+            t.setAlpha(1f);
+            gridFx.removeView(e.getValue());
+            it.remove();
+        }
+    }
+
+    // Сетку пересобрали или закрыли: все плитки обратно в слой, двойников нет
+    void clearTwins() {
+        if (gridFx == null) return;
+        h.removeCallbacks(settleTwins);
+        for (Tile t : twins.keySet()) t.setAlpha(1f);
+        twins.clear();
+        gridFx.removeAllViews();
     }
 
     // ===== Приложения =====
@@ -386,6 +462,7 @@ public class HomeActivity extends Activity {
         ((TextView) gridHead[0]).setText(showHidden ? "Скрытые приложения" : "Все приложения");
         ((TextView) gridHead[1]).setText(showHidden ? "Удерживайте OK: вернуть в список · «Назад»: ко всем приложениям"
                 : "Удерживайте OK: меню приложения · «Назад»: выйти");
+        clearTwins();   // плитки сетки пересобираются: двойники фокуса прежних плиток больше не нужны
         gridBox.removeAllViews();
         LinearLayout row = null;
         for (int i = 0; i < all.size(); i++) {
@@ -656,8 +733,10 @@ public class HomeActivity extends Activity {
             int rowIdx = Math.max(0, gridBox.indexOfChild(row));
             int over = GRID_TOP + rowIdx * (Grid.TILE_H + Grid.GAP) + Grid.TILE_H - Grid.BOTTOM;
             float target = -Math.max(0, over) * dp;
-            if (gridBox.getTranslationY() != target)
+            if (gridBox.getTranslationY() != target) {
                 gridBox.animate().translationY(target).setStartDelay(0).setDuration(M.t(420)).setInterpolator(Ambient.EASE).start();
+                gridFx.animate().translationY(target).setStartDelay(0).setDuration(M.t(420)).setInterpolator(Ambient.EASE).start();
+            }
             for (View t : gridHead) t.animate().alpha(target == 0 ? 1f : 0f).setDuration(M.t(240)).start();
         }
     }
@@ -739,8 +818,13 @@ public class HomeActivity extends Activity {
         if (showHidden) { showHidden = false; appsSig = null; loadApps(); }   // сетка всегда открывается со всех приложений
         state = GRID;
         amb.setGrid(true);
-        shelf.animate().alpha(0f).translationY(-px(16)).setStartDelay(0).setDuration(M.t(220)).setInterpolator(Ambient.EASE).start();
+        // Погасший ряд под сеткой не рисуется вовсе: дыхание его сфер иначе перерисовывало бы весь экран (07.11)
+        shelf.animate().alpha(0f).translationY(-px(16)).setStartDelay(0).setDuration(M.t(220)).setInterpolator(Ambient.EASE)
+                .withEndAction(() -> { if (state == GRID) shelf.setVisibility(View.INVISIBLE); }).start();
         gridBox.setTranslationY(0);
+        gridFx.setTranslationY(0);
+        // Сетка готовым слоем видеокарты (см. «Двойники фокуса»): прокрутка и появление двигают одну картинку
+        gridBox.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         for (View t : gridHead) t.setAlpha(1f);
         gridLayer.setAlpha(0f);
         gridLayer.setTranslationY(px(20));
@@ -749,10 +833,17 @@ public class HomeActivity extends Activity {
                 .setInterpolator(Ambient.EASE).start();
         restartIdle();
         gridLayer.post(() -> {
-            View first = gridBox.getChildCount() > 0 ? ((LinearLayout) gridBox.getChildAt(0)).getChildAt(0) : null;
-            if (first != null) first.requestFocus();
+            List<View> tiles = gridTiles();
+            if (!tiles.isEmpty()) tiles.get(0).requestFocus();
             shelfFocusable(false);
         });
+    }
+
+    // Сетка закрылась: двойники и слой убираем (слой занимает видеопамять), ряд снова рисуется
+    void gridClosed() {
+        clearTwins();
+        gridBox.setLayerType(View.LAYER_TYPE_NONE, null);
+        shelf.setVisibility(View.VISIBLE);
     }
 
     // Назад из сетки тем же путём: слой тает, главный экран возвращается
@@ -761,8 +852,9 @@ public class HomeActivity extends Activity {
         state = ACTIVE;
         amb.setGrid(false);
         shelfFocusable(true);
+        shelf.setVisibility(View.VISIBLE);
         gridLayer.animate().alpha(0f).translationY(px(20)).setStartDelay(0).setDuration(M.t(240))
-                .setInterpolator(Ambient.EASE).withEndAction(() -> gridLayer.setVisibility(View.GONE)).start();
+                .setInterpolator(Ambient.EASE).withEndAction(() -> { gridLayer.setVisibility(View.GONE); if (state != GRID) gridClosed(); }).start();
         shelf.animate().alpha(1f).translationY(0).setStartDelay(M.t(60)).setDuration(M.t(360)).setInterpolator(Ambient.EASE).start();
         View back = allTile != null ? allTile : lastDock;
         if (back != null) back.requestFocus();
@@ -785,8 +877,9 @@ public class HomeActivity extends Activity {
             // Сетка плавно уходит, под ней сразу экран блокировки: плитки ряда уже спрятаны, им выезжать незачем
             amb.setGrid(false);
             shelfFocusable(true);
+            shelf.setVisibility(View.VISIBLE);
             gridLayer.animate().alpha(0f).translationY(px(20)).setStartDelay(0).setDuration(M.t(420))
-                    .setInterpolator(Ambient.EASE).withEndAction(() -> gridLayer.setVisibility(View.GONE)).start();
+                    .setInterpolator(Ambient.EASE).withEndAction(() -> { gridLayer.setVisibility(View.GONE); if (state != GRID) gridClosed(); }).start();
             shelf.setTranslationY(0);
         }
         state = IDLE;
@@ -807,6 +900,7 @@ public class HomeActivity extends Activity {
             shelfFocusable(true);
             gridLayer.animate().cancel();
             gridLayer.setVisibility(View.GONE);
+            gridClosed();
             shelf.animate().cancel();
             shelf.setAlpha(1f);
             shelf.setTranslationY(0);
@@ -1183,6 +1277,7 @@ public class HomeActivity extends Activity {
         root.addView(scrim, root.indexOfChild(shelf), new FrameLayout.LayoutParams(-1, -1));
         menuScrim = scrim;
         menuDimmed.clear();
+        if (!inDock) restoreTwins(t, true);   // соседи гаснут в слое: их двойников быть не должно
         if (inDock) {
             for (Tile o : dockTiles) if (o != t) menuDimmed.add(o);
             menuDimmed.add(suggestRow);
@@ -1222,11 +1317,12 @@ public class HomeActivity extends Activity {
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         int cw = card.getMeasuredWidth(), ch = card.getMeasuredHeight();
         int[] loc = new int[2], rl = new int[2];
-        t.getLocationInWindow(loc);
+        Tile g = twins.containsKey(t) ? twins.get(t) : t;   // в сетке крупную плитку рисует её двойник: меню встаёт по нему
+        g.getLocationInWindow(loc);
         root.getLocationInWindow(rl);
         float tx = loc[0] - rl[0], ty = loc[1] - rl[1];
-        float tw = t.getWidth() * t.getScaleX();
-        float th = (vision && inDock ? px(Style.D) : t.getHeight()) * t.getScaleY();
+        float tw = g.getWidth() * g.getScaleX();
+        float th = (vision && inDock ? px(Style.D) : g.getHeight()) * g.getScaleY();
         float cx = tx + tw / 2f;
         int sw = root.getWidth() > 0 ? root.getWidth() : px(Grid.W);
         int sh = root.getHeight() > 0 ? root.getHeight() : px(540);
@@ -1416,7 +1512,7 @@ public class HomeActivity extends Activity {
         List<View> out = new ArrayList<>();
         for (int r = 0; r < gridBox.getChildCount(); r++) {
             android.view.ViewGroup row = (android.view.ViewGroup) gridBox.getChildAt(r);
-            for (int k = 0; k < row.getChildCount(); k++) out.add(row.getChildAt(k));
+            for (int k = 0; k < row.getChildCount(); k++) if (row.getChildAt(k) instanceof Tile) out.add(row.getChildAt(k));   // без подложек
         }
         return out;
     }
