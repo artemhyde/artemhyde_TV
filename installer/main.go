@@ -450,6 +450,8 @@ func cmdApply(args []string) error {
 	return nil
 }
 
+var errAllRestored = errors.New("все установки HYDE TV на этом ТВ уже откачены")
+
 // sessionDirs: журналы, по которым работать: --backup с папкой журнала: только он; иначе все не откаченные установки
 // этого ТВ в папке журналов, от новой к старой
 func sessionDirs(tv TV, v string) ([]string, error) {
@@ -464,7 +466,7 @@ func sessionDirs(tv TV, v string) ([]string, error) {
 		return ds, nil
 	}
 	if len(sessionsOf(root, id, false)) > 0 {
-		return nil, fmt.Errorf("все установки HYDE TV на этом ТВ уже откачены (журналы в %s)", root)
+		return nil, fmt.Errorf("%w (журналы в %s)", errAllRestored, root)
 	}
 	return nil, fmt.Errorf("в %s нет журнала установки для этого ТВ", root)
 }
@@ -520,6 +522,10 @@ func cmdRestore(args []string) error {
 		return err
 	}
 	ds, err := sessionDirs(tv, *dir)
+	if errors.Is(err, errAllRestored) { // повторный откат: не ошибка, откатывать нечего
+		fmt.Println("Откатывать нечего: " + err.Error())
+		return nil
+	}
 	if err != nil {
 		return err
 	}
