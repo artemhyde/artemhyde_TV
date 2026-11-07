@@ -19,3 +19,4 @@
 - Обновить на новый выпуск: [updates.md](updates.md).
 - Вернуть всё как было: [rollback.md](rollback.md).
 - Lampa и TorrServe: [lampa.md](lampa.md), [torrserve.md](torrserve.md).
+- Бета-тест на своём телевизоре: что проверить и что прислать, таблица проверенных моделей: [beta.md](beta.md).
