@@ -64,6 +64,40 @@ func restoreOrder(entries []LedgerEntry) (undo, manual []LedgerEntry) {
 	return out, manual
 }
 
+// removedBy: пакеты, которые откат этих записей удаляет целиком (обратная команда pm uninstall)
+func removedBy(entries []LedgerEntry, into map[string]bool) {
+	for _, e := range entries {
+		if f := strings.Fields(e.Undo); len(f) >= 3 && f[0] == "pm" && f[1] == "uninstall" {
+			into[f[len(f)-1]] = true
+		}
+	}
+}
+
+// keepManual: запись «обновлён P» руками делать нечего, если тот же откат удаляет P целиком. Так бывает после
+// обновления (1.0.0, потом 1.0.1: откат установки 1.0.0 удаляет всё) и со «Сторожем», которого первая установка
+// ставит второй раз от его же имени
+func keepManual(manual []LedgerEntry, removed map[string]bool) []LedgerEntry {
+	var out []LedgerEntry
+	for _, e := range manual {
+		if m := reInstalled.FindStringSubmatch(e.What); m != nil && m[1] == "обновлён" && removed[m[2]] {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// removedByAll: что удалит откат всех этих журналов вместе
+func removedByAll(dirs []string) map[string]bool {
+	removed := map[string]bool{}
+	for _, d := range dirs {
+		if entries, err := readLedger(filepath.Join(d, "ledger.tsv")); err == nil {
+			removedBy(entries, removed)
+		}
+	}
+	return removed
+}
+
 // restoreWarnings: удаление приложения с правами администратора без их снятия вешает систему; Key Mapper откатом не удаляют
 func restoreWarnings(entries, undo []LedgerEntry) []string {
 	admins := map[string]bool{}
@@ -153,7 +187,12 @@ func readSettingsList(path string) (map[string]string, error) {
 	return m, sc.Err()
 }
 
-func runRestore(tv TV, dir string, emit func(Event)) (r RestoreResult) {
+func runRestore(tv TV, dir string, emit func(Event)) RestoreResult {
+	return runRestoreWith(tv, dir, emit, nil)
+}
+
+// runRestoreWith: removed: что удалит весь откат (несколько журналов); nil: только этот журнал
+func runRestoreWith(tv TV, dir string, emit func(Event), removed map[string]bool) (r RestoreResult) {
 	if emit == nil {
 		emit = func(Event) {}
 	}
@@ -163,6 +202,11 @@ func runRestore(tv TV, dir string, emit func(Event)) (r RestoreResult) {
 		return r
 	}
 	undo, manual := restoreOrder(entries)
+	if removed == nil {
+		removed = map[string]bool{}
+		removedBy(entries, removed)
+	}
+	manual = keepManual(manual, removed)
 	for _, e := range manual {
 		r.Manual = append(r.Manual, e.What)
 	}
@@ -251,11 +295,12 @@ func runRestoreAll(tv TV, dirs []string, emit func(Event)) RestoreAll {
 		emit = func(Event) {}
 	}
 	var ra RestoreAll
+	removed := removedByAll(dirs)
 	for _, d := range dirs {
 		if len(dirs) > 1 {
 			emit(Event{Status: "info", What: "откат установки " + filepath.Base(d)})
 		}
-		r := runRestore(tv, d, emit)
+		r := runRestoreWith(tv, d, emit, removed)
 		ra.Sessions, ra.Results = append(ra.Sessions, d), append(ra.Results, r)
 		if r.Lost || r.Error != "" {
 			break

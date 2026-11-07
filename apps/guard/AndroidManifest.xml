@@ -42,6 +42,8 @@
             <category android:name="android.intent.category.HOME" />
         </intent>
         <package android:name="io.github.sds100.keymapper" />
+        <!-- ByeByeDPI (модуль для России): присмотр за туннелем и выключатель автора ToggleActivity (Bye.java) -->
+        <package android:name="io.github.romanvht.byedpi" />
         <!-- Присмотр за локальной службой: открыть приложение, чей сервер молчит, и вернуть прежний экран -->
         <intent>
             <action android:name="android.intent.action.MAIN" />

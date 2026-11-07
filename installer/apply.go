@@ -43,6 +43,8 @@ type ApplyResult struct {
 	Finished bool   `json:"finished"`
 	Lost     bool   `json:"lost"`
 	Error    string `json:"error,omitempty"`
+	// FailedStep: шаг, на котором остановилась установка (для отчёта автору)
+	FailedStep string `json:"failed_step,omitempty"`
 }
 
 var (
@@ -119,18 +121,26 @@ func installFile(tv TV, file, installer string) error {
 var reInstalled = regexp.MustCompile(`^(установлен|обновлён) (\S+)`)
 
 func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (res ApplyResult) {
-	emit := o.Emit
-	if emit == nil {
-		emit = func(Event) {}
+	emit0 := o.Emit
+	if emit0 == nil {
+		emit0 = func(Event) {}
+	}
+	cur := "" // шаг, который сейчас идёт: на нём и остановилась установка, если что-то не вышло (для отчёта)
+	emit := func(e Event) {
+		if e.Status == "start" {
+			cur = strings.TrimSpace(strings.Trim(e.Group+": "+e.What, ": "))
+		}
+		emit0(e)
 	}
 	fail := func(err error) ApplyResult {
 		if errors.Is(err, errLost) {
 			res.Lost = true
 		}
 		res.Error = err.Error()
+		res.FailedStep = cur
 		if res.Backup != "" {
 			if s, e := loadSession(res.Backup); e == nil {
-				s.LastError = res.Error
+				s.LastError, s.FailedStep = res.Error, cur
 				_ = saveSession(res.Backup, s)
 			}
 		}
@@ -216,7 +226,12 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			return fail(fmt.Errorf("снимок «до» не сделан, на ТВ ничего не менял: %v", err))
 		}
 		s := &Session{Label: filepath.Base(dir), TVID: tvID, Model: pl.Caps.Model, Release: m.Release, Modules: ch.Modules, Home: ch.Home,
-			Started: time.Now().Format("2006-01-02 15:04:05"), Held: held}
+			Started: time.Now().Format("2006-01-02 15:04:05"), Held: held, HomePlanned: pl.Home}
+		for _, mc := range pl.Modules {
+			if mc.Chosen {
+				s.Installed = append(s.Installed, mc.Module)
+			}
+		}
 		if err := saveSession(dir, s); err != nil {
 			return fail(err)
 		}
@@ -391,7 +406,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		}
 	}
 	if s, err := loadSession(dir); err == nil {
-		s.Finished, s.LastError = time.Now().Format("2006-01-02 15:04:05"), ""
+		s.Finished, s.LastError, s.FailedStep = time.Now().Format("2006-01-02 15:04:05"), "", ""
 		_ = saveSession(dir, s)
 	}
 	emit(Event{Status: "info", What: fmt.Sprintf("установка закончена: изменений %d, пропущено %d, предупреждений %d", res.Done, res.Skipped, res.Warnings)})

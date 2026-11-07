@@ -407,6 +407,12 @@ func TestApplyGoogleTVAndRestore(t *testing.T) {
 			t.Fatalf("после отката остался %s", p)
 		}
 	}
+	// «Сторож» ставится второй раз от своего имени («обновлён»), но откат удаляет его целиком: руками делать нечего
+	for _, m := range r.Manual {
+		if strings.HasPrefix(m, "обновлён app.glasstv.") {
+			t.Fatalf("лишнее «делайте руками» после отката чистой установки: %s", m)
+		}
+	}
 	if f.home != "com.google.android.apps.tv.launcherx" || f.settings["secure:screensaver_enabled"] != "1" ||
 		f.settings["secure:default_input_method"] != "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME" {
 		t.Fatalf("после отката: главный %s, настройки %v", f.home, f.settings)

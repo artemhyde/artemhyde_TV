@@ -4,4 +4,6 @@
     <bool name="notes_enabled_default">false</bool>
     <!-- Беспроводная отладка (06.11): always держать включённой, service на 2 часа обслуживания, off не включать. Меняется на экране «Сторожа» -->
     <string name="adb_mode_default">always</string>
+    <!-- Самообновление HYDE (Hyde.java): «Сторож» сам ставит новый выпуск с GitHub. Меняется кнопкой «Обновлять HYDE сам» на экране «Сторожа» -->
+    <bool name="hyde_auto_default">true</bool>
 </resources>

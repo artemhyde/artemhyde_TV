@@ -37,6 +37,13 @@ import android.util.Log;
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do svc --es pkg <пакет> --es url http://127.0.0.1:<порт>/<путь> --es name "Как назвать в журнале"
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do svc --es a check     проверить сейчас (один промах сразу считается вторым)
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do svc --es a off       выключить присмотр
+// Присмотр за ByeByeDPI (Bye.java): без a только состояние; on включить (так делает установщик после загрузки списка приложений),
+// off выключить (сам ByeByeDPI не трогает), check проверить сейчас и включить туннель, если его нет
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do vpn [--es a on|off|check]
+// Самообновление HYDE (Hyde.java): без a состояние; on выключатель «Обновлять HYDE сам»; check проверить выпуск и сделать шаг
+// установки (те же условия, что по расписанию; итог: logcat -s guard); url проверочный выпуск, только с ПК (пустой: убрать)
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do hyde [--ez on true|false] [--es a check]
+// adb reverse tcp:8000 tcp:8000 && adb shell am broadcast -n app.glasstv.guard/.Cmd --es do hyde --es url http://127.0.0.1:8000/
 
 public class Cmd extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
@@ -86,6 +93,58 @@ public class Cmd extends BroadcastReceiver {
                 pr.setResultData(out);
                 pr.finish();
             }, "guard-upd-cmd").start();
+            return;
+        }
+        if ("vpn".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null || g.bye == null) {
+                // Службы ещё нет (сразу после установки или её выгрузили): выбор запомнить, служба прочтёт его при запуске
+                String a = i.getStringExtra("a");
+                android.content.SharedPreferences sp = c.getApplicationContext().getSharedPreferences("guard", Context.MODE_PRIVATE);
+                if ("on".equals(a) || "off".equals(a)) sp.edit().putBoolean("byeWatch", "on".equals(a)).commit();
+                GuardService.start(c);
+                String out = "служба «Сторожа» запускается; присмотр за ByeByeDPI " + (sp.getBoolean("byeWatch", false) ? "включён" : "выключен");
+                Log.i("guard", "vpn: " + out);
+                setResultData(out);
+                return;
+            }
+            final PendingResult pr = goAsync();
+            g.bye.command(i.getStringExtra("a"), out -> {
+                Log.i("guard", "vpn: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            });
+            return;
+        }
+        if ("hyde".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null || g.upd == null) {
+                if (i.hasExtra("on")) c.getApplicationContext().getSharedPreferences("guard", Context.MODE_PRIVATE).edit()
+                        .putBoolean(Hyde.P_ON, i.getBooleanExtra("on", true)).commit();
+                GuardService.start(c);
+                setResultData("служба «Сторожа» запускается");
+                return;
+            }
+            if (i.hasExtra("url")) {
+                // Проверочный адрес только с ПК (Cmd, право DUMP): свои приложения через AppCmd его не меняют
+                String out = this instanceof AppCmd ? "проверочный адрес задаётся только командой с ПК" : g.upd.hyde.setTestBase(i.getStringExtra("url"));
+                Log.i("guard", "hyde: " + out);
+                setResultData(out);
+                return;
+            }
+            if (i.hasExtra("on")) g.upd.hyde.setOn(i.getBooleanExtra("on", true), "команда");
+            if ("check".equals(i.getStringExtra("a"))) {
+                new Thread(() -> { Log.i("guard", "hyde: " + g.upd.hydeNow()); g.updSoon(Hyde.CHAIN_MS); }, "guard-hyde-cmd").start();
+                setResultData("проверка запущена, итог: logcat -s guard");
+                return;
+            }
+            final PendingResult pr = goAsync();
+            new Thread(() -> {
+                String out = g.upd.hyde.status();
+                Log.i("guard", "hyde: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-hyde-cmd").start();
             return;
         }
         // Отладка по сети и записки (06.11): --es do adb (состояние) или --es do adb --es m always|service|off;

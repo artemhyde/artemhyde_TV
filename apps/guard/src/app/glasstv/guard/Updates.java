@@ -72,7 +72,8 @@ final class Updates {
     static final long NOTE_FIRST_MS = 6_000;
     static final long TAP_GIVE_UP = 15 * 60_000;        // окно «Обновить» не нажали за 15 минут (ушли, накрыл простой): убрать до завтра
 
-    interface Out { void log(String s); void note(String s); }
+    // updated: приложение обновилось (ByeByeDPI после обновления сам не включается, его включает присмотр «Сторожа»)
+    interface Out { void log(String s); void note(String s); void updated(String pkg); }
 
     static final class App {
         final String pkg, src, pat32, pat64;
@@ -88,11 +89,13 @@ final class Updates {
     private final Out out;
     private final Set<String> inFlight = Collections.synchronizedSet(new HashSet<String>());
     private final Map<String, long[]> tapOpen = Collections.synchronizedMap(new HashMap<String, long[]>());   // пакет: {сессия, когда открыли окно}
+    final Hyde hyde;   // самообновление приложений HYDE (Hyde.java): та же нитка, тот же шаг, установки по одной
 
     Updates(Context c, Out out) {
         this.c = c;
         this.sp = c.getSharedPreferences("upd", Context.MODE_PRIVATE);
         this.out = out;
+        this.hyde = new Hyde(c, this, out);
         // Сессии установки от прошлого запуска службы: их итог сюда уже не придёт. Бросаем, файл поставится заново
         try {
             PackageInstaller pi = c.getPackageManager().getPackageInstaller();
@@ -121,8 +124,18 @@ final class Updates {
     // Шаг по расписанию (в фоновой нитке). Возвращает, через сколько мс снова
     long tick() {
         if (System.currentTimeMillis() - sp.getLong("last", 0) >= CHECK_EVERY) check(false, false, null);
+        if (hyde.due()) hyde.check(false);
         installReady(false, false, null);
-        return tapWaiting() ? TICK_TAP : TICK;
+        long next = tapWaiting() ? TICK_TAP : TICK;
+        long hn = hyde.step();   // приложения HYDE после чужих: одна установка за раз, цепочкой каждые 20 с
+        return hn > 0 ? Math.min(next, hn) : next;
+    }
+
+    // Команда с ПК и кнопка «Проверить сейчас»: проверить выпуск HYDE и сделать шаг установки (условия те же, что по расписанию)
+    String hydeNow() {
+        String res = hyde.check(true);
+        hyde.step();
+        return res + " | установка: " + hyde.lastStep();
     }
 
     // ===== Проверка выпусков и скачивание =====
@@ -321,6 +334,8 @@ final class Updates {
             }
             if (!topRead) { top = GuardService.topPackage(); topRead = true; }
             if (a.pkg.equals(top) || playing(a.pkg)) { res.add(label + ": открыто, поставлю позже"); continue; }
+            // ByeByeDPI держит туннель для YouTube: установка его закрывает, и видео в другом приложении оборвётся
+            if (ByeRules.PKG.equals(a.pkg) && GuardService.mediaBusy()) { res.add(label + ": идёт видео, поставлю позже"); continue; }
             boolean tap = needsTap(a.pkg, apk);
             if (tap && !byHand && !tapMoment(top)) { res.add(label + ": ждёт главного экрана"); continue; }
             try {
@@ -337,7 +352,15 @@ final class Updates {
         return res.isEmpty() ? "ставить нечего" : join(res);
     }
 
-    private void commit(String pkg, File apk, boolean tap) throws Exception {
+    // Установка приложения HYDE (Hyde.step): без нажатия, итог придёт в done с отметкой hyde
+    void commitHyde(String pkg, File apk) throws Exception { commit(pkg, apk, false, true); }
+
+    // Идёт ли установка или открыто окно «Обновить»: тогда новую не начинаем
+    boolean busy() { return !inFlight.isEmpty() || !tapOpen.isEmpty(); }
+
+    private void commit(String pkg, File apk, boolean tap) throws Exception { commit(pkg, apk, tap, false); }
+
+    private void commit(String pkg, File apk, boolean tap, boolean hyde) throws Exception {
         PackageInstaller pi = c.getPackageManager().getPackageInstaller();
         PackageInstaller.SessionParams prm = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
         prm.setAppPackageName(pkg);
@@ -352,7 +375,7 @@ final class Updates {
                 for (int k; (k = in.read(b)) > 0; ) o.write(b, 0, k);
                 s.fsync(o);
             }
-            Intent i = new Intent(c, UpdDone.class).putExtra("pkg", pkg).putExtra("tap", tap);
+            Intent i = new Intent(c, UpdDone.class).putExtra("pkg", pkg).putExtra("tap", tap).putExtra("hyde", hyde);
             PendingIntent p = PendingIntent.getBroadcast(c, id, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
             inFlight.add(pkg);
             s.commit(p.getIntentSender());
@@ -371,6 +394,12 @@ final class Updates {
         boolean tap = i.getBooleanExtra("tap", false);
         int st = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
         int sid = i.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1);
+        if (i.getBooleanExtra("hyde", false)) {   // приложение HYDE: окно «Обновить» не открываем, решает Hyde
+            if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) abandon(sid);
+            inFlight.remove(pkg);
+            hyde.done(pkg, st, i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE));
+            return;
+        }
         String label = label(pkg);
         if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             Intent confirm = (Intent) i.getParcelableExtra(Intent.EXTRA_INTENT);
@@ -417,6 +446,7 @@ final class Updates {
             String v = now == null ? "" : now.versionName;
             out.log("Обновления: " + label + " " + v + " встала");
             if (interactive()) out.note("Обновлено: " + label + " " + v);
+            out.updated(pkg);
         } else if (st == PackageInstaller.STATUS_FAILURE_ABORTED) {
             sp.edit().putString("wait." + pkg, today()).apply();
             out.log("Обновления: " + label + " не обновили (окно закрыли), спрошу завтра");
@@ -457,7 +487,7 @@ final class Updates {
     }
 
     // Подходящий момент для окна: экран включён, сверху главный экран, человек нажимал пульт только что, видео не идёт
-    private boolean tapMoment(String top) {
+    boolean tapMoment(String top) {
         if (!interactive() || top == null || !top.equals(homePackage())) return false;
         long ago = sinceInputMs();
         if (ago < 0 || ago > TAP_INPUT_MS) return false;
@@ -471,6 +501,9 @@ final class Updates {
         Matcher m = LAST_USER.matcher(GuardService.dumpsys("power"));
         return m.find() ? Long.parseLong(m.group(1)) : -1;
     }
+
+    // Ставится ли сейчас обновление этого приложения (присмотр за ByeByeDPI ждёт конца установки)
+    boolean installing(String pkg) { return inFlight.contains(pkg); }
 
     // ===== Состояние для команды с ПК =====
 
@@ -500,7 +533,7 @@ final class Updates {
         try { return c.getPackageManager().getPackageInfo(pkg, flags); } catch (Exception e) { return null; }
     }
 
-    private String label(String pkg) {
+    String label(String pkg) {
         try {
             PackageManager pm = c.getPackageManager();
             return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
@@ -509,7 +542,7 @@ final class Updates {
         }
     }
 
-    private String installer(String pkg) {
+    String installer(String pkg) {
         try { return c.getPackageManager().getInstallSourceInfo(pkg).getInstallingPackageName(); } catch (Exception e) { return null; }
     }
 
@@ -587,7 +620,7 @@ final class Updates {
         return hex(md.digest());
     }
 
-    private static String hex(byte[] d) {
+    static String hex(byte[] d) {
         StringBuilder b = new StringBuilder();
         for (byte x : d) b.append(String.format(Locale.US, "%02x", x));
         return b.toString();

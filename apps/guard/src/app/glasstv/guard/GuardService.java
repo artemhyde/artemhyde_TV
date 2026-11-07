@@ -94,8 +94,11 @@ public class GuardService extends Service {
         upd = new Updates(this, new Updates.Out() {
             @Override public void log(String s) { h.post(() -> GuardService.this.log(s)); }
             @Override public void note(String s) { showNote(s); }
+            @Override public void updated(String pkg) { if (bye != null && ByeRules.PKG.equals(pkg)) bye.soon("после обновления", 3_000); }
         });
         h.postDelayed(updTick, 3 * 60_000);
+        bye = new Bye(this);   // присмотр за ByeByeDPI (модуль для России): сам решает, есть ли за чем смотреть
+        bye.start();
         noDream();
         new VolumeHold(this);
         // Умный звук: если пользователь включал, эффект встанет сам (после загрузки ТВ и после перезапуска службы)
@@ -119,6 +122,7 @@ public class GuardService extends Service {
                 lastNet = net;
                 if (changed) refusedAt = 0;   // другая сеть: в ней отладка может быть уже разрешена
                 h.postDelayed(() -> keepAdb(changed ? "сеть сменилась" : "сеть на месте", changed), 4_000);
+                if (changed && bye != null) bye.soon("после смены сети", 6_000);
                 h.removeCallbacks(dnsTick);
                 h.postDelayed(dnsTick, 20_000);
             }
@@ -158,6 +162,7 @@ public class GuardService extends Service {
         if (adbWatch != null) try { getContentResolver().unregisterContentObserver(adbWatch); } catch (Exception ignored) { }
         if (veil != null) try { getSystemService(android.view.WindowManager.class).removeView(veil); } catch (Exception ignored) { }
         if (sound != null) { sound.shutdown(); sound = null; }
+        if (bye != null) { bye.stop(); bye = null; }
         super.onDestroy();
     }
 
@@ -166,6 +171,9 @@ public class GuardService extends Service {
             if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
                 if (saverActive) setSaver(false);
                 homeOnScreenOff();
+                if (bye != null) bye.screen(false);
+                // Скачанный выпуск HYDE ждёт: экран погас, никто не увидит, как приложения закроются (если ТВ ещё не уснул)
+                if (upd != null && upd.hyde.pending()) { h.removeCallbacks(updTick); h.postDelayed(updTick, 30_000); }
             } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
                 netEventAt = SystemClock.elapsedRealtime();   // после сна сеть и отладка поднимаются заново
                 homeCancel();
@@ -176,6 +184,9 @@ public class GuardService extends Service {
                 h.postDelayed(svcTick, 20_000);   // сеть после сна поднимается не сразу
                 h.removeCallbacks(dnsTick);
                 h.postDelayed(dnsTick, 25_000);
+                if (bye != null) bye.screen(true);
+                // Записка «нужен установщик»: ТВ только что включили, сверху «Дом», человек у пульта
+                if (upd != null && upd.hyde.pending()) { h.removeCallbacks(updTick); h.postDelayed(updTick, 12_000); }
                 // Звук выключили на время проверки, пока ТВ спал: вернуть, как только экран включился
                 if (p.getBoolean("unmuteOnWake", false)) h.postDelayed(() -> {
                     p.edit().remove("unmuteOnWake").apply();
@@ -275,6 +286,26 @@ public class GuardService extends Service {
 
     static final java.util.Set<String> BACKGROUND_AUDIO = new java.util.HashSet<>(java.util.Arrays.asList(
             "app.glasstv.aura", "app.glasstv.volna"));
+
+    // Пакет, у которого медиасессия сейчас «играет», включая музыку «Волны», или null; без слушателя Listen молча null.
+    // Для присмотра за ByeByeDPI: его туннель не включаем посреди просмотра и не обновляем его, пока что-то играет
+    String playingAny() {
+        try {
+            MediaSessionManager msm = getSystemService(MediaSessionManager.class);
+            if (msm == null) return null;
+            for (MediaController mc : msm.getActiveSessions(new ComponentName(this, Listen.class))) {
+                PlaybackState st = mc.getPlaybackState();
+                if (st != null && st.getState() == PlaybackState.STATE_PLAYING) return mc.getPackageName();
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
+    // Что-то играет: медиасессия или занятый видеодекодер (его видно и без слушателя, по праву DUMP)
+    static boolean mediaBusy() {
+        GuardService g = running;
+        return (g != null && g.playingAny() != null) || Boolean.TRUE.equals(videoDecoding());
+    }
 
     // Пакет, у которого медиасессия сейчас «играет» (кроме фоновой музыки), или null. Без включённого слушателя Listen
     // система список не даёт: тогда считаем, что ничего не играет, и уводим на главный экран, как раньше просили
@@ -721,7 +752,7 @@ public class GuardService extends Service {
     // в файл идёт «выключать». Собирает и раскладывает файл «Дом» (Transfer.java), сюда приходит только часть «Сторожа»
     static final java.util.Set<String> EXPORT_KEYS = Prefs.set("nightEnabled", "nightLevel", "nightFrom", "nightTo", "adbMode",
             "notesOn", "dnsPref", "svcUrl", "svcPkg", "svcName", "pqAuto", "smartOn", "smartLevel", "smartMode", "smartTune",
-            "eqOn", "eqDe", "eqVl", "eqBass", "eqTreble");
+            "eqOn", "eqDe", "eqVl", "eqBass", "eqTreble", Hyde.P_ON);
 
     static String exportJson(Context c) throws Exception {
         org.json.JSONObject o = Prefs.dump(c.getSharedPreferences("guard", MODE_PRIVATE), EXPORT_KEYS, null);
@@ -1005,8 +1036,16 @@ public class GuardService extends Service {
 
     private static final java.util.regex.Pattern TOP = java.util.regex.Pattern.compile("topResumedActivity=ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/");
 
-    static String topPackage() {
-        java.util.regex.Matcher m = TOP.matcher(dumpsys("activity", "activities"));
+    // Android 12 пишет не topResumedActivity, а «ResumedActivity: ActivityRecord{…}» (07.11, виртуальный Google TV 12, находка hyde-04):
+    // без этого запасного вида «Сторож» на Android 12 не видел открытое приложение, и обновление могло закрыть его
+    private static final java.util.regex.Pattern TOP12 = java.util.regex.Pattern.compile("ResumedActivity: ?ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/");
+
+    static String topPackage() { return topOf(dumpsys("activity", "activities")); }
+
+    static String topOf(String dump) {
+        java.util.regex.Matcher m = TOP.matcher(dump);
+        if (m.find()) return m.group(1);
+        m = TOP12.matcher(dump);
         return m.find() ? m.group(1) : null;
     }
 
@@ -1238,7 +1277,11 @@ public class GuardService extends Service {
 
     // ===== Обновления приложений не из магазина (Updates) =====
     Updates upd;
+    Bye bye;   // присмотр за ByeByeDPI (Bye.java)
     boolean updBusy;   // только в главной нитке
+    // Следующий шаг обновлений через ms (после проверки вручную: цепочка установок HYDE идёт дальше сама)
+    void updSoon(long ms) { h.post(() -> { h.removeCallbacks(updTick); h.postDelayed(updTick, ms); }); }
+
     final Runnable updTick = new Runnable() {
         @Override public void run() {
             h.removeCallbacks(this);

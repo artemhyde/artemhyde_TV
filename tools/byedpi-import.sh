@@ -6,6 +6,8 @@
 # на время импорта ByeByeDPI получает доступ к файлам и сразу его теряет.
 # Туннель включается только после удачного импорта: без списка через него пошли бы все приложения.
 # Код 0: список загружен, ByeByeDPI включён, папка со списком убрана. Не 0: туннель не включался, ничего не сломано.
+# Только после удачного включения «Сторож» получает присмотр за ByeByeDPI (do vpn --es a on, Bye.java): туннель пропал
+# не по воле человека (обновление, сбой, выгрузка системой), и «Сторож» включает его сам.
 # ByeByeDPI стоял у человека раньше (файл приложения старше часа): его настройки не трогаем, импорт стёр бы подобранное им.
 # Строка do шага в installer/recipe.json это этот файл без строк-комментариев.
 P=io.github.romanvht.byedpi; D="/sdcard/0 HYDE TV"; X=/data/local/tmp/hyde-ui.xml
@@ -27,5 +29,6 @@ r=$?
 appops set $P MANAGE_EXTERNAL_STORAGE default
 [ $r -eq 0 ] && rm -rf "$D" && am start -n $P/.activities.ToggleActivity --ez only_start true >/dev/null && vpn; r=$?
 rm -f $X; input keyevent BACK
-[ $r -eq 0 ] && echo "список загружен, ByeByeDPI включён"
+[ $r -eq 0 ] && am broadcast -n app.glasstv.guard/.Cmd --es do vpn --es a on >/dev/null 2>&1
+[ $r -eq 0 ] && echo "список загружен, ByeByeDPI включён, «Сторож» за ним присматривает"
 exit $r

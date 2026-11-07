@@ -13,3 +13,6 @@ me.zhanghai.android.files       gh:zhanghai/MaterialFiles             app-releas
 com.limelight                   gh:moonlight-stream/moonlight-android app-nonRoot-release\.apk
 io.gh.reisxd.tizentube.cobalt   gh:reisxd/TizenTubeCobalt             cobalt-arm\.apk                        cobalt-arm64\.apk
 com.aurora.store                gl:AuroraOSS/AuroraStore              https://auroraoss.com/downloads/AuroraStore/Release/AuroraStore-{tag}.apk
+# ByeByeDPI (модуль для России): тот же файл universal, что ставит установщик, поэтому со стоящим он сходится по сумме и лишнего
+# скачивания нет; туннель после обновления включает «Сторож» (Bye.java), сам ByeByeDPI после обновления не поднимается
+io.github.romanvht.byedpi       gh:romanvht/ByeByeDPI                 ByeByeDPI-.*-universal-release\.apk

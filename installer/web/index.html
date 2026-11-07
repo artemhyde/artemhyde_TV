@@ -136,6 +136,9 @@
   .line { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
   .line:first-of-type { border-top: 0; }
   .line .k { color: var(--muted); } .line .v { text-align: right; }
+  .report { margin-top: 18px; padding: 18px 20px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+  .report > b { display: block; font: 600 19px/1.25 var(--display); margin-bottom: 6px; }
+  .report .line .v { overflow-wrap: anywhere; }
 
   /* Телевизор: найденные, шаги с картинками, код */
   .tvstat { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 15px; }
@@ -383,7 +386,7 @@ const KEY = location.hash.slice(1);
 const REPO = "https://github.com/artemhyde/artemhyde_TV/blob/main/";
 // Главный экран: выбор виден человеку двумя карточками, заранее отмечен рекомендуемый «Сделать HYDE главным» (Codex 04:
 // без явного выбора человек ставил HYDE и оставался на старом экране)
-let serial = "", choice = { modules: {}, home: true }, showCmd = false, stepsOpen = false, lastPlan = null, jobShown = false, adbReady = false;
+let serial = "", choice = { modules: {}, home: true }, showCmd = false, stepsOpen = false, lastPlan = null, jobShown = false, adbReady = false, reportOn = false;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -478,6 +481,7 @@ function startWizard() {
 async function hello() {
   try {
     const h = await api("hello");
+    reportOn = !!h.report;
     let html = "", ok = true;
     if (h.adb) html += check(true, "Программа для связи с телевизором на месте");
     else if (h.adb_offer) {
@@ -814,13 +818,42 @@ async function poll() {
   } else {
     // Откат: сначала итог словами, подробности (какие настройки сверены и вернулись) по желанию
     const head = r.ok ? "<b>Готово: телевизор вернулся к тому, как было до HYDE TV.</b>" : "<b>Вернулось не всё.</b> Что осталось, написано ниже: это можно вернуть руками или нажать «Вернуть как было» ещё раз.";
-    const ph = $("plan").querySelector(".hint");
-    if (ph && r.ok) ph.textContent = "Телевизор возвращён к тому, что было до HYDE. Поставить снова можно той же кнопкой «Установить».";
+    // План заново по тому, что стоит на ТВ теперь: возвращается кнопка «Установить», а «уже стоит» больше не врёт
+    if (r.ok) {
+      $("s7").classList.remove("done");
+      plan().then(() => {
+        const ph = $("plan").querySelector(".hint");
+        if (ph) ph.textContent = "Телевизор возвращён к тому, что было до HYDE. Поставить снова можно той же кнопкой «Установить».";
+      });
+    }
     $("after").innerHTML = `<div class="msg ${r.ok ? "ok" : "bad"}">${head}</div>`
       + (r.text ? `<details ${r.ok ? "" : "open"}><summary>Подробнее</summary><div class="hint" style="white-space:pre-line;overflow-wrap:anywhere">${esc(r.text)}</div></details>` : "");
   }
   afterButtons();
   if (installed) guardPanel();
+  if (reportOn && r.backup && (!Array.isArray(r.backup) || r.backup.length)) reportAsk();
+}
+
+// «Поделиться результатом с автором?»: показать ровно то, что уйдёт; ничего не выбрано заранее, без «Отправить» не уходит ничего
+async function reportAsk() {
+  let p;
+  try { p = await api("report/preview", { serial, lang: navigator.language || "" }); } catch (e) { return; }
+  if (!p.enabled || !p.fields) return;
+  $("after").insertAdjacentHTML("beforeend", '<div class="report" id="rep"><b>Поделиться результатом с автором?</b>'
+    + '<p class="hint">Так автор узнает, на каких телевизорах HYDE работает, и поправит то, что не вышло. Уйдёт только это, без имени, адресов и номера телевизора:</p>'
+    + p.fields.map((f) => line(f.label, esc(f.value))).join("")
+    + '<div class="row" style="margin-top:14px"><button class="ghost" id="rep-yes">Отправить</button><button class="ghost" id="rep-no">Не отправлять</button></div><div id="rep-res"></div></div>');
+  const done = async (send) => {
+    $("rep-yes").disabled = $("rep-no").disabled = true;
+    try {
+      const r = await api("report/send", { send });
+      if (!send) msg("rep-res", "Хорошо, ничего не отправлено.");
+      else if (r.sent) $("rep-res").innerHTML = `<div class="msg ok">Отправлено. Номер отчёта: <b>${esc(r.id)}</b>. Чтобы автор удалил отчёт, напишите ему этот номер.</div>`;
+      else msg("rep-res", "Не отправлено: " + r.fail + ". На установку это не влияет.", "warn");
+    } catch (e) { msg("rep-res", e.message, "warn"); }
+  };
+  $("rep-yes").onclick = () => done(true);
+  $("rep-no").onclick = () => done(false);
 }
 
 // «Проверить телевизор» и «Откатить всё»: после установки и сразу после подключения, если HYDE на этом ТВ уже ставили

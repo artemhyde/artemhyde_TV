@@ -95,6 +95,10 @@ if [ "$aura" = 1 ]; then
 fi
 HYDE_COMMIT="$commit" HYDE_DIRTY="$dirty" $PY -I -X utf8 "$(P "$GT_BUILD_DIR/release-manifest.py")" "$(P "$stage")" "$ver" "$code" \
     "$(P "$AAPT2")" "$(P "$JAVA")" "$(P "$SIGNERJAR")" "$(P "$src")"
+# Файл обновлений для «Сторожа»: прошлый выпуск по ближайшей метке v* до этого коммита (1.0.1)
+prev="$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v*' "$commit" 2>/dev/null || true)"
+[ "$prev" = "v$ver" ] && prev="$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v*' "$commit^" 2>/dev/null || true)"
+$PY -I -X utf8 "$(P "$GT_BUILD_DIR/update-json.py")" "$(P "$stage")" "$(P "$src")" "$(P "$ROOT")" ${prev:+--prev "$prev"}
 
 if [ "$check" = 1 ]; then
     note "Проверка воспроизводимости: вторая сборка с нуля из второй выгрузки в другой папке"
@@ -109,4 +113,4 @@ if [ "$check" = 1 ]; then
     [ "$bad" = 0 ] || die "Сборка не воспроизводится: файлы второй сборки отличаются"
     note "Воспроизводимость: обе сборки совпали байт в байт"
 fi
-note "Готово: out/release/$ver/ (manifest.json, SHA256SUMS). Выкладывать только по решению владельца проекта."
+note "Готово: out/release/$ver/ (manifest.json, SHA256SUMS, hyde-update.json). Выкладывать только по решению владельца проекта."

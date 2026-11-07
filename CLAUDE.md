@@ -214,7 +214,7 @@ TorrServe: по памятке docs/torrserve.md. Клиент `ru.yourok.torrse
 - «Звук»: `am broadcast -n app.glasstv.guard/.Cmd --es do eq --es a state`; если эффект не подхватился, предложи убрать «Звук»
 - «Картинка»: `am broadcast -n app.glasstv.guard/.Cmd --es do pic`; на другой модели TCL сначала `--es do pq --es a dump` (только чтение)
 - TorrServe (если ставили): `/echo` отвечает версией (шаг 11), присмотр `am broadcast -n app.glasstv.guard/.Cmd --es do svc`
-- ByeByeDPI (если ставили): `dumpsys connectivity | grep 'VPN CONNECTED'`, в строке `Uids` той же сети только выбранные приложения (docs/byedpi.md)
+- ByeByeDPI (если ставили): `dumpsys connectivity | grep 'VPN CONNECTED'`, в строке `Uids` той же сети только выбранные приложения; присмотр «Сторожа»: `am broadcast -n app.glasstv.guard/.Cmd --es do vpn` отвечает «присмотр включён» (docs/byedpi.md)
 - Снимок экрана `adb exec-out screencap -p`, покажи человеку и спроси «так?»  
 Перезагрузкой проверять только с оговоркой: сохранение владельца главного экрана, отладки и службы Key Mapper после перезагрузки в проекте не проверялось, а на TCL при режиме питания «Низкое потребление» ТВ после перезагрузки пропадает из сети.
 

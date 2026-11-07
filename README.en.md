@@ -50,7 +50,7 @@ This is how the wizard shows what to do on the TV:
 
 ![The wizard: four steps on the TV, from developer mode to the pairing code](docs/screenshots/wizard-tv-steps.jpg)
 
-Don't like it: the same window has the **Restore** button (Вернуть как было).
+Don't like it: the same window has the **Restore** button (Вернуть как было). Later versions are installed by Guard on the TV itself; you need the computer again only if it asks.
 
 ---
 

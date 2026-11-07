@@ -84,6 +84,14 @@ func TestRestoreAllSessions(t *testing.T) {
 	if !ra.OK() || len(ra.Results) != 2 {
 		t.Fatalf("полный откат: %+v", ra)
 	}
+	// откат установки удаляет обновлённые приложения целиком: «обновлён … делайте руками» после него было бы неправдой
+	for _, r := range ra.Results {
+		for _, m := range r.Manual {
+			if strings.HasPrefix(m, "обновлён app.glasstv.") {
+				t.Fatalf("лишнее «делайте руками» после полного отката: %s", m)
+			}
+		}
+	}
 	for p := range f.pkgs {
 		if strings.HasPrefix(p, "app.glasstv.") {
 			t.Fatalf("после полного отката остался %s", p)

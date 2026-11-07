@@ -23,8 +23,8 @@ import java.net.Inet4Address;
 public class GuardActivity extends Activity {
     private float dp;
     private Typeface regular, medium, semibold;
-    private TextView adb, keys, notes, mem, night, log;
-    private TextView soundBtn, adbBtn, notesBtn, reportRow;
+    private TextView adb, keys, bye, notes, mem, night, hyde, log;
+    private TextView soundBtn, adbBtn, notesBtn, hydeBtn, reportRow;
     private int soundColor = 0xFFF5F5F7;
     private final Handler h = new Handler(Looper.getMainLooper());
 
@@ -50,9 +50,13 @@ public class GuardActivity extends Activity {
 
         adb = row(root, "Отладка по сети");
         keys = row(root, "Кнопки пульта (Key Mapper)");
+        // ByeByeDPI (модуль для России): строка только там, где он стоит
+        if (installed(ByeRules.PKG)) bye = row(root, "ByeByeDPI (YouTube)");
         notes = row(root, "Записки с телефона");
         mem = row(root, "Память");
         night = row(root, "Ночью подсветка ниже");
+        // Самообновление HYDE (Hyde.java): только у сборки выпуска, своя сборка обновляется установщиком
+        if (Hyde.releaseBuild(this)) hyde = row(root, "Обновления HYDE");
         reportRow = row(root, "Отчёт для помощи");
         reportRow.setText("кнопка «Отчёт» сохранит его в «Загрузки», без личных данных");
         reportRow.setTextColor(0xFFF5F5F7);
@@ -61,7 +65,8 @@ public class GuardActivity extends Activity {
         buttons.setPadding(0, px(24), 0, px(12));
         View check = button(buttons, "Проверить сейчас", v -> {
             GuardService g = GuardService.running;
-            if (g != null) { g.keepAdb("вручную"); g.checkKeys.run(); }
+            if (g != null) { g.keepAdb("вручную"); g.checkKeys.run(); if (g.bye != null) g.bye.soon("кнопка «Проверить сейчас»", 0); }
+            if (g != null && g.upd != null && hyde != null && Hyde.on(this)) new Thread(() -> { g.upd.hydeNow(); g.updSoon(Hyde.CHAIN_MS); }, "guard-hyde-check").start();
             h.postDelayed(this::refresh, 800);
         });
         button(buttons, "Пробная записка", v -> {
@@ -104,6 +109,18 @@ public class GuardActivity extends Activity {
         notesBtn = (TextView) button(switches, "Записки: вкл", v -> {
             GuardService g = GuardService.running;
             if (g != null) g.setNotes(!GuardService.notesEnabled(this));
+            h.removeCallbacksAndMessages(null);
+            h.postDelayed(this::refresh, 500);
+        });
+        // Выключатель самообновления HYDE: по умолчанию включено (config.xml)
+        if (hyde != null) hydeBtn = (TextView) button(switches, "Обновлять HYDE сам: вкл", v -> {
+            GuardService g = GuardService.running;
+            boolean want = !Hyde.on(this);
+            if (g != null && g.upd != null) g.upd.hyde.setOn(want, "экран «Сторож»");
+            else {                                             // служба ещё поднимается: выбор запомнить, она его прочтёт
+                getSharedPreferences("guard", MODE_PRIVATE).edit().putBoolean(Hyde.P_ON, want).apply();
+                GuardService.start(this);
+            }
             h.removeCallbacksAndMessages(null);
             h.postDelayed(this::refresh, 500);
         });
@@ -164,6 +181,11 @@ public class GuardActivity extends Activity {
         keys.setText(k);
         // «не установлен» не беда (Key Mapper нужен только для своих кнопок): обычным цветом, а не тревожным
         keys.setTextColor("не установлен".equals(k) ? 0xFFF5F5F7 : k.startsWith("не") ? 0xFFFFB454 : 0xFF5ED3B4);
+        if (bye != null) {
+            String b = g == null || g.bye == null ? "«Сторож» запускается" : g.bye.brief();
+            bye.setText(b);
+            bye.setTextColor(ByeRules.UP.equals(b) ? 0xFF5ED3B4 : ByeRules.GAVE_UP.equals(b) || ByeRules.LATER.equals(b) ? 0xFFFFB454 : 0xFFF5F5F7);
+        }
         String ip = ip();
         notes.setText(!GuardService.notesEnabled(this) ? "выключены" : ip == null ? "нет сети"
                 : "http://" + ip + ":" + GuardService.NOTE_PORT + "  ·  код " + GuardService.notesCode(this));
@@ -180,9 +202,19 @@ public class GuardActivity extends Activity {
                 : day > 0 ? "подсветка " + day + " → " + lvl + " до " + GuardService.nt()
                 : "в " + GuardService.nf() + " станет " + lvl + " из 100, если яркость за день не меняли");
         night.setTextColor(0xFFF5F5F7);
+        if (hyde != null) {
+            Hyde hy = g == null || g.upd == null ? null : g.upd.hyde;
+            hyde.setText(hy == null ? "«Сторож» запускается" : hy.brief());
+            hyde.setTextColor(hy != null && hy.attention() ? 0xFFFFB454 : hy != null && hy.fresh() ? 0xFF5ED3B4 : 0xFFF5F5F7);
+            hydeBtn.setText(Hyde.on(this) ? "Обновлять HYDE сам: вкл" : "Обновлять HYDE сам: выкл");
+        }
         refreshSound(g);
         log.setText(getSharedPreferences("guard", MODE_PRIVATE).getString("log", ""));
         h.postDelayed(this::refresh, 3000);
+    }
+
+    private boolean installed(String pkg) {
+        try { getPackageManager().getPackageInfo(pkg, 0); return true; } catch (Exception e) { return false; }
     }
 
     private String ip() {

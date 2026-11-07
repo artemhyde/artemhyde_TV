@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-const toolVersion = "0.3"
+const toolVersion = "0.4"
 
 func main() {
 	args := os.Args[1:]
@@ -43,6 +43,8 @@ func main() {
 		err = cmdApply(args)
 	case "verify":
 		err = cmdVerify(args)
+	case "report":
+		err = cmdReport(args)
 	case "restore":
 		err = cmdRestore(args)
 	case "get-adb":
@@ -72,11 +74,13 @@ const usage = `hyde-install: установщик HYDE TV
   hyde-install plan [--tv адрес] [--release папка] [--with м1,м2] [--without м3] [--home] [--json] [--from файл]
   hyde-install apply [как plan] [--backup папка] [--allow-download] [--tv-free] [--yes]   установка по плану
   hyde-install verify [--tv адрес] [--backup папка]   проверка после установки
+  hyde-install report [--tv адрес] [--send] [--test [--backup папка_журнала]]   отчёт автору о последней установке: без --send только показать; --test: проверка приёма (с папкой журнала без ТВ)
   hyde-install restore [--tv адрес] [--backup папка] [--yes]   откат всех установок этого ТВ (или одной: --backup папка_журнала)
   hyde-install guard adb [always|service] [--tv адрес]   отладка по сети: держать всегда или ещё 2 часа, потом выключить
   hyde-install guard notes [on|off] [--tv адрес]         записки с телефона; без значения: только показать
 Модули: guard keymapper home nightmode sound picture clip keyboard volna browser
 Приложения по желанию (--with, качаются со страниц авторов, нужен --allow-download): smarttube lampa torrserve localsend files byedpi
+Отчёт автору уходит только с --report (apply, restore) или report --send; без ключа ничего не отправляется.
 Повторный apply после обрыва продолжает незаконченную установку этого ТВ с того же места.
 Журналы и снимки «до»: ~/.glasstv/backup (папка HYDE TV: GLASSTV_HOME)`
 
@@ -397,6 +401,9 @@ func cmdApply(args []string) error {
 	allowDl := fs.Bool("allow-download", false, "разрешить скачать сторонние приложения из описи со страниц авторов (Key Mapper и выбранные приложения по желанию с GitHub)")
 	tvFree := fs.Bool("tv-free", false, "ТВ свободен: можно открыть «Дом» и нажать «Домой»")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
+	sendRep := fs.Bool("report", false, "после установки отправить автору отчёт (модель ТВ, Android, что поставилось и что не вышло)")
+	_ = fs.Bool("no-report", false, "не отправлять отчёт (так и без ключа)")
+	via := fs.String("via", "cli", "кто запускает: cli или claude (для отчёта)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -441,6 +448,13 @@ func cmdApply(args []string) error {
 	res := runApply(tv, a, rec, m, ch, ApplyOpts{AllowDownload: *allowDl, TVFree: *tvFree, BackupRoot: backupRoot(*root), Emit: printEvent})
 	if res.Backup != "" {
 		fmt.Println("Журнал и снимок «до»: " + res.Backup)
+	}
+	if *sendRep && res.Backup != "" {
+		var cs []Check
+		if res.Error == "" {
+			cs, _ = runVerify(tv, res.Backup)
+		}
+		reportAfter(true, res.Backup, "apply", *via, cs, false)
 	}
 	if res.Error != "" { // само сообщение уже напечатано событием
 		if res.Lost {
@@ -519,6 +533,9 @@ func cmdRestore(args []string) error {
 	tvAddr := fs.String("tv", "", "адрес ТВ")
 	dir := fs.String("backup", "", "папка журнала (откатить только её) или папка журналов")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
+	sendRep := fs.Bool("report", false, "после возврата отправить автору отчёт (модель ТВ, Android, итог)")
+	_ = fs.Bool("no-report", false, "не отправлять отчёт (так и без ключа)")
+	via := fs.String("via", "cli", "кто запускает: cli или claude (для отчёта)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -535,12 +552,14 @@ func cmdRestore(args []string) error {
 		return err
 	}
 	fmt.Println("Откат по журналам, от новой установки к старой:")
+	removed := removedByAll(ds)
 	for _, d := range ds {
 		entries, err := readLedger(filepath.Join(d, "ledger.tsv"))
 		if err != nil {
 			return err
 		}
 		undo, manual := restoreOrder(entries)
+		manual = keepManual(manual, removed)
 		rel := ""
 		if s, err := loadSession(d); err == nil {
 			rel = ", выпуск " + s.Release + ", начата " + s.Started
@@ -554,6 +573,9 @@ func cmdRestore(args []string) error {
 	}
 	ra := runRestoreAll(tv, ds, printEvent)
 	fmt.Print(ra.Text())
+	if *sendRep && len(ds) > 0 {
+		reportAfter(true, ds[0], "restore", *via, nil, ra.OK())
+	}
 	if c := ra.Code(); c != 0 {
 		os.Exit(c)
 	}
@@ -626,5 +648,69 @@ func cmdGetADB(args []string) error {
 		return err
 	}
 	fmt.Println("Готово: " + a.Path)
+	return nil
+}
+
+// cmdReport: отчёт по последней установке этого ТВ задним числом: без --send только показывает, что уйдёт
+func cmdReport(args []string) error {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	tvAddr := fs.String("tv", "", "адрес ТВ")
+	dir := fs.String("backup", "", "папка журнала или папка журналов")
+	send := fs.Bool("send", false, "отправить автору (без ключа только показать)")
+	via := fs.String("via", "cli", "кто запускает: cli или claude")
+	test := fs.Bool("test", false, "проверка приёма для автора: итог test, в сводку таблицы не попадает")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if !reportEnabled() {
+		fmt.Println("В этой версии адрес для отчётов не настроен: отправлять некуда, ничего не уходит.")
+		return nil
+	}
+	var ds []string
+	var cs []Check
+	kind := "apply"
+	if _, e := os.Stat(filepath.Join(*dir, "session.json")); *test && *dir != "" && e == nil {
+		ds = []string{*dir} // проверка приёма по готовому журналу: телевизор не нужен, проверки ТВ в отчёте нет
+	} else {
+		_, tv, err := connectTV(*tvAddr)
+		if err != nil {
+			return err
+		}
+		ds, err = sessionDirs(tv, *dir)
+		if errors.Is(err, errAllRestored) { // всё возвращено: отчёт о возврате по последнему журналу
+			id := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
+			ds, err, kind = sessionsOf(backupRoot(*dir), id, false), nil, "restore"
+		}
+		if err != nil {
+			return err
+		}
+		if len(ds) == 0 {
+			return errors.New("нет журнала установки для этого ТВ")
+		}
+		if kind == "apply" {
+			cs, _ = runVerify(tv, ds[0])
+		}
+	}
+	r, err := reportFromSession(ds[0], kind, *via, os.Getenv("LANG"), cs, kind == "restore")
+	if err != nil {
+		return err
+	}
+	if *test {
+		r.Result = "test"
+	}
+	printReport(r)
+	if !*send {
+		if *test {
+			fmt.Println("Ничего не отправлено. Отправить проверочный: добавьте к этой же команде --send")
+		} else {
+			fmt.Println("Ничего не отправлено. Отправить: hyde-install report --send")
+		}
+		return nil
+	}
+	if err := sendReport(r); err != nil {
+		fmt.Println("Отчёт не отправлен: " + err.Error())
+		return nil
+	}
+	fmt.Println("Отчёт отправлен, номер " + r.ReportID + ". Чтобы автор удалил его, напишите ему этот номер.")
 	return nil
 }

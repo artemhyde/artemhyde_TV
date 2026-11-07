@@ -77,7 +77,13 @@ type Session struct {
 	Finished  string          `json:"finished,omitempty"`
 	Restored  string          `json:"restored,omitempty"`
 	LastError string          `json:"last_error,omitempty"`
-	Held      []string        `json:"held,omitempty"` // команды, чьё действие на ТВ уже было до этой установки
+	// FailedStep: шаг, на котором установка остановилась («группа: что»), для отчёта автору (1.0.1)
+	FailedStep string   `json:"failed_step,omitempty"`
+	Held       []string `json:"held,omitempty"` // команды, чьё действие на ТВ уже было до этой установки
+	// Installed и HomePlanned: что поставил план и меняет ли он главный экран (Modules выше только выбор человека,
+	// по нему продолжается прерванная установка), для отчёта автору (1.0.1)
+	Installed   []string `json:"installed,omitempty"`
+	HomePlanned bool     `json:"home_planned,omitempty"`
 }
 
 func loadSession(dir string) (*Session, error) {

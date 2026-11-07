@@ -209,7 +209,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 				add(st)
 			}
 		} else {
-			addInstall(&pl, add, g, m, m.App(rm.Module), p, rm.Admin, checkFiles)
+			addInstall(&pl, add, g, m, m.App(rm.Module), p, rm.Admin, checkFiles, guardBy(chosen))
 		}
 		for _, st := range rm.Steps {
 			if !c.Has(st.When) {
@@ -261,7 +261,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 			continue
 		}
 		g := "Плитки на главном экране"
-		addInstall(&pl, add, g, m, a, p, false, checkFiles)
+		addInstall(&pl, add, g, m, a, p, false, checkFiles, guardBy(chosen))
 		if by != target {
 			pl.Steps[len(pl.Steps)-1].Note = "откроет " + by + " вместо " + target
 		}
@@ -407,18 +407,40 @@ func markHeld(pl *Plan, held map[string]bool) {
 // addInstall: установка приложения из выпуска с правильной обратной командой (как inst в tools/tv.sh): новое
 // удаляется откатом, обновление нет (прежняя версия поверх не ставится); приложение с правами администратора перед
 // обновлением снимает их само, иначе система зависает
-func addInstall(pl *Plan, add func(Step), g string, m *Manifest, a *ManifestApp, p Passport, admin, checkFiles bool) {
+// guardBy: от чьего имени ставить приложения HYDE: «Сторожа», если он в плане (обязателен, но план без него бывает в проверках)
+func guardBy(chosen map[string]bool) string {
+	if chosen["guard"] {
+		return "app.glasstv.guard"
+	}
+	return ""
+}
+
+func addInstall(pl *Plan, add func(Step), g string, m *Manifest, a *ManifestApp, p Passport, admin, checkFiles bool, by string) {
 	if checkFiles {
 		if bad := m.CheckFile(a); bad != "" {
 			pl.Problems = append(pl.Problems, "Файл выпуска: "+bad)
 		}
 	}
 	vc, installed := p.Packages[a.Package]
+	// От имени «Сторожа» (by): тогда новые версии HYDE он ставит сам, без компьютера и без нажатий (1.0.1). Android
+	// записывает установщиком только уже стоящее приложение: сам «Сторож» при первой установке получил бы installer=null,
+	// поэтому он ставится второй раз тем же файлом (проверено 07.11 на виртуальном Google TV 14)
+	viaGuard := func(st Step) Step {
+		if by != "" && (a.Package != by || installed) {
+			st.Installer = by
+			st.Do = strings.Replace(st.Do, "adb install --user 0 -r ", "adb install --user 0 -r -i "+by+" ", 1)
+		}
+		return st
+	}
 	switch {
 	case !installed:
 		pl.InstallMB += float64(a.Size) / 1048576
-		add(Step{Group: g, What: fmt.Sprintf("поставить %s (%s)", a.File, mb(a.Size)), Do: "adb install --user 0 -r " + a.File, Undo: "pm uninstall --user 0 " + a.Package, Host: true,
-			Kind: "install", File: a.File, Package: a.Package})
+		add(viaGuard(Step{Group: g, What: fmt.Sprintf("поставить %s (%s)", a.File, mb(a.Size)), Do: "adb install --user 0 -r " + a.File, Undo: "pm uninstall --user 0 " + a.Package, Host: true,
+			Kind: "install", File: a.File, Package: a.Package}))
+		if by != "" && a.Package == by {
+			add(Step{Group: g, What: "поставить тот же файл ещё раз от имени самого «Сторожа»: тогда свои новые версии он ставит сам",
+				Do: "adb install --user 0 -r -i " + by + " " + a.File, Undo: "-", Host: true, Kind: "install", File: a.File, Package: a.Package, Installer: by})
+		}
 	case vc > a.VersionCode:
 		add(Step{Group: g, What: fmt.Sprintf("на ТВ версия новее (versionCode %d), старую Android поставить не даст: оставляем как есть", vc), Run: true, Package: a.Package})
 	case vc == a.VersionCode:
@@ -429,9 +451,9 @@ func addInstall(pl *Plan, add func(Step), g string, m *Manifest, a *ManifestApp,
 			add(Step{Group: g, What: "снять права администратора перед обновлением (иначе система зависнет на минуту и перезагрузится)",
 				Do: "am start -n " + a.Package + "/.MainActivity --ez unadmin true; sleep 5", Run: true, Kind: "unadmin", Package: a.Package})
 		}
-		add(Step{Group: g, What: fmt.Sprintf("обновить до %s (стоит versionCode %d)", a.VersionName, vc), Do: "adb install --user 0 -r " + a.File, Undo: "-", Host: true,
+		add(viaGuard(Step{Group: g, What: fmt.Sprintf("обновить до %s (стоит versionCode %d)", a.VersionName, vc), Do: "adb install --user 0 -r " + a.File, Undo: "-", Host: true,
 			Kind: "install", File: a.File, Package: a.Package,
-			Note: "откат обновление не снимает: прежняя версия поверх не ставится (docs/rollback.md). Если стоящая сборка подписана своим ключом, Android поверх не поставит: переход по docs/release.md, «Переход с личной сборки»"})
+			Note: "откат обновление не снимает: прежняя версия поверх не ставится (docs/rollback.md). Если стоящая сборка подписана своим ключом, Android поверх не поставит: переход по docs/release.md, «Переход с личной сборки»"}))
 	}
 }
 

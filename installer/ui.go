@@ -39,6 +39,7 @@ type uiServer struct {
 	passports map[string]Passport
 	held      map[string]map[string]bool // по ТВ: какие команды плана на нём уже действуют (сбрасывается после установки и отката)
 	job       *uiJob
+	rep       *Report // отчёт, который человек видит и может отправить после установки или возврата
 }
 
 // uiJob: установка или откат идут в фоне, страница раз в секунду забирает ход (/api/job). Одновременно одна работа
@@ -99,6 +100,8 @@ func cmdUI(args []string) error {
 	mux.HandleFunc("POST /api/getadb", s.api(s.getADB))
 	mux.HandleFunc("POST /api/guard", s.api(s.guardAPI))
 	mux.HandleFunc("GET /api/job", s.api(s.jobState))
+	mux.HandleFunc("POST /api/report/preview", s.api(s.reportPreview))
+	mux.HandleFunc("POST /api/report/send", s.api(s.reportSend))
 	go func() {
 		for range time.Tick(time.Minute) {
 			s.mu.Lock()
@@ -216,7 +219,7 @@ func (s *uiServer) getADB(r *http.Request) (any, error) {
 }
 
 func (s *uiServer) hello(r *http.Request) (any, error) {
-	out := map[string]any{"version": toolVersion, "pc": pcInfo()}
+	out := map[string]any{"version": toolVersion, "pc": pcInfo(), "report": reportEnabled()}
 	s.mu.Lock()
 	adb, adbErr := s.adb, s.adbErr
 	s.mu.Unlock()
@@ -311,7 +314,19 @@ func (s *uiServer) plan(r *http.Request) (any, error) {
 	p, ok := s.passports[q.Serial]
 	s.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("сначала прочитайте паспорт ТВ")
+		// после установки или возврата паспорт читается заново: план должен видеть, что стоит на ТВ сейчас
+		a := s.getA()
+		if a == nil || q.Serial == "" {
+			return nil, fmt.Errorf("сначала прочитайте паспорт ТВ")
+		}
+		np, _, err := readPassport(a, q.Serial)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.passports[q.Serial] = np
+		s.mu.Unlock()
+		p = np
 	}
 	m, err := loadManifest(s.relDir)
 	if err != nil {
@@ -354,6 +369,7 @@ func (s *uiServer) startJob(kind string, work func(emit func(Event)) any) error 
 		s.mu.Lock()
 		j.Result, j.Running = res, false
 		s.held = map[string]map[string]bool{} // после установки или отката на ТВ всё по-другому
+		s.passports = map[string]Passport{}   // и паспорт тоже: что стоит, кто главный экран
 		s.mu.Unlock()
 	}()
 	return nil
@@ -485,4 +501,71 @@ func (s *uiServer) restore(r *http.Request) (any, error) {
 		return map[string]any{"ok": ra.OK(), "code": ra.Code(), "text": ra.Text(), "backup": ds}
 	})
 	return map[string]bool{"started": err == nil}, err
+}
+
+// reportPreview: после установки или возврата собрать отчёт и показать человеку, что уйдёт; ничего не отправляет
+func (s *uiServer) reportPreview(r *http.Request) (any, error) {
+	if !reportEnabled() {
+		return map[string]any{"enabled": false}, nil
+	}
+	var q struct{ Serial, Lang string }
+	if err := readBody(r, &q); err != nil || q.Serial == "" {
+		return nil, fmt.Errorf("не выбран ТВ")
+	}
+	s.mu.Lock()
+	j := s.job
+	s.mu.Unlock()
+	if j == nil || j.Running || j.Result == nil {
+		return nil, fmt.Errorf("установка или возврат ещё не закончены")
+	}
+	kind, dir, restoreOK := "", "", false
+	switch res := j.Result.(type) {
+	case ApplyResult:
+		kind, dir = "apply", res.Backup
+	case map[string]any:
+		kind = "restore"
+		if ds, ok := res["backup"].([]string); ok && len(ds) > 0 {
+			dir = ds[0]
+		}
+		restoreOK, _ = res["ok"].(bool)
+	}
+	if dir == "" {
+		return map[string]any{"enabled": true, "none": "изменений не было: отчитываться не о чем"}, nil
+	}
+	var cs []Check
+	if kind == "apply" {
+		cs, _ = runVerify(s.adbTVFor(q.Serial), dir)
+	}
+	rep, err := reportFromSession(dir, kind, "wizard", q.Lang, cs, restoreOK)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.rep = &rep
+	s.mu.Unlock()
+	return map[string]any{"enabled": true, "id": rep.ReportID, "fields": rep.Fields()}, nil
+}
+
+// reportSend: ответ человека на «Поделиться результатом с автором?»: send=true отправляет показанный отчёт
+func (s *uiServer) reportSend(r *http.Request) (any, error) {
+	var q struct {
+		Send bool `json:"send"`
+	}
+	if err := readBody(r, &q); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	rep := s.rep
+	s.rep = nil
+	s.mu.Unlock()
+	if rep == nil {
+		return nil, fmt.Errorf("отчёт уже отправлен или не собран")
+	}
+	if !q.Send {
+		return map[string]any{"sent": false, "declined": true}, nil
+	}
+	if err := sendReport(*rep); err != nil {
+		return map[string]any{"sent": false, "fail": err.Error()}, nil
+	}
+	return map[string]any{"sent": true, "id": rep.ReportID}, nil
 }

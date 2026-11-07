@@ -30,7 +30,7 @@ final class Report {
     // Чужие приложения, версии которых важны для разбора (свои app.glasstv.* берутся все)
     private static final String[] OTHERS = {"top.rootu.lampa", "app.glasstv.browser", "com.phlox.tvwebbrowser.foss", "org.smarttube.stable",
             "com.liskovsoft.smarttubetv.beta", "io.github.sds100.keymapper", "com.google.android.webview", "com.brouken.player",
-            "me.zhanghai.android.files", "org.localsend.localsend_app"};
+            "me.zhanghai.android.files", "org.localsend.localsend_app", ByeRules.PKG};
 
     static String build(Context c) {
         StringBuilder b = new StringBuilder();
@@ -77,7 +77,10 @@ final class Report {
             if (g.dns != null) b.append("  DNS: стоит ").append(g.dns.current()).append(", выбранный ").append(g.dns.pref())
                     .append(", интернет ").append(DnsWatch.ipUp() ? "есть" : "нет").append('\n');
             b.append("  простой: ").append(g.idleReport()).append('\n');
+            if (g.bye != null && (has(c, ByeRules.PKG) || sp.getBoolean("byeWatch", false)))
+                b.append("  ByeByeDPI: ").append(g.bye.status()).append('\n');
             if (g.upd != null) b.append("  обновления: ").append(g.upd.status()).append('\n');
+            if (g.upd != null) b.append("  обновления HYDE: ").append(g.upd.hyde.status()).append('\n');
         }
         b.append("  возможности ТВ: ").append(Caps.report(c)).append('\n');
 
@@ -102,6 +105,10 @@ final class Report {
         } catch (Exception e) {
             return "не сохранился (" + e.getClass().getSimpleName() + ")";
         }
+    }
+
+    private static boolean has(Context c, String pkg) {
+        try { c.getPackageManager().getPackageInfo(pkg, 0); return true; } catch (Exception e) { return false; }
     }
 
     private static String homeHolder(Context c) {
