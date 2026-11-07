@@ -209,6 +209,9 @@
       {"package": "com.google.android.apps.tv.launcherx", "why": "главный экран Google TV"},
       {"package": "com.google.android.tungsten.setupwraith", "why": "страховка Google TV, которая возвращает его главный экран"}
     ],
+    "intercept": [
+      {"package": "com.google.android.tvlauncher", "why": "главный экран Android TV"}
+    ],
     "settings": [
       {"what": "заставка Android выключена", "ns": "secure", "key": "screensaver_enabled", "value": "0"},
       {"what": "заставка не включается при засыпании", "ns": "secure", "key": "screensaver_activate_on_sleep", "value": "0"},

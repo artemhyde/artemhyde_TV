@@ -59,10 +59,17 @@ func homeHolder(tv TV) string {
 
 var reTop = regexp.MustCompile(`topResumedActivity=ActivityRecord\{\S+ u\d+ ([^/ ]+)/`)
 
+// Android 12 строки topResumedActivity не пишет, только «ResumedActivity: ActivityRecord{…}» (проверено 07.11 на
+// виртуальном Google TV 12: без этого установщик не видел «Дом» на экране и не менял главный экран)
+var reResumed = regexp.MustCompile(`ResumedActivity: ActivityRecord\{\S+ u\d+ ([^/ ]+)/`)
+
 // topPackage: приложение, которое сейчас на экране
 func topPackage(tv TV) string {
-	out, _ := tv.Shell("dumpsys activity activities | grep topResumedActivity", 20*time.Second)
+	out, _ := tv.Shell("dumpsys activity activities | grep -E 'topResumedActivity|ResumedActivity:'", 20*time.Second)
 	if m := reTop.FindStringSubmatch(out); m != nil {
+		return m[1]
+	}
+	if m := reResumed.FindStringSubmatch(out); m != nil {
 		return m[1]
 	}
 	return ""

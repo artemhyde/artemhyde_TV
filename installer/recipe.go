@@ -22,6 +22,12 @@ type Recipe struct {
 			Package string `json:"package"`
 			Why     string `json:"why"`
 		} `json:"tcl_disable"`
+		// Главные экраны других ТВ, которые перехватывают «Домой» и после смены роли (обычный Android TV): не на TCL,
+		// отключаются, только если «Домой» всё равно открывает их
+		Intercept []struct {
+			Package string `json:"package"`
+			Why     string `json:"why"`
+		} `json:"intercept"`
 		Settings []RecipeSetting `json:"settings"`
 	} `json:"home_switch"`
 	NightOff RecipeStep `json:"night_off_not_tcl"`

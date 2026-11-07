@@ -29,7 +29,7 @@ key() { local k; for k in "$@"; do tv_sh "input keyevent $k"; sleep "${KEY_PAUSE
 shot() {
     sleep "${2:-1.5}"
     tv_adb exec-out screencap -p > "$1"
-    tv_sh "dumpsys activity activities" | tr -d '\r' | grep -m1 topResumedActivity | sed 's/.*u0 //; s/ t[0-9]*}//'
+    tv_sh "dumpsys activity activities" | tr -d '\r' | grep -m1 -E 'topResumedActivity|ResumedActivity:' | sed 's/.*u0 //; s/ t[0-9]*}//'
 }
 
 # uidump: дерево экрана ТВ в файл $W/ui.xml
@@ -72,7 +72,8 @@ dpad_to() {
 dpad_pick() { dpad_to "$@" || return 1; tv_sh "input keyevent KEYCODE_DPAD_CENTER"; sleep 1.5; }
 
 # Пакет приложения сверху экрана (пусто, если прочитать не удалось)
-_top_pkg() { tv_sh "dumpsys activity activities" 2>/dev/null | tr -d '\r' | grep -m1 topResumedActivity | sed -E 's/.* u[0-9]+ ([^/ ]+)\/.*/\1/'; }
+# Android 12 пишет не topResumedActivity, а «ResumedActivity: ActivityRecord{…}» (проверено 07.11 на виртуальном Google TV 12)
+_top_pkg() { tv_sh "dumpsys activity activities" 2>/dev/null | tr -d '\r' | grep -m1 -E 'topResumedActivity|ResumedActivity:' | sed -E 's/.* u[0-9]+ ([^/ ]+)\/.*/\1/'; }
 
 # Владелец главного экрана (роль HOME). cmd role get-role-holders есть только с Android 13, на 12 владелец берётся из dumpsys role
 _home_holder() { tv_sh "h=\$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo \"\$h\" || dumpsys role | grep -A1 'name=android.app.role.HOME\$' | sed -n 's/^ *holders=//p'" 2>/dev/null | tr -d '\r' | head -1 | tr -d ' '; }

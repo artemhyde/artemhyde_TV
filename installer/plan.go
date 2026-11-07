@@ -321,6 +321,14 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 					s.Kind, s.What = "home_disable_if", s.What+": только если «Домой» всё равно откроет Google TV"
 					add(s)
 				}
+				// Обычный Android TV: роль меняется, а «Домой» открывает его главный экран (07.11, виртуальный Android TV 13)
+				for _, d := range rec.HomeSwitch.Intercept {
+					if p.Has(d.Package) && !p.Disabled[d.Package] {
+						add(Step{Group: g, What: "отключить " + d.Why + ": только если «Домой» всё равно откроет его",
+							Do: "pm disable-user --user 0 " + d.Package, Undo: "pm enable --user 0 " + d.Package,
+							Kind: "home_disable_if", Package: d.Package})
+					}
+				}
 			}
 		}
 		for _, s := range rec.HomeSwitch.Settings {

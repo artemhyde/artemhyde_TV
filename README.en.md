@@ -152,7 +152,7 @@ More on what is tied to TCL: [docs/tcl.md](docs/tcl.md).
 - The light "Obyom" theme exists but is checked only on a home screen snapshot of one TV. The default is the dark "Graphite".
 - HYDE Browser is built from patches to the TV Bro sources. It has its own name, icon, application ID and an About window linking to TV Bro, as the TV Bro license requires.
 - Weather: Open-Meteo, free for non-commercial use only. National Bank of Belarus rates are enabled separately and are optional.
-- Installing the ready release with the installer and rolling it back were tested on a real TCL 65C6K and on a virtual Google TV. Not tested on a live TV: the installer on macOS and Linux, work on real non-TCL TVs, importing a Key Mapper layout from a file, behaviour after a reboot.
+- Installing the ready release with the installer and rolling it back were tested on a real TCL 65C6K and on virtual TVs: Google TV on Android 14 and 12, plain Android TV 13. Not tested on a live TV: the installer on macOS and Linux, work on real non-TCL TVs, importing a Key Mapper layout from a file, behaviour after a reboot.
 
 **Other projects and licenses**  
 We do not copy or distribute other people's apps, only links. The full list with licenses: [THIRD-PARTY.md](THIRD-PARTY.md).

@@ -11,7 +11,7 @@
 P=io.github.romanvht.byedpi; D="/sdcard/0 HYDE TV"; X=/data/local/tmp/hyde-ui.xml
 f=$(pm path $P | sed -n 's/^package://p' | head -1)
 [ -n "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -gt 3600 ] && { rm -rf "$D"; echo "ByeByeDPI стоял до HYDE: его настройки не трогаю"; exit 0; }
-top() { dumpsys activity activities 2>/dev/null | grep -m1 topResumedActivity; }
+top() { dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|ResumedActivity:'; }
 w() { i=0; while [ $i -lt 40 ]; do top | grep -q "$1" && return 0; sleep 0.5; i=$((i+1)); done; echo "нет экрана $1"; return 1; }
 ui() { uiautomator dump $X >/dev/null 2>&1; tr '>' '\n' < $X; }
 bx() { sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p'; }
