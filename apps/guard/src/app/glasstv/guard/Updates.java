@@ -366,7 +366,8 @@ final class Updates {
         prm.setAppPackageName(pkg);
         prm.setSize(apk.length());
         prm.setInstallReason(PackageManager.INSTALL_REASON_USER);
-        prm.setRequireUserAction(tap ? PackageInstaller.SessionParams.USER_ACTION_UNSPECIFIED
+        // Обновление без нажатий бывает только с Android 12; раньше система всегда спрашивает (UpdDone покажет окно)
+        if (android.os.Build.VERSION.SDK_INT >= 31) prm.setRequireUserAction(tap ? PackageInstaller.SessionParams.USER_ACTION_UNSPECIFIED
                 : PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
         int id = pi.createSession(prm);
         try (PackageInstaller.Session s = pi.openSession(id)) {
@@ -474,6 +475,7 @@ final class Updates {
     // с каждым Android). Ошиблись: система всё равно попросит нажатие, и done() переведёт приложение на окно
     static int minSilentTarget() {
         int v = Build.VERSION.SDK_INT;
+        if (v < 31) return Integer.MAX_VALUE;   // до Android 12 тихих обновлений нет совсем: всегда окно
         return v >= 35 ? 33 : v >= 34 ? 31 : v >= 33 ? 30 : 29;
     }
 
@@ -543,7 +545,10 @@ final class Updates {
     }
 
     String installer(String pkg) {
-        try { return c.getPackageManager().getInstallSourceInfo(pkg).getInstallingPackageName(); } catch (Exception e) { return null; }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) return c.getPackageManager().getInstallSourceInfo(pkg).getInstallingPackageName();
+            return c.getPackageManager().getInstallerPackageName(pkg);   // Android 9 и 10
+        } catch (Exception e) { return null; }
     }
 
     private String homePackage() {

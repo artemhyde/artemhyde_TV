@@ -128,8 +128,8 @@ Remote buttons: mapped through Key Mapper, any special button can open the app y
 | TV | Status |
 |---|---|
 | TCL 65C6K, Android TV OS 14 | tested |
-| Other TCL Google TVs with Android 12 and newer | expected to work, needs a probe (the wizard runs it) |
-| Other Google TVs with Android 12 and newer | partly: no "Picture", backlight or Dolby; "Sound" only if the probe passes |
+| Other TCL TVs on Google TV or Android TV with Android 9 and newer | expected to work, needs a probe (the wizard runs it) |
+| Other Google TV and Android TV sets with Android 9 and newer | partly: no "Picture", backlight or Dolby; "Sound" only if the probe passes |
 | Android TV 11 and older, Fire TV, Tizen, webOS | not supported |
 
 More on what is tied to TCL: [docs/tcl.md](tcl.md).

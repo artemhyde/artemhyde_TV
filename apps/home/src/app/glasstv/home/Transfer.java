@@ -16,6 +16,8 @@ import android.provider.MediaStore;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,6 +25,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -142,6 +145,7 @@ final class Transfer {
     // В «Загрузки»: видно в «Файлах», можно унести на флешке. Ответ: имя файла, как его назвала система, или null
     static String save(Context c, JSONObject b) {
         String name = PREFIX + new SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(new Date()) + ".json";
+        if (android.os.Build.VERSION.SDK_INT < 29) return saveFile(c, name, b);
         try {
             ContentValues v = new ContentValues();
             v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
@@ -160,6 +164,27 @@ final class Transfer {
         }
     }
 
+    // Android 9: «Загрузки» через MediaStore появились только в Android 10. Пишем файлом в общую папку «Загрузки»
+    // (если у «Дома» есть право на запись), иначе в папку «Дома» на том же диске: оттуда копию видно здесь же
+    private static String saveFile(Context c, String name, JSONObject b) {
+        for (File dir : dirs(c)) {
+            if (dir == null) continue;
+            try {
+                dir.mkdirs();
+                try (OutputStream o = new FileOutputStream(new File(dir, name))) {
+                    o.write(b.toString(1).getBytes(StandardCharsets.UTF_8));
+                }
+                return name;
+            } catch (Exception ignored) { }
+        }
+        return null;
+    }
+
+    private static File[] dirs(Context c) {
+        return new File[]{android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                c.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)};
+    }
+
     static final class Copy {
         final Uri uri;
         final String when;
@@ -170,6 +195,19 @@ final class Transfer {
     static List<Copy> copies(Context c) {
         List<Copy> l = new ArrayList<>();
         SimpleDateFormat f = new SimpleDateFormat("d MMMM, HH:mm", new Locale("ru"));
+        if (android.os.Build.VERSION.SDK_INT < 29) {   // Android 9: копии файлами (saveFile)
+            List<File> all = new ArrayList<>();
+            for (File dir : dirs(c)) {
+                File[] fs = dir == null ? null : dir.listFiles((d, n) -> n.startsWith(PREFIX) && n.endsWith(".json"));
+                if (fs != null) Collections.addAll(all, fs);
+            }
+            Collections.sort(all, (x, y) -> Long.compare(y.lastModified(), x.lastModified()));
+            for (File x : all) {
+                if (l.size() >= 5) break;
+                l.add(new Copy(Uri.fromFile(x), f.format(new Date(x.lastModified()))));
+            }
+            return l;
+        }
         try (Cursor q = c.getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                 new String[]{MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED},
                 MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?", new String[]{PREFIX + "%"},

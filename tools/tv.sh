@@ -75,8 +75,9 @@ dpad_pick() { dpad_to "$@" || return 1; tv_sh "input keyevent KEYCODE_DPAD_CENTE
 # Android 12 пишет не topResumedActivity, а «ResumedActivity: ActivityRecord{…}» (проверено 07.11 на виртуальном Google TV 12)
 _top_pkg() { tv_sh "dumpsys activity activities" 2>/dev/null | tr -d '\r' | grep -m1 -E 'topResumedActivity|ResumedActivity:' | sed -E 's/.* u[0-9]+ ([^/ ]+)\/.*/\1/'; }
 
-# Владелец главного экрана (роль HOME). cmd role get-role-holders есть только с Android 13, на 12 владелец берётся из dumpsys role
-_home_holder() { tv_sh "h=\$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo \"\$h\" || dumpsys role | grep -A1 'name=android.app.role.HOME\$' | sed -n 's/^ *holders=//p'" 2>/dev/null | tr -d '\r' | head -1 | tr -d ' '; }
+# Владелец главного экрана (роль HOME). cmd role get-role-holders есть только с Android 13, на 10–12 владелец берётся из dumpsys role.
+# На Android 9 ролей нет: главный экран тот, к которому система ведёт «Домой» (resolve-activity; окно выбора, пакет android: никого)
+_home_holder() { tv_sh "h=\$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) || h=''; [ -n \"\$h\" ] || h=\$(dumpsys role 2>/dev/null | grep -A1 'name=android.app.role.HOME\$' | sed -n 's/^ *holders=//p'); [ -n \"\$h\" ] || h=\$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tail -n 1 | grep / | cut -d/ -f1); [ \"\$h\" = android ] && h=''; echo \"\$h\"" 2>/dev/null | tr -d '\r' | head -1 | tr -d ' '; }
 
 # Версия приложения на ТВ (versionName), пусто, если его нет
 _pkg_ver() { tv_sh "dumpsys package $1" 2>/dev/null | tr -d '\r' | grep -m1 'versionName=' | sed 's/.*versionName=//'; }
@@ -224,7 +225,7 @@ home_switch() {
         done_pk+=("$p")
     done
     if ! ledger "главный экран: $cand вместо ${prev:-никого}" "cmd package set-home-activity $act" \
-            "${prev:+cmd role add-role-holder --user 0 android.app.role.HOME $prev}"; then
+            "$(_home_back "$prev")"; then
         echo "Запись в журнал не удалась: главный экран не меняю, возвращаю отключённое."
         _home_undo "$prev" "${done_pk[@]}"; return 1
     fi
@@ -241,6 +242,20 @@ home_switch() {
     if [ "$(tv_state)" != device ]; then _home_lost "$prev" "${done_pk[@]}"; return 3; fi
     echo "НЕ ВЫШЛО: ответ «${r:-пусто}», владелец ${holder:-никто}, «Домой» открывает ${top:-неизвестно}. Возвращаю как было."
     _home_undo "$prev" "${done_pk[@]}"; return 1
+}
+
+# Команда, которая вернёт главным экраном пакет $1. Со службой ролей (Android 10 и новее) роль HOME, как раньше;
+# на Android 9 set-home-activity по его экрану «Домой». Пакета нет или экрана нет: пусто
+_home_back() {
+    local prev="${1:-}" act
+    [ -n "$prev" ] || return 0
+    if tv_sh "service check role" 2>/dev/null | grep -q ': found'; then
+        echo "cmd role add-role-holder --user 0 android.app.role.HOME $prev"; return 0
+    fi
+    act="$(tv_sh "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $prev" 2>/dev/null \
+        | tr -d '\r' | awk -v p="$prev/" '{sub(/^[ \t]+/, "")} index($0, p) == 1 {c = $0} END {print c}')"
+    [ -n "$act" ] && echo "cmd package set-home-activity $act"
+    return 0
 }
 
 # Возврат после неудачной смены главного экрана: включить отключённое в обратном порядке, роль прежнему, проверить
@@ -283,7 +298,7 @@ _home_undo() {
         tv_sh "pm enable --user 0 ${pk[i]}" >/dev/null 2>&1 || { echo "  не включился ${pk[i]}"; bad=1; }
     done
     if [ -n "$prev" ]; then
-        tv_sh "cmd role add-role-holder --user 0 android.app.role.HOME $prev" >/dev/null 2>&1 || bad=1
+        tv_sh "$(_home_back "$prev")" >/dev/null 2>&1 || bad=1
         if [ "$(_home_holder)" != "$prev" ]; then echo "  владелец главного экрана не вернулся к $prev"; bad=1; fi
     fi
     if [ "$bad" = 0 ]; then echo "Возвращено как было: главный экран ${prev:-прежний}."; return 0; fi
@@ -299,7 +314,7 @@ _home_lost() {
     echo "СВЯЗЬ С ТВ ПРОПАЛА посреди смены главного экрана. Ничего не утверждаю: состояние ТВ неизвестно."
     echo "После переподключения проверь главный экран и, если «Домой» ведёт не туда, выполни по порядку:"
     for ((i = n - 1; i >= 0; i--)); do echo "  pm enable --user 0 ${pk[i]}"; done
-    [ -n "$prev" ] && echo "  cmd role add-role-holder --user 0 android.app.role.HOME $prev"
+    [ -n "$prev" ] && echo "  $(_home_back "$prev")"
     echo "Эти же команды есть в журнале: restore.sh их выполнит."
 }
 

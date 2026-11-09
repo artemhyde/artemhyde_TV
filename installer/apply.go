@@ -454,13 +454,7 @@ func installedCertOK(tv TV, pkg, want string) error {
 // не меняется), ifNeeded после, только если роль сменилась, а «Домой» всё равно открывает главный экран Google TV;
 // ifTop (главные экраны других ТВ) после, и только тот, к которому ушла кнопка «Домой»
 func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, ifNeeded, ifTop []string) error {
-	out, _ := tv.Shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME "+cand, 30*time.Second)
-	act := ""
-	for _, ln := range strings.Split(out, "\n") {
-		if ln = strings.TrimSpace(ln); strings.HasPrefix(ln, cand+"/") {
-			act = ln
-		}
-	}
+	act := homeActivity(tv, cand)
 	if act == "" {
 		return fmt.Errorf("у %s нет главного экрана: ничего не менял", cand)
 	}
@@ -468,6 +462,7 @@ func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, i
 	if prev == cand {
 		return nil
 	}
+	back := homeBackCmd(tv, prev) // как вернуть прежний: роль (Android 10+) или его экран «Домой» (Android 9)
 	_, _ = tv.Shell("am start -n "+act, 30*time.Second)
 	time.Sleep(homeWait)
 	if top := topPackage(tv); top != cand {
@@ -478,8 +473,8 @@ func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, i
 		for i := len(off) - 1; i >= 0; i-- {
 			_, _ = tv.Shell("pm enable --user 0 "+off[i], 30*time.Second)
 		}
-		if prev != "" {
-			_, _ = tv.Shell("cmd role add-role-holder --user 0 android.app.role.HOME "+prev, 30*time.Second)
+		if back != "" {
+			_, _ = tv.Shell(back, 30*time.Second)
 		}
 	}
 	disable := func(d string) error {
@@ -502,11 +497,7 @@ func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, i
 			return err
 		}
 	}
-	roleUndo := ""
-	if prev != "" {
-		roleUndo = "cmd role add-role-holder --user 0 android.app.role.HOME " + prev
-	}
-	if err := journal(LedgerEntry{What: "главный экран: " + cand + " вместо " + nonEmpty(prev, "никого"), Do: "cmd package set-home-activity " + act, Undo: roleUndo}); err != nil {
+	if err := journal(LedgerEntry{What: "главный экран: " + cand + " вместо " + nonEmpty(prev, "никого"), Do: "cmd package set-home-activity " + act, Undo: back}); err != nil {
 		undo()
 		return err
 	}
@@ -532,6 +523,32 @@ func homeSwitch(tv TV, journal func(LedgerEntry) error, cand string, disables, i
 			}
 		}
 		return false
+	}
+	// Android 9: ролей нет, а главный экран ТВ объявлен с приоритетом выше обычного (у Android TV priority=2), и система
+	// ведёт «Домой» к нему, что бы ни назначили (09.11, виртуальный Android TV 9). Его отключаем, как на Android TV 13,
+	// и назначаем «Дом» снова. Только главные экраны из рецепта (ifTop): экраны других марок не трогаем
+	if !hasRoles(tv) && holder != cand && has(ifTop, holder) {
+		for i := 0; i < 2 && holder != cand && has(ifTop, holder); i++ {
+			if err := disable(holder); err != nil {
+				return err
+			}
+			r, _ = tv.Shell("cmd package set-home-activity "+act, 30*time.Second)
+			time.Sleep(homeWait)
+			if tv.State() != "device" {
+				return errLost
+			}
+			holder = homeHolder(tv)
+		}
+		if holder == cand {
+			_, _ = tv.Shell("input keyevent KEYCODE_HOME", 20*time.Second)
+			time.Sleep(homeWait)
+			if top = topPackage(tv); top == cand {
+				return nil
+			}
+			if tv.State() != "device" {
+				return errLost
+			}
+		}
 	}
 	// Роль наша, но «Домой» перехватывает главный экран Google TV: он и его страховка отключаются вместе, как раньше,
 	// если только «Домой» не ушёл явно к главному экрану другого ТВ из ifTop

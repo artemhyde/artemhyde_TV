@@ -17,7 +17,9 @@ echo '##features'; pm list features
 echo '##libraries'; pm list libraries
 echo '##packages'; pm list packages --show-versioncode
 echo '##disabled'; pm list packages -d
-echo '##home'; h=$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo "$h" || dumpsys role | grep -A1 'name=android.app.role.HOME$' | sed -n 's/^ *holders=//p'
+echo '##home'; ` + homeHolderCmd + `
+echo '##home_activity'; cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tail -n 1
+echo '##roles'; service check role
 echo '##display_service'; service check tcl_tv_display
 echo '##quickpanel'; cmd package query-services --brief -a com.tcl.settings.SHOW_WINDOW
 echo '##tkl'; ls /tclconfig/tvcust/aio_resources/resource/common_overseas/input_key/ 2>/dev/null
@@ -34,6 +36,8 @@ type Passport struct {
 	Packages       map[string]int64  `json:"-"` // пакет → versionCode
 	Disabled       map[string]bool   `json:"-"`
 	Home           string            `json:"home"`
+	HomeActivity   string            `json:"home_activity"` // экран «Домой», к которому ведёт кнопка (Android 9: так и возвращают)
+	Roles          bool              `json:"roles"`         // служба ролей есть (Android 10 и новее)
 	DisplayService bool              `json:"display_service"`
 	QuickPanel     bool              `json:"quick_panel"`
 	TKL            bool              `json:"tkl"`
@@ -101,6 +105,14 @@ func parsePassport(raw string) Passport {
 		case "home":
 			if p.Home == "" {
 				p.Home = t
+			}
+		case "home_activity":
+			if strings.Contains(t, "/") && !strings.Contains(t, " ") && !strings.HasPrefix(t, "android/") {
+				p.HomeActivity = t
+			}
+		case "roles":
+			if strings.HasSuffix(t, ": found") {
+				p.Roles = true
 			}
 		case "display_service":
 			if strings.HasSuffix(t, ": found") {

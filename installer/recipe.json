@@ -212,7 +212,8 @@
       {"package": "com.google.android.tungsten.setupwraith", "why": "страховка Google TV, которая возвращает его главный экран"}
     ],
     "intercept": [
-      {"package": "com.google.android.tvlauncher", "why": "главный экран Android TV"}
+      {"package": "com.google.android.tvlauncher", "why": "главный экран Android TV"},
+      {"package": "com.google.android.leanbacklauncher", "why": "прежний главный экран Android TV (Android 9 и старше)"}
     ],
     "settings": [
       {"what": "заставка Android выключена", "ns": "secure", "key": "screensaver_enabled", "value": "0"},

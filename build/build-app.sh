@@ -40,7 +40,7 @@ compile_dex() { # compile_dex <файл со списком исходников
     "$JAVAC" -nowarn -Xlint:-options -encoding UTF-8 --release 8 -classpath "$(P "$JAR")" \
         -d "$(P "$work/classes")" "@$(P "$1")"
     "$JARTOOL" --create --file "$(P "$work/classes.jar")" -C "$(P "$work/classes")" .
-    "$JAVA" -cp "$(P "$D8JAR")" com.android.tools.r8.D8 --release --min-api 31 --lib "$(P "$JAR")" \
+    "$JAVA" -cp "$(P "$D8JAR")" com.android.tools.r8.D8 --release --min-api 28 --lib "$(P "$JAR")" \
         --output "$(P "$work/dex")" "$(P "$work/classes.jar")"
     [ -f "$work/dex/classes.dex" ] || die "d8 не создал classes.dex"
 }
@@ -68,7 +68,7 @@ open(sys.argv[2], 'w', encoding='utf-8', newline='\n').write(t)
 PYT
         "$AAPT2" compile --dir "$(P "$d/res")" -o "$(P "$d/res.zip")"
         "$AAPT2" link -I "$(P "$JAR")" --manifest "$(P "$d/AndroidManifest.xml")" \
-            --min-sdk-version 31 --target-sdk-version 34 ${ver_args[@]+"${ver_args[@]}"} -o "$(P "$d/base.apk")" "$(P "$d/res.zip")"
+            --min-sdk-version 28 --target-sdk-version 34 ${ver_args[@]+"${ver_args[@]}"} -o "$(P "$d/base.apk")" "$(P "$d/res.zip")"
         inject_dex "$d/base.apk" "$work/dex/classes.dex"
         bash "$GT_BUILD_DIR/sign.sh" "$d/base.apk" "$OUT/tiles/$tname.apk"
         n=$((n + 1))
@@ -125,7 +125,7 @@ fi
 
 # Ресурсы и манифест
 link_args=(-I "$(P "$JAR")" --manifest "$(P "$appdir/AndroidManifest.xml")" --java "$(P "$work/gen")"
-           --min-sdk-version 31 --target-sdk-version 34 ${ver_args[@]+"${ver_args[@]}"})
+           --min-sdk-version 28 --target-sdk-version 34 ${ver_args[@]+"${ver_args[@]}"})
 if [ -d "$work/assets" ]; then link_args+=(-A "$(P "$work/assets")"); fi
 link_args+=(-o "$(P "$work/base.apk")")
 if [ -d "$work/res" ]; then

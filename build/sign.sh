@@ -3,7 +3,7 @@
 # Запуск: bash build/sign.sh <вход.apk> <выход.apk>
 # Вход: собранный apk без подписи (с classes.dex внутри). Ключ и пароль: keys/tv.jks и keys/tv.pass (создаёт build/new-key.sh);
 # общий выпуск подменяет их ключом выпуска через SIGN_KS и SIGN_PASS (build/release.sh).
-# Схемы подписи apksigner выбирает сам по minSdk 31 (v2 и выше); v4 (.idsig) отключена: этот файл не нужен.
+# Схемы подписи apksigner выбирает сам по minSdk 28 (v2 и выше); v4 (.idsig) отключена: этот файл не нужен.
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 [ $# -eq 2 ] || die "Нужно два аргумента: bash build/sign.sh <вход.apk> <выход.apk>"

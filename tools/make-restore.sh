@@ -45,9 +45,9 @@ roles_last() {
         END {
             for (i = 1; i <= NR; i++) {
                 split(line[i], f, "\t")
-                if (f[4] ~ /cmd role add-role-holder/ && last > i) continue
+                if (f[4] ~ /cmd role add-role-holder|^cmd package set-home-activity / && last > i) continue
                 print line[i]
-                if (i == last) for (j = 1; j < i; j++) { split(line[j], g, "\t"); if (g[4] ~ /cmd role add-role-holder/) print line[j] }
+                if (i == last) for (j = 1; j < i; j++) { split(line[j], g, "\t"); if (g[4] ~ /cmd role add-role-holder|^cmd package set-home-activity /) print line[j] }
             }
         }'
 }

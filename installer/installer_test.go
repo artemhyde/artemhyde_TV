@@ -155,9 +155,13 @@ func TestCapsGoogleTV(t *testing.T) {
 
 func TestCapsUnsupported(t *testing.T) {
 	raw := fixtureRaw(t, "google-tv.txt")
-	c := capsOf(parsePassport(edit(raw, "ro.build.version.sdk=34", "ro.build.version.sdk=30", "ro.build.version.release=14", "ro.build.version.release=11")))
-	if c.Profile != profileNone || !strings.Contains(c.Why, "Android 12") {
+	// С 09.11.2026 (выпуск 1.1.0) годится Android 9 и новее: Android 11 подходит, Android 8.1 нет
+	if c := capsOf(parsePassport(edit(raw, "ro.build.version.sdk=34", "ro.build.version.sdk=30", "ro.build.version.release=14", "ro.build.version.release=11"))); c.Profile != profileGeneric {
 		t.Fatalf("Android 11: %s (%s)", c.Profile, c.Why)
+	}
+	c := capsOf(parsePassport(edit(raw, "ro.build.version.sdk=34", "ro.build.version.sdk=27", "ro.build.version.release=14", "ro.build.version.release=8.1.0")))
+	if c.Profile != profileNone || !strings.Contains(c.Why, "Android 9") {
+		t.Fatalf("Android 8.1: %s (%s)", c.Profile, c.Why)
 	}
 	var keep []string
 	for _, ln := range strings.Split(raw, "\n") {
@@ -356,7 +360,7 @@ func TestPlanFileProblems(t *testing.T) {
 }
 
 func TestPlanUnsupportedStops(t *testing.T) {
-	raw := edit(fixtureRaw(t, "google-tv.txt"), "ro.build.version.sdk=34", "ro.build.version.sdk=29")
+	raw := edit(fixtureRaw(t, "google-tv.txt"), "ro.build.version.sdk=34", "ro.build.version.sdk=27")
 	pl := buildPlan(recipe(t), testManifest(t), parsePassport(raw), Choices{}, true)
 	if len(pl.Steps) != 0 || len(pl.Problems) == 0 {
 		t.Fatalf("неподходящий ТВ: шагов %d, помех %d", len(pl.Steps), len(pl.Problems))
@@ -404,6 +408,9 @@ func TestClassifyConnect(t *testing.T) {
 		{"already connected to 1.2.3.4:5555", "device\n", "ok"},
 		{"connected to 1.2.3.4:5555", "unauthorized", "allow"},
 		{"failed to authenticate to 1.2.3.4:37123", "error: device offline", "pair"},
+		// Android 9–11, порт 5555: окно «Разрешить отладку по USB?» ещё не нажали
+		{"failed to authenticate to 1.2.3.4:5555", "unauthorized", "allow"},
+		{"failed to authenticate to 1.2.3.4:5555", "error: device unauthorized.\nThis adb server's $ADB_VENDOR_KEYS is not set", "allow"},
 		{"failed to connect to 1.2.3.4:37123: Connection refused", "error: no devices", "noreply"},
 	}
 	for _, c := range cases {

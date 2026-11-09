@@ -22,7 +22,7 @@ const (
 	profileGeneric = "generic-gtv"
 	profileNone    = "unsupported"
 
-	minSDK = 31 // наши приложения собраны под Android 12 и выше
+	minSDK = 28 // наши приложения собраны под Android 9 и выше (с 09.11.2026, выпуск 1.1.0; до того 12)
 )
 
 type Caps struct {
@@ -42,6 +42,8 @@ type Caps struct {
 	QuickPanel     bool     `json:"quick_panel"`
 	TKL            bool     `json:"tkl"`
 	HomeHolder     string   `json:"home_holder"`
+	HomeActivity   string   `json:"home_activity"`
+	Roles          bool     `json:"roles"`
 	LauncherX      bool     `json:"launcherx"`
 	SetupWraith    bool     `json:"setupwraith"`
 	KeyMapper      bool     `json:"keymapper"`
@@ -90,6 +92,8 @@ func capsOf(p Passport) Caps {
 	c.QuickPanel = p.QuickPanel
 	c.TKL = p.TKL
 	c.HomeHolder = p.Home
+	c.HomeActivity = p.HomeActivity
+	c.Roles = p.Roles
 	c.LauncherX = p.Has("com.google.android.apps.tv.launcherx")
 	c.SetupWraith = p.Has("com.google.android.tungsten.setupwraith")
 	c.KeyMapper = p.Has("io.github.sds100.keymapper")
@@ -101,7 +105,7 @@ func capsOf(p Passport) Caps {
 	c.Model = strings.TrimSpace(model)
 	switch {
 	case c.SDK > 0 && c.SDK < minSDK:
-		c.Profile, c.Why = profileNone, fmt.Sprintf("Android %s: нужен Android 12 и выше, приложения собраны под него", c.Android)
+		c.Profile, c.Why = profileNone, fmt.Sprintf("Android %s: нужен Android 9 и выше, приложения собраны под него", c.Android)
 	case c.TCL && strings.EqualFold(p.Prop("ro.tcl.product_type"), "GTV"):
 		c.Profile = profileTCL
 	case c.Leanback && c.SDK >= minSDK:

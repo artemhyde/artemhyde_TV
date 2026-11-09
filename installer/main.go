@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-const toolVersion = "0.4"
+const toolVersion = "0.5"
 
 func main() {
 	args := os.Args[1:]

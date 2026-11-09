@@ -310,8 +310,11 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 				}
 			}
 			undo := "-"
-			if c.HomeHolder != "" {
+			switch {
+			case c.HomeHolder != "" && (c.Roles || c.SDK >= 29):
 				undo = "cmd role add-role-holder --user 0 android.app.role.HOME " + c.HomeHolder
+			case c.HomeHolder != "" && strings.HasPrefix(c.HomeActivity, c.HomeHolder+"/"):
+				undo = "cmd package set-home-activity " + c.HomeActivity // Android 9: служб ролей нет
 			}
 			add(Step{Group: g, What: "кнопка «Домой» открывает «Дом» (прежний главный экран: " + nonEmpty(c.HomeHolder, "не определён") + ")",
 				Do: "cmd package set-home-activity app.glasstv.home/.HomeActivity", Undo: undo, Kind: "home_role", Package: "app.glasstv.home",

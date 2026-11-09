@@ -10,6 +10,8 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -92,6 +94,7 @@ final class Report {
     // Положить отчёт в «Загрузки». Ответ: имя файла или текст ошибки
     static String save(Context c, String text) {
         String name = "hyde-report-" + new SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(new Date()) + ".txt";
+        if (android.os.Build.VERSION.SDK_INT < 29) return saveFile(c, name, text);
         try {
             ContentValues v = new ContentValues();
             v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
@@ -105,6 +108,24 @@ final class Report {
         } catch (Exception e) {
             return "не сохранился (" + e.getClass().getSimpleName() + ")";
         }
+    }
+
+    // Android 9: «Загрузки» через MediaStore появились только в Android 10. Пишем файлом в общую папку «Загрузки»
+    // (если у «Сторожа» есть право на запись), иначе в папку «Сторожа» на том же диске
+    private static String saveFile(Context c, String name, String text) {
+        File[] dirs = {android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                c.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)};
+        String err = "«Загрузки» недоступны";
+        for (int k = 0; k < dirs.length; k++) {
+            if (dirs[k] == null) continue;
+            try {
+                dirs[k].mkdirs();
+                File f = new File(dirs[k], name);
+                try (OutputStream o = new FileOutputStream(f)) { o.write(text.getBytes(StandardCharsets.UTF_8)); }
+                return k == 0 ? "Загрузки/" + name : f.getAbsolutePath();
+            } catch (Exception e) { err = e.getClass().getSimpleName(); }
+        }
+        return "не сохранился (" + err + ")";
     }
 
     private static boolean has(Context c, String pkg) {

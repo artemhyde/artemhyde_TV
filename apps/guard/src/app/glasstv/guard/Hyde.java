@@ -147,6 +147,8 @@ final class Hyde {
         Map<String, HydeRules.Have> have = have(r);
         long my = myCode();
         String v = HydeRules.verdict(r, my, have);
+        // Android 9–11 не даёт обновлять приложения без нажатий: такой ТВ обновляет установщик на компьютере
+        if (HydeRules.UPDATE.equals(v) && android.os.Build.VERSION.SDK_INT < 31) v = HydeRules.INSTALLER;
         if (HydeRules.FRESH.equals(v)) {
             sp.edit().remove("hyde.need").remove("hyde.needWhy").remove("hyde.skipped").apply();
             clean(new HashSet<String>());
@@ -154,6 +156,7 @@ final class Hyde {
         }
         if (HydeRules.INSTALLER.equals(v)) {
             String why = HydeRules.installerWhy(r, my), ver = r.version == null ? "новый выпуск" : r.version;
+            if (why == null) why = "Android ниже 12 не обновляет приложения без нажатий";
             boolean first = !ver.equals(sp.getString("hyde.need", null));
             sp.edit().putString("hyde.need", ver).putString("hyde.needWhy", why).remove("hyde.chain").remove("hyde.todo")
                     .remove("hyde.skipped").remove("hyde.wait").apply();

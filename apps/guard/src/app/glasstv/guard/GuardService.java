@@ -110,7 +110,8 @@ public class GuardService extends Service {
         IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_ON);
         f.addAction(Intent.ACTION_SCREEN_OFF);
         f.addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
-        registerReceiver(events, f, RECEIVER_NOT_EXPORTED);
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(events, f, RECEIVER_NOT_EXPORTED);
+        else registerReceiver(events, f);
         netCb = new ConnectivityManager.NetworkCallback() {
             @Override public void onAvailable(Network net) {
                 netEventAt = SystemClock.elapsedRealtime();
@@ -148,7 +149,9 @@ public class GuardService extends Service {
         nm.createNotificationChannel(new NotificationChannel("guard", "Сторож", NotificationManager.IMPORTANCE_MIN));
         Notification n = new Notification.Builder(this, "guard").setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setContentTitle("Сторож работает").setOngoing(true).build();
-        startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        // Тип службы передаётся только с Android 10, на Android 9 такого вызова нет
+        if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        else startForeground(1, n);
     }
 
     @Override public IBinder onBind(Intent i) { return null; }
@@ -1087,7 +1090,13 @@ public class GuardService extends Service {
     }
     android.database.ContentObserver adbWatch;
 
-    boolean adbOn() { return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1; }
+    // Какую отладку держать. С Android 12 это «Отладка по Wi-Fi» (adb_wifi_enabled), с ней ТВ подключают по коду.
+    // На Android 9–11 телевизоры подключают по порту 5555, и слушает он его, пока включена «Отладка по USB» (adb_enabled):
+    // беспроводную там «Сторож» не трогает (на Android 11 она бы спрашивала «Разрешить» поверх фильма при смене сети)
+    static final boolean WIFI_ADB = android.os.Build.VERSION.SDK_INT >= 31;
+    static final String ADB_KEY = WIFI_ADB ? "adb_wifi_enabled" : "adb_enabled";
+
+    boolean adbOn() { return Settings.Global.getInt(getContentResolver(), ADB_KEY, 0) == 1; }
 
     String adbMode() {
         String m = p.getString("adbMode", getString(R.string.adb_mode_default));
@@ -1125,7 +1134,7 @@ public class GuardService extends Service {
     private void adbSet(boolean on) {
         try {
             if (!on) selfOffAt = SystemClock.elapsedRealtime();
-            Settings.Global.putInt(getContentResolver(), "adb_wifi_enabled", on ? 1 : 0);
+            Settings.Global.putInt(getContentResolver(), ADB_KEY, on ? 1 : 0);
         } catch (SecurityException e) {
             log("Нет права менять настройки: выдать с ПК WRITE_SECURE_SETTINGS");
         }
@@ -1141,7 +1150,7 @@ public class GuardService extends Service {
         if (ADB_SERVICE.equals(m) && System.currentTimeMillis() >= adbUntil()) { h.post(serviceEnd); return; }
         try {
             if (!adbOn()) {
-                Settings.Global.putInt(getContentResolver(), "adb_wifi_enabled", 1);
+                Settings.Global.putInt(getContentResolver(), ADB_KEY, 1);
                 log("Отладка по сети включена (" + why + ")");
             }
         } catch (SecurityException e) {
@@ -1162,7 +1171,7 @@ public class GuardService extends Service {
                 long onAt = adbOnAt;
                 adbOnAt = 0;
                 if (ADB_OFF.equals(adbMode())) return;
-                if (onAt == 0 || now - onAt < REFUSE_MS) {
+                if (WIFI_ADB && (onAt == 0 || now - onAt < REFUSE_MS)) {   // отказ бывает только у отладки по Wi-Fi
                     if (!wifiUp()) {
                         if (noWifiLogAt == 0 || now - noWifiLogAt > 3_600_000) {
                             noWifiLogAt = now;
@@ -1181,7 +1190,7 @@ public class GuardService extends Service {
                 }
             }
         };
-        getContentResolver().registerContentObserver(Settings.Global.getUriFor("adb_wifi_enabled"), false, adbWatch);
+        getContentResolver().registerContentObserver(Settings.Global.getUriFor(ADB_KEY), false, adbWatch);
         if (ADB_SERVICE.equals(adbMode())) h.post(serviceEnd);   // после перезапуска службы: досчитать обслуживание
     }
 

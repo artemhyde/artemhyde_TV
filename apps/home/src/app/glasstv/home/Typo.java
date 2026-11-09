@@ -1,6 +1,5 @@
 package app.glasstv.home;
 
-import android.graphics.text.LineBreaker;
 import android.text.Layout;
 import android.widget.TextView;
 
@@ -42,7 +41,7 @@ final class Typo {
     }
 
     static void balanced(TextView t) {
-        t.setBreakStrategy(LineBreaker.BREAK_STRATEGY_BALANCED);
+        t.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);
         t.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
     }
 }

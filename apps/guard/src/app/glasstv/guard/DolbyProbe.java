@@ -386,7 +386,9 @@ final class DolbyProbe {
         Context app = c.getApplicationContext();
         Intent i = new Intent(ACTION).setComponent(new ComponentName(PKG, CLS));
         Conn k = new Conn();
-        boolean ok = app.bindService(i, Context.BIND_AUTO_CREATE, DIRECT, k);
+        // Вызов с исполнителем только с Android 10; на старых TCL ответ придёт в главный поток, ждём его не в нём
+        boolean ok = android.os.Build.VERSION.SDK_INT >= 29 ? app.bindService(i, Context.BIND_AUTO_CREATE, DIRECT, k)
+                : app.bindService(i, k, Context.BIND_AUTO_CREATE);
         if (!ok) {
             try { app.unbindService(k); } catch (Exception ignored) { }
             throw new IllegalStateException("bindService=false: в манифесте Guard нужен <queries><package android:name=\"" + PKG + "\"/>, либо службы нет");

@@ -319,7 +319,11 @@ final class Bye {
 
     private boolean usageAllowed() {
         try {
-            int m = g.getSystemService(AppOpsManager.class).unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), g.getPackageName());
+            AppOpsManager ao = g.getSystemService(AppOpsManager.class);
+            // unsafeCheckOpNoThrow только с Android 10; на Android 9 тот же ответ даёт checkOpNoThrow
+            int m = android.os.Build.VERSION.SDK_INT >= 29
+                    ? ao.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), g.getPackageName())
+                    : ao.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), g.getPackageName());
             return m == AppOpsManager.MODE_ALLOWED
                     || (m == AppOpsManager.MODE_DEFAULT && g.checkSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) == PackageManager.PERMISSION_GRANTED);
         } catch (Exception e) {

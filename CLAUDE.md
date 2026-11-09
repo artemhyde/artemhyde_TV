@@ -76,6 +76,7 @@ Python без прав администратора: Windows: embeddable zip с 
 2. адрес:порт и шестизначный код из окна «Подключить устройство с помощью кода»: для первого сопряжения (окно должно оставаться открытым, код живёт недолго)  
 Если человек знает только IP, `bash tools/find-tv.sh <ip>` сам найдёт порт через mDNS; запасной порт 5555 почти никогда не подходит. Не знает и IP: запусти `bash tools/find-tv.sh` без параметров, он покажет ТВ, которые объявили беспроводную отладку (`adb mdns services`). Сканировать подсеть самому можно только с разрешения: это трогает чужие устройства.  
 Сопряжение: ты вводишь `bash tools/find-tv.sh --pair <адрес:порт окна сопряжения> <код>` (это `adb pair`), затем `bash tools/find-tv.sh <адрес:порт главного экрана>` (это `adb connect` и проверка `get-state`, последняя строка `TV=<адрес>`). Коды выхода: 0 готов, 2 нужно разрешить на экране ТВ, 3 не отвечает (проверь адрес и порт главного экрана, включена ли отладка), 4 нужно сопряжение (сделай `--pair`). Если на ТВ появилось окно «Разрешить отладку с этого компьютера», человек нажимает «Разрешить» сам.  
+Телевизор на Android 9, 10 или 11: пункта «Отладка по Wi-Fi» там нет, сопряжения по коду тоже. Попроси включить в «Для разработчиков» пункт «Отладка по USB» (и «Отладка по сети» или «ADB по сети», если такой есть) и назвать IP-адрес ТВ (Настройки, «Сеть и Интернет», сеть). Подключение: `bash tools/find-tv.sh <ip>` без порта (mDNS такой ТВ не объявляет, пойдёт запасной порт 5555). Код 2: на ТВ окно «Разрешить отладку по USB?», человек отмечает «Всегда разрешать с этого компьютера» и жмёт OK, потом повтори. Приставка с разъёмом USB для компьютера подключается и кабелем: «Отладка по USB», «Разрешить» на экране, `adb devices` покажет её сама.  
 Адрес сохрани только в config/settings.local.json (ключ tv.address) и в backup/. Больше нигде.
 
 **Шаг 3. Паспорт ТВ (только чтение)**  
@@ -84,7 +85,7 @@ Python без прав администратора: Windows: embeddable zip с 
 `pm list features | grep -E 'leanback|television'`  
 `pm list libraries`, `service list`  
 `pm list packages | grep -E 'dolby|keymapper|launcherx|setupwraith|tvlauncher'`  
-`cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`)  
+`cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 10–12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`; на Android 9 ролей нет совсем: последняя строка `cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`, пакет до косой черты)  
 `settings get secure screensaver_components`, `settings get secure screensaver_enabled`, `settings get system screen_off_timeout`, `settings get secure enabled_accessibility_services`, `settings get global private_dns_mode`  
 `settings get global window_animation_scale`, `transition_animation_scale`, `animator_duration_scale`  
 `dumpsys device_policy | grep -A8 "Enabled Device Admins"`  
@@ -96,7 +97,7 @@ Python без прав администратора: Windows: embeddable zip с 
 - быстрая панель TCL: `cmd package query-services --brief -a com.tcl.settings.SHOW_WINDOW`
 - таблица кнопок пульта: `ls /tclconfig/tvcust/aio_resources/resource/common_overseas/input_key/`  
 В caps.json запиши отметки: tcl, sdk, abi32 (только 32-бит), display_lib, display_service, dolby, quickpanel, tkl, home_holder, launcherx, setupwraith, keymapper.  
-Профиль: `tcl-gtv` (производитель TCL и GTV), `generic-gtv` (есть leanback и sdk не меньше 31), иначе откажи: «Этот ТВ не подходит» (Fire TV, Tizen, webOS, Android TV 11 и старше). Нужен Android 12 и выше: приложения собраны под minSdk 31.  
+Профиль: `tcl-gtv` (производитель TCL и GTV), `generic-gtv` (есть leanback и sdk не меньше 28), иначе откажи: «Этот ТВ не подходит» (Fire TV, Tizen, webOS, Android TV 8 и старше). Нужен Android 9 и выше: приложения собраны под minSdk 28.  
 Покажи итог парой строк («TCL, Android 14, подсветка и Dolby найдены») и спроси «верно?». Если ТВ 32-битный (armeabi-v7a), предупреди: чужие приложения без сборки под armeabi-v7a не встанут.
 
 **Шаг 4. Снимок «до» и откат**  
@@ -206,7 +207,7 @@ Lampa: её собственные настройки по памятке docs/l
 TorrServe: по памятке docs/torrserve.md. Клиент `ru.yourok.torrserve` только с релизов автора, сверка подписи по data/third-party-sources.json, `inst`. Сервер ставит человек кнопкой в клиенте или запускает на своём устройстве. Проверка с ТВ: `adb shell "printf 'GET /echo HTTP/1.0\r\n\r\n' | nc 127.0.0.1 8090"` (ответ: версия сервера). Адрес в Lampa вписывает человек, или ты по его слову, пока ТВ свободен. Присмотр «Сторожа» по желанию командой из памятки, в журнал с обратной `am broadcast -n app.glasstv.guard/.Cmd --es do svc --es url ""`.
 
 **Шаг 12. Проверка**
-- Главный экран: `cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`)
+- Главный экран: `cmd role get-role-holders --user 0 android.app.role.HOME` (на Android 10–12 этой команды нет: `dumpsys role`, строка `holders=` в блоке `name=android.app.role.HOME`; на Android 9 ролей нет совсем: последняя строка `cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`, пакет до косой черты)
 - «Сторож» жив: `dumpsys activity services app.glasstv.guard`; право на таймер простоя: `dumpsys package app.glasstv.guard | grep "android.permission.DUMP: granted=true"`
 - Key Mapper в `settings get secure enabled_accessibility_services`
 - Записки «Сторожа»: слушает ли порт 8765 (вопрос 11 шага 5), и скажи человеку то, что показала проверка

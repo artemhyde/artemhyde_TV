@@ -42,7 +42,11 @@ final class Ambient implements Data.Listener {
     private float driftA, driftB;
     private long driftMs, driftDone, driftMark;
     private final View dim, top, bottom;
+    // Подложка пробуждения (09.11): тёмная поверх фото и под текстом. Пока ТВ спал, началось новое время суток: прежнее
+    // фото не показываем вовсе, новое проявляется из темноты (раньше при включении мелькала старая картинка)
+    private final View wake;
     final TextView clock, date, temp, place, rates, ref, caption;
+    final GlassClock glass;   // часы «матовое стекло» в «Vision» (09.11); прежние тонкие часы остаются в «Графите»
     private final TextView[] verse = new TextView[2];
     private int vis;   // какой из двух слоёв стиха сейчас виден
     final WeatherIcon icon;
@@ -100,6 +104,10 @@ final class Ambient implements Data.Listener {
         dim.setBackgroundColor(0xFF000000);
         dim.setAlpha(0f);
         root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
+        wake = new FlatView(c);
+        wake.setBackgroundColor(0xFF07070A);
+        wake.setVisibility(View.GONE);
+        root.addView(wake, new FrameLayout.LayoutParams(-1, -1));
         // Частицы как на PS5: над фоном, под текстом и плитками
         particles = new Particles(c);
         root.addView(particles, new FrameLayout.LayoutParams(-1, -1));
@@ -109,6 +117,11 @@ final class Ambient implements Data.Listener {
         clock.setLetterSpacing(-0.02f);
         clock.setTranslationX(-px(4));   // у цифр свой боковой зазор: видимый край на линии 56 dp
         root.addView(clock, Grid.at(clock, dp, Grid.MARGIN, clockBase, false, 0));
+        glass = new GlassClock(c, GlassClock.SIZE_SP * LOCK * dp);   // крупным, на плитках уменьшается: цифры чёткие
+        glass.setVisibility(View.GONE);
+        root.addView(glass, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        glass.addOnLayoutChangeListener(regroup);
+        clock.addOnLayoutChangeListener(regroup);
         date = Fonts.text(c, Fonts.BODY, Fonts.reg18, Fonts.WHITE_72);
         root.addView(date, Grid.at(date, dp, Grid.MARGIN, dateBase, false, 0));
 
@@ -132,6 +145,7 @@ final class Ambient implements Data.Listener {
         rates.setAlpha(0f);
         // Без погоды курс встаёт на строку названия места, а не висит ниже пустого места
         root.addView(rates, Grid.at(rates, dp, Grid.RIGHT, Setup.weatherOn(c) ? 148 : 124, true, Grid.span(5)));
+        for (View v : new View[]{date, tempRow, place, rates}) v.addOnLayoutChangeListener(regroup);
 
         // Стих растёт вверх от общей нижней линии, ссылка на книгу на самой нижней линии экрана
         for (int i = 0; i < 2; i++) {
@@ -216,11 +230,72 @@ final class Ambient implements Data.Listener {
     // 05.11: в «Vision» всё на 16..28 dp выше (место под крупные сферы), подписи места съёмки нет: экран чище
     static final int V_DATE = 58, V_CLOCK = 158, V_TEMP = 202, V_PLACE = 228, V_RATES = 250;
 
+    // Экран блокировки в «Vision» (09.11, как экран блокировки айфона: часы и всё рядом крупнее, по нажатию плавно
+    // уменьшаются вверх на своё место): часы, дата и погода на экране
+    // блокировки крупнее и растут вниз от верха строки даты; по нажатию плавно сжимаются вверх на место,
+    // в простой так же плавно вырастают. Двигаются только масштаб и опора вида, без перекладки: видеоядру это дёшево.
+    // Вечером 09.11: в 1,5 раза выходило слишком крупно, как заставка планшета, и погода тоже; стало 1,25
+    static final float LOCK = 1.25f;
+    static final int V_TOP = 44;   // верх строки даты: от этой линии группа растёт вниз
+    private float groupScale = 1f;
+    private android.animation.ValueAnimator groupAnim;
+    // Сжатие: отклик сразу, но без рывка в начале, и долгий мягкий хвост (09.11 вечером: плавнее;
+    // прежняя кривая шторок iOS 0.32/0.72 за 0,9 с стартовала резче); рост в простой: плавный разгон и торможение
+    static final PathInterpolator SHRINK = new PathInterpolator(0.3f, 0.5f, 0.1f, 1f), GROW = new PathInterpolator(0.45f, 0f, 0.25f, 1f);
+    private final View.OnLayoutChangeListener regroup = (v, l, t, r, b, ol, ot, or, ob) -> applyGroup(groupScale);
+
+    // Масштаб группы g (1 на плитках, LOCK на экране блокировки) вокруг общей точки: середина экрана, верх строки даты.
+    // Стекло часов нарисовано в масштабе LOCK, поэтому его собственный масштаб g / LOCK
+    private void applyGroup(float g) {
+        groupScale = g;
+        float px = root.getWidth() / 2f, py = V_TOP * dp;
+        for (View v : new View[]{date, clock, tempRow, place, rates}) {
+            v.setPivotX(px - v.getLeft());
+            v.setPivotY(py - v.getTop());
+            v.setScaleX(g);
+            v.setScaleY(g);
+        }
+        glass.setPivotX(px - glass.getLeft());
+        glass.setPivotY(py - glass.getTop());
+        glass.setScaleX(g / LOCK);
+        glass.setScaleY(g / LOCK);
+    }
+
+    private void animateGroup(float to, long ms) {
+        if (groupAnim != null) groupAnim.cancel();
+        if (!vision) { applyGroup(1f); return; }
+        groupAnim = android.animation.ValueAnimator.ofFloat(groupScale, to);
+        groupAnim.setDuration(M.t(ms));
+        groupAnim.setInterpolator(to < groupScale ? SHRINK : GROW);
+        groupAnim.addUpdateListener(an -> applyGroup((float) an.getAnimatedValue()));
+        groupAnim.start();
+    }
+
     private void layoutText() {
         boolean v = vision;
         clock.setTextSize(v ? 96 : 64);
         clock.setTranslationX(v ? 0 : -px(4));
         clock.setLayoutParams(v ? Grid.center(clock, dp, V_CLOCK) : Grid.at(clock, dp, Grid.MARGIN, 92, false, 0));
+        // В «Vision» время рисует стекло на той же базовой линии, текст часов остаётся невидимым (по нему строится раскладка)
+        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        float lockBase = V_TOP * dp + LOCK * (V_CLOCK - V_TOP) * dp;   // базовая линия крупных часов на экране блокировки
+        glp.topMargin = Math.round(lockBase - glass.baseFromTop());
+        glass.setLayoutParams(glp);
+        boolean g = v && GlassClock.ON;   // стекло выключено: в «Vision» видны сами часы текстом
+        glass.setVisibility(g ? View.VISIBLE : View.GONE);
+        clock.setVisibility(g ? View.INVISIBLE : View.VISIBLE);
+        // Верхняя подложка экрана блокировки: в «Vision» часы и погода там в полтора раза крупнее и опускаются до трети
+        // экрана, подложка 190 dp кончалась выше строки места, и на светлом фото она пропадала (09.11, живой ТВ).
+        // Тянем её до 420 dp; на плитках подложка и так гаснет
+        GradientDrawable shade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0x4D000000, 0x00000000});
+        if (android.os.Build.VERSION.SDK_INT >= 29)
+            shade.setColors(v ? new int[]{0x73000000, 0x5C000000, 0x00000000} : new int[]{0x66000000, 0x4D000000, 0x00000000},
+                    new float[]{0f, v ? 0.74f : 0.62f, 1f});
+        top.setBackground(shade);
+        top.getLayoutParams().height = px(v ? 420 : 190);
+        top.requestLayout();
+        if (groupAnim != null) groupAnim.cancel();
+        applyGroup(v && !active ? LOCK : 1f);
         date.setLayoutParams(v ? Grid.center(date, dp, V_DATE) : Grid.at(date, dp, Grid.MARGIN, 124, false, 0));
         tempRow.setLayoutParams(v ? Grid.center(temp, dp, V_TEMP) : Grid.at(temp, dp, Grid.RIGHT, 92, true, 0));
         place.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
@@ -278,10 +353,14 @@ final class Ambient implements Data.Listener {
         if (shown == null) showPhoto(first, false);
         else {
             drift(frame[front]);   // вернулись на экран: наплыв продолжается с текущего кадра
-            if (first != null && shownPhoto != null && !first.id.equals(shownPhoto.id)) showPhoto(first, true);   // пока нас не было, началось новое время суток
+            // Пока нас не было, началось новое время суток. Раньше прежнее фото 2,2 с растворялось в новом, и при включении ТВ
+            // было видно «старую картинку»: теперь сразу тёмная подложка, новое фото читается в фоне и проявляется из неё
+            if (first != null && shownPhoto != null && !first.id.equals(shownPhoto.id)) wakeTo(first);
         }
         onData();
-        h.post(tick);
+        // Время в первом же кадре, а не следующим сообщением: иначе при включении на кадр мелькало прежнее
+        h.removeCallbacks(tick);
+        tick.run();
         h.postDelayed(rotate, CHECK_MS);
         if (!vision && !lite) particles.level(active ? 1f : Particles.LOCK, 0);
     }
@@ -303,6 +382,7 @@ final class Ambient implements Data.Listener {
             Date now = new Date();
             String hm = new SimpleDateFormat("H:mm", Locale.forLanguageTag("ru")).format(now);
             clock.setText(hm);
+            if (GlassClock.ON) glass.setTime(hm);
             String d = new SimpleDateFormat("EEEE, d MMMM", Locale.forLanguageTag("ru")).format(now);
             date.setText(Character.toUpperCase(d.charAt(0)) + d.substring(1));
             h.postDelayed(this, 60_000 - System.currentTimeMillis() % 60_000 + 50);
@@ -391,6 +471,7 @@ final class Ambient implements Data.Listener {
             }
         }
         caption.animate().alpha(on ? 0f : 1f).setStartDelay(M.t(on ? 0 : 300)).setDuration(M.t(on ? 300 : 600)).start();
+        animateGroup(on ? 1f : LOCK, on ? 1000 : 1100);
         rates.animate().alpha(on ? 1f : 0f).setStartDelay(M.t(on ? 200 : 0)).setDuration(M.t(400)).setInterpolator(EASE).start();
         if (on) pauseDrift(); else resumeDrift();
     }
@@ -418,6 +499,8 @@ final class Ambient implements Data.Listener {
         caption.setAlpha(1f);
         rates.animate().cancel();
         rates.setAlpha(0f);
+        if (groupAnim != null) groupAnim.cancel();
+        applyGroup(vision ? LOCK : 1f);
         if (!vision && !lite) particles.level(Particles.LOCK, 0);
         resumeDrift();
     }
@@ -438,7 +521,7 @@ final class Ambient implements Data.Listener {
             tintSoft();
         });
         gridAnim.start();
-        for (View t : new View[]{clock, date, tempRow, place, rates})
+        for (View t : new View[]{clock, glass, date, tempRow, place, rates})
             t.animate().alpha(on ? 0f : (t == rates && !active ? 0f : 1f)).setStartDelay(M.t(0)).setDuration(M.t(260)).start();
         // Под сеткой частицы тише, чтобы не спорить со значками
         if (active) {
@@ -520,6 +603,22 @@ final class Ambient implements Data.Listener {
 
     // Смена фото через растворение и медленный наплыв без разворота (эффект Кена Бёрнса)
     private static final java.util.concurrent.ExecutorService DECODE = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    private void wakeTo(Data.Photo ph) {
+        wake.animate().cancel();
+        wake.setAlpha(1f);
+        wake.setVisibility(View.VISIBLE);
+        final Runnable reveal = () -> wake.animate().alpha(0f).setDuration(M.t(700)).setInterpolator(EASE)
+                .withEndAction(() -> wake.setVisibility(View.GONE)).start();
+        DECODE.execute(() -> {
+            Bitmap bm = Data.decode(ph.file, lite ? 2 : 1);
+            Bitmap blurred = bm == null ? null : softOf(bm);
+            h.post(() -> {
+                if (bm != null) applyPhoto(ph, bm, blurred, false);
+                reveal.run();
+            });
+        });
+    }
 
     // Фото читается и размывается в фоне: на главном потоке это дёргало бы анимации
     private void showPhoto(Data.Photo ph, boolean fade) {

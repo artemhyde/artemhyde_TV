@@ -52,7 +52,7 @@ func restoreOrder(entries []LedgerEntry) (undo, manual []LedgerEntry) {
 	}
 	var out, roles []LedgerEntry
 	for i, e := range undo {
-		if strings.Contains(e.Undo, "cmd role add-role-holder") && i < last {
+		if (strings.Contains(e.Undo, "cmd role add-role-holder") || strings.HasPrefix(e.Undo, "cmd package set-home-activity ")) && i < last {
 			roles = append(roles, e)
 			continue
 		}

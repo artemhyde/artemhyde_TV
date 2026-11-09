@@ -46,10 +46,48 @@ func (t *adbTV) State() string {
 	return strings.TrimSpace(out)
 }
 
-// homeHolderCmd: владелец роли «Домой». Команда cmd role get-role-holders есть только с Android 13; на Android 12 она
+// homeHolderCmd: владелец главного экрана. Команда cmd role get-role-holders есть только с Android 13; на Android 12 она
 // отвечает «Unknown command», и владелец берётся из dumpsys role (блок name=android.app.role.HOME, строка holders=).
-// Проверено 07.11 на виртуальном Google TV 12 и на TCL с Android 14
-const homeHolderCmd = `h=$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) && echo "$h" || dumpsys role | grep -A1 'name=android.app.role.HOME$' | sed -n 's/^ *holders=//p'`
+// Проверено 07.11 на виртуальном Google TV 12 и на TCL с Android 14. На Android 9 службы ролей нет совсем (09.11,
+// виртуальный Android TV 9): главный экран тот, к которому система ведёт кнопку «Домой» (resolve-activity). Если он
+// не выбран, система отвечает окном выбора (пакет android): владельца нет
+const homeHolderCmd = `h=$(cmd role get-role-holders --user 0 android.app.role.HOME 2>/dev/null) || h=""; ` +
+	`[ -n "$h" ] || h=$(dumpsys role 2>/dev/null | grep -A1 'name=android.app.role.HOME$' | sed -n 's/^ *holders=//p'); ` +
+	`[ -n "$h" ] || h=$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tail -n 1 | grep / | cut -d/ -f1); ` +
+	`[ "$h" = android ] && h=""; echo "$h"`
+
+// homeActivity: экран «Домой» пакета pkg («пакет/активность») или пусто, если его нет
+func homeActivity(tv TV, pkg string) string {
+	out, _ := tv.Shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME "+pkg, 30*time.Second)
+	act := ""
+	for _, ln := range strings.Split(out, "\n") {
+		if ln = strings.TrimSpace(ln); strings.HasPrefix(ln, pkg+"/") {
+			act = ln
+		}
+	}
+	return act
+}
+
+// hasRoles: есть ли служба ролей (Android 10 и новее). Без неё главный экран меняется только set-home-activity
+func hasRoles(tv TV) bool {
+	out, _ := tv.Shell("service check role", 20*time.Second)
+	return strings.Contains(out, ": found")
+}
+
+// homeBackCmd: команда, которая вернёт главным экраном prev. Со службой ролей cmd role add-role-holder, как в 1.0.x;
+// на Android 9 set-home-activity по его экрану «Домой». Пусто: вернуть нечем
+func homeBackCmd(tv TV, prev string) string {
+	if prev == "" {
+		return ""
+	}
+	if hasRoles(tv) {
+		return "cmd role add-role-holder --user 0 android.app.role.HOME " + prev
+	}
+	if act := homeActivity(tv, prev); act != "" {
+		return "cmd package set-home-activity " + act
+	}
+	return ""
+}
 
 // homeHolder: владелец роли «Домой»
 func homeHolder(tv TV) string {

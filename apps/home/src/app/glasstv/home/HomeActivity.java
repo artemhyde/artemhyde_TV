@@ -947,6 +947,7 @@ public class HomeActivity extends Activity {
         if (state == GRID) { closeGrid(); return; }
         state = ACTIVE;
         amb.setActive(true);
+        shelf.setVisibility(View.VISIBLE);   // страховка: ряд мог остаться спрятанным сеткой (09.11)
         shelf.setAlpha(1f);
         shelf.setTranslationY(0);
         int i = 0;
@@ -1099,9 +1100,15 @@ public class HomeActivity extends Activity {
         restartIdle();
         if (state == IDLE) { toActive(true); return; }
         if (state == GRID) {
+            // «Домой» из приложения, открытого из «Все приложения»: сетку закрыть сразу и целиком, как при выключении
+            // (idleNow). Без gridClosed() ряд оставался невидимым (openGrid прячет его в конце анимации) до перезапуска
+            // «Дома», а слой сетки и двойники фокуса висели в памяти (09.11, 1.0.2)
             amb.setGrid(false);
             shelfFocusable(true);
+            gridLayer.animate().cancel();
             gridLayer.setVisibility(View.GONE);
+            gridClosed();
+            shelf.animate().cancel();
             shelf.setAlpha(1f);
             shelf.setTranslationY(0);
             state = ACTIVE;

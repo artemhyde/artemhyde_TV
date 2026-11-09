@@ -29,7 +29,9 @@ public class Keeper extends Service {
         nm.createNotificationChannel(new NotificationChannel("volna", "Волна", NotificationManager.IMPORTANCE_MIN));
         Notification n = new Notification.Builder(this, "volna").setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle("Волна играет").setOngoing(true).build();
-        startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        // Тип службы передаётся только с Android 10, на Android 9 такого вызова нет
+        if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        else startForeground(1, n);
         return START_NOT_STICKY;
     }
 

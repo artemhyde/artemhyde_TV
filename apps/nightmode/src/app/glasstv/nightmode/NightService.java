@@ -168,7 +168,9 @@ public class NightService extends Service {
 
     void begin(long showBadgeMs) {
         try {
-            startForeground(1, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            // Тип службы передаётся только с Android 10, на Android 9 такого вызова нет
+            if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            else startForeground(1, notification());
         } catch (Exception e) {
             // Без значка в шторке тоже работает, лишь бы не упасть
         }
