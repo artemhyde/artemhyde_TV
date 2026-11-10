@@ -10,6 +10,8 @@
     <!-- Право для команд между своими приложениями HYDE (06.11): только с тем же ключом подписи. Объявлено в каждом из них,
          чтобы порядок установки не мешал -->
     <permission android:name="app.glasstv.permission.HYDE" android:protectionLevel="signature" />
+    <!-- Записку на экране «Дома» показывает сам «Дом» (10.11): его приёмник берёт её только от приложений HYDE -->
+    <uses-permission android:name="app.glasstv.permission.HYDE" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -80,6 +82,15 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Вопрос «Отправлять автору технические отчёты?» (Ask.java): один раз после обновления, поверх главного экрана -->
+        <activity
+            android:name=".Ask"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/GuardAsk" />
 
         <!-- Работает фоном всё время: отладка по сети, Key Mapper, записки с телефона -->
         <!-- Пустой слушатель уведомлений: по нему система отдаёт список медиасессий (идёт ли видео, когда экран гаснет) -->

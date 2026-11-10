@@ -92,7 +92,7 @@ func TestReportFromSession(t *testing.T) {
 	}
 }
 
-// Отправка: один POST с JSON и заголовками; без адреса не уходит ничего; окно мастера без «Отправить» не шлёт
+// Отправка: один POST с JSON и заголовками; без адреса не уходит ничего; send=false (галочка отчётов снята) не шлёт
 func TestReportSendOnlyOnYes(t *testing.T) {
 	var hits atomic.Int32
 	var got Report
@@ -171,7 +171,8 @@ func TestReportMatchesSheet(t *testing.T) {
 	dir := t.TempDir()
 	home := true
 	ss := &Session{Label: "x", TVID: "a1", Model: "TCL", Release: "1.0.1", Modules: map[string]bool{"guard": true}, Home: &home,
-		Started: "2026-11-07 15:00:00", Finished: "2026-11-07 15:05:00", Installed: []string{"guard", "home"}, HomePlanned: true}
+		Started: "2026-11-07 15:00:00", Finished: "2026-11-07 15:05:00", Installed: []string{"guard", "home"}, HomePlanned: true,
+		DeviceID: newDeviceID()}
 	if err := saveSession(dir, ss); err != nil {
 		t.Fatal(err)
 	}
@@ -208,6 +209,7 @@ func TestReportMatchesSheet(t *testing.T) {
 		"verify_ok":     intIn(0, 1000),
 		"verify_total":  intIn(0, 1000),
 		"lang":          strMax(10, false),
+		"device_id":     func(v any) bool { s, _ := v.(string); return reID.MatchString(s) }, // 1.2.0, необязательное
 	}
 	for _, kind := range []string{"apply", "restore"} {
 		r, err := reportFromSession(dir, kind, "claude", "ru_RU.UTF-8", []Check{{OK: true}}, true)

@@ -78,8 +78,13 @@ public class SetupActivity extends Activity {
         ll.topMargin = px(144);
         root.addView(scroll, ll);
         setContentView(root);
-        open(this::main);
+        // Из «Оформления» (виджет «Погода» без города): сразу поиск города, «Назад» и выбор возвращают в «Оформление»
+        fromDesign = "design".equals(getIntent().getStringExtra("back"));
+        if ("city".equals(getIntent().getStringExtra("page"))) open(this::cityPage);
+        else open(this::main);
     }
+
+    boolean fromDesign;
 
     int px(float v) { return Math.round(v * dp); }
 
@@ -167,20 +172,27 @@ public class SetupActivity extends Activity {
 
     void main() {
         page("Настройки «Дома»", "Меняются здесь же, без компьютера и пересборки. «Назад»: выйти");
+        // 10.11: обои, часы, виджеты, ряд и папки, стиль: на самом экране, с живым просмотром
+        row("Оформление", "обои, часы, виджеты, ряд и папки", () -> {
+            try {
+                startActivity(new Intent(this, HomeActivity.class).putExtra("design", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                finish();
+            } catch (Exception ignored) { }
+        });
         row("Город для погоды", Setup.weatherOn(this) ? (Setup.city(this).isEmpty() ? "по координатам" : Setup.city(this)) : "не показывать",
                 () -> open(this::cityPage));
-        row("Курсы валют", Setup.ratesOn(this) ? "Нацбанк Беларуси" : "не показывать", () -> open(() -> choice(
-                "Курсы валют", "Доллар, евро и сто российских рублей к белорусскому рублю, раз в несколько часов",
-                new String[]{"Нацбанк Беларуси", "Не показывать"}, new String[]{"nbrb", "none"}, Setup.rates(this),
+        row("Курсы валют", ratesTitle(), () -> open(() -> choice(
+                "Курсы валют", "Сколько своих денег за доллар, евро и ещё одну валюту, раз в несколько часов. «По стране города»: банк страны из «Город для погоды»",
+                new String[]{"По стране города", "Беларусь: Нацбанк", "Россия: Банк России", "Украина: Нацбанк", "Казахстан: Нацбанк",
+                        "Евро: Европейский ЦБ", "Криптовалюта: биткоин, эфир, солана", "Не показывать"},
+                new String[]{Rates.AUTO, Rates.NBRB, Rates.CBR, Rates.NBU, Rates.NBK, Rates.ECB, Rates.CRYPTO, Rates.NONE}, Setup.rates(this),
                 v -> Setup.put(this, "rates", v))));
-        row("Стих на экране блокировки", Setup.versesOn(this) ? "Библия" : "не показывать", () -> open(() -> choice(
-                "Стих на экране блокировки", "Стих меняется утром, днём и вечером вместе с фото",
-                new String[]{"Библия (Синодальный перевод)", "Не показывать"}, new String[]{"bible", "off"}, Setup.verses(this),
-                v -> Setup.put(this, "verses", v))));
-        row("Стиль главного экрана", Style.title(Style.get(this)), () -> open(() -> choice(
-                "Стиль главного экрана", "«Графит»: ряд плиток. «Vision»: сферы по центру",
-                new String[]{"Графит", "Vision"}, new String[]{Style.GRAPHITE, Style.V1}, Style.get(this),
-                v -> Style.set(this, v))));
+        row("Цитата на экране блокировки", Setup.versesTitle(this), () -> open(() -> choice(
+                "Цитата на экране блокировки", "Меняется утром, днём и вечером вместе с фото",
+                new String[]{"Цитаты о жизни и поддержке", "Библия (Синодальный перевод)", "Не показывать"}, new String[]{"quotes", "bible", "off"},
+                Setup.verses(this), v -> Setup.put(this, "verses", v))));
+        // 10.11: человек убрал плитки и не нашёл, как вернуть (пункт был последним в списке)
+        row("Вернуть ряд как был", "убранные плитки снова на главном экране", () -> open(this::resetPage));
         row("Цвет стекла", ThemeChoice.title(ThemeChoice.get(this)), () -> open(() -> choice(
                 "Цвет стекла", "Тёмное: дымчатое стекло, как в кинозале. Светлое: матовое стекло. После выбора «Дом» перезапустится",
                 new String[]{"Тёмное", "Светлое"}, new String[]{ThemeChoice.GRAPHITE, ThemeChoice.VOLUME}, ThemeChoice.get(this),
@@ -199,7 +211,6 @@ public class SetupActivity extends Activity {
                 Setup.lite(this) ? "on" : "off", v -> Setup.put(this, "lite", v))));
         row("Какие приложения открывают плитки", "", () -> open(this::tilesPage));
         row("Перенос настроек", "", () -> open(this::transferPage));
-        row("Вернуть ряд главного экрана как было", "", () -> open(this::resetPage));
         focusFirst();
     }
 
@@ -296,8 +307,13 @@ public class SetupActivity extends Activity {
 
     void cityPage() {
         boolean on = Setup.weatherOn(this);
-        page("Город для погоды", on ? "Сейчас: " + Setup.city(this) + ". Погода берётся у Open-Meteo по координатам города"
-                : "Сейчас погоды на экране нет");
+        String note = on ? "Сейчас: " + Setup.city(this) + ". Погода берётся у Open-Meteo по координатам города" : "Сейчас погоды на экране нет";
+        // Последний сбой словами: по нему видно, сеть это, время на ТВ или сервер (10.11, «связи нет» у первого пользователя)
+        Data d = Data.get(this);
+        if (on && d.weatherFailAt() > d.weatherAt() && !d.weatherDetail().isEmpty())
+            note += ". Последняя попытка в " + new java.text.SimpleDateFormat("H:mm", java.util.Locale.forLanguageTag("ru")).format(new java.util.Date(d.weatherFailAt()))
+                    + ": " + d.weatherDetail();
+        page("Город для погоды", note);
         row("Найти город", "", () -> open(this::searchPage));
         if (on) row("Не показывать погоду", "", () -> { Setup.noPlace(this); goBack(); });
         focusFirst();
@@ -412,7 +428,7 @@ public class SetupActivity extends Activity {
                     JSONObject o = a.getJSONObject(i);
                     String where = TextUtils.join(", ", nonEmpty(o.optString("admin1"), o.optString("country")));
                     found.add(new String[]{o.getString("name"), where,
-                            String.valueOf(o.getDouble("latitude")), String.valueOf(o.getDouble("longitude"))});
+                            String.valueOf(o.getDouble("latitude")), String.valueOf(o.getDouble("longitude")), o.optString("country_code", "")});
                 }
             } catch (Exception e) {
                 err = "Open-Meteo не ответил. Проверьте интернет и попробуйте ещё раз";
@@ -431,8 +447,8 @@ public class SetupActivity extends Activity {
         page("Город: " + q, "Выберите нужный, у одинаковых названий разные области");
         for (String[] f : found) {
             row(f[0], f[1], () -> {
-                Setup.setPlace(this, f[0], Double.parseDouble(f[2]), Double.parseDouble(f[3]));
-                toMain();
+                Setup.setPlace(this, f[0], Double.parseDouble(f[2]), Double.parseDouble(f[3]), f[4]);
+                if (fromDesign) finish(); else toMain();
             });
         }
         focusFirst();
@@ -572,10 +588,19 @@ public class SetupActivity extends Activity {
         list.post(f::requestFocus);
     }
 
+    // Подпись строки курсов: выбранный банк, у «по стране» ещё и какой он сейчас
+    String ratesTitle() {
+        String r = Setup.rates(this);
+        if (!Setup.ratesOn(this)) return Rates.title(Rates.NONE);
+        if (!Rates.AUTO.equals(r)) return Rates.title(r);
+        String cc = Setup.country(this);
+        return cc.isEmpty() ? "по стране города" : "по стране города: " + Rates.title(Setup.ratesSource(this));
+    }
+
     // ===== Ряд по умолчанию =====
 
     void resetPage() {
-        page("Вернуть ряд как было?", "Плитки главного экрана встанут в исходном порядке. Скрытые приложения останутся скрытыми");
+        page("Вернуть ряд как был?", "Плитки главного экрана встанут в исходном порядке, убранные вернутся. Скрытые приложения останутся скрытыми");
         row("Нет, оставить", "", this::goBack);
         row("Да, вернуть", "", () -> {
             getSharedPreferences(HomeActivity.DOCK_PREFS, MODE_PRIVATE).edit().remove(HomeActivity.DOCK_KEY).apply();

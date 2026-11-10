@@ -298,7 +298,10 @@ func (s *uiServer) inspect(r *http.Request) (any, error) {
 	s.passports[q.Serial] = p
 	delete(s.held, q.Serial)
 	s.mu.Unlock()
-	return map[string]any{"caps": capsOf(p), "text": capsText(capsOf(p)), "installs": installsOf(s.adbTVFor(q.Serial))}, nil
+	tv := s.adbTVFor(q.Serial)
+	// consent: прошлый выбор этого ТВ (обновления, отчёты) для переключателей в начале мастера; нет его: null
+	return map[string]any{"caps": capsOf(p), "text": capsText(capsOf(p)), "installs": installsOf(tv),
+		"consent": lastConsentOf(defaultBackupRoot(), tvIDOf(tv))}, nil
 }
 
 func (s *uiServer) plan(r *http.Request) (any, error) {
@@ -335,7 +338,11 @@ func (s *uiServer) plan(r *http.Request) (any, error) {
 	if q.Modules == nil {
 		q.Modules = map[string]bool{}
 	}
-	pl := buildPlan(s.rec, m, p, Choices{Modules: q.Modules, Home: q.Home}, false)
+	ch := Choices{Modules: q.Modules, Home: q.Home}
+	if id := tvIDOf(s.adbTVFor(q.Serial)); id != "" && s.getA() != nil { // снова включённое, что установщик отключал раньше
+		ch.Redisable = disabledByInstaller(sessionsOf(defaultBackupRoot(), id, true))
+	}
+	pl := buildPlan(s.rec, m, p, ch, false)
 	if a := s.getA(); a != nil {
 		s.mu.Lock()
 		cache := s.held[q.Serial]
@@ -397,9 +404,18 @@ func (s *uiServer) apply(r *http.Request) (any, error) {
 		Home          *bool           `json:"home"`
 		AllowDownload bool            `json:"allow_download"`
 		TVFree        bool            `json:"tv_free"`
+		Updates       *bool           `json:"updates"` // переключатели в начале мастера (1.2.0); нет поля: включено
+		Reports       *bool           `json:"reports"`
 	}
 	if err := readBody(r, &q); err != nil || q.Serial == "" {
 		return nil, fmt.Errorf("не выбран ТВ")
+	}
+	consent := defaultConsent()
+	if q.Updates != nil {
+		consent.Updates = *q.Updates
+	}
+	if q.Reports != nil {
+		consent.Reports = *q.Reports
 	}
 	m, err := loadManifest(s.relDir)
 	if err != nil {
@@ -409,7 +425,7 @@ func (s *uiServer) apply(r *http.Request) (any, error) {
 		q.Modules = map[string]bool{}
 	}
 	tv := s.adbTVFor(q.Serial)
-	o := ApplyOpts{AllowDownload: q.AllowDownload, TVFree: q.TVFree, BackupRoot: backupRoot("")}
+	o := ApplyOpts{AllowDownload: q.AllowDownload, TVFree: q.TVFree, BackupRoot: backupRoot(""), Consent: &consent}
 	err = s.startJob("установка", func(emit func(Event)) any {
 		o.Emit = emit
 		return runApply(tv, tv.a, s.rec, m, Choices{Modules: q.Modules, Home: q.Home}, o)
@@ -503,7 +519,8 @@ func (s *uiServer) restore(r *http.Request) (any, error) {
 	return map[string]bool{"started": err == nil}, err
 }
 
-// reportPreview: после установки или возврата собрать отчёт и показать человеку, что уйдёт; ничего не отправляет
+// reportPreview: после установки или возврата собрать отчёт и показать человеку, что в нём; ничего не отправляет.
+// С 1.2.0 окно мастера при включённой галочке отчётов сразу за этим зовёт reportSend
 func (s *uiServer) reportPreview(r *http.Request) (any, error) {
 	if !reportEnabled() {
 		return map[string]any{"enabled": false}, nil
@@ -546,7 +563,7 @@ func (s *uiServer) reportPreview(r *http.Request) (any, error) {
 	return map[string]any{"enabled": true, "id": rep.ReportID, "fields": rep.Fields()}, nil
 }
 
-// reportSend: ответ человека на «Поделиться результатом с автором?»: send=true отправляет показанный отчёт
+// reportSend: отправить собранный отчёт (send=true); окно мастера зовёт его само, если галочка отчётов включена
 func (s *uiServer) reportSend(r *http.Request) (any, error) {
 	var q struct {
 		Send bool `json:"send"`

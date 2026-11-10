@@ -9,8 +9,8 @@
 #   theme          "graphite" или "volume"          > Config.THEME     (по умолчанию graphite; volume принимается, только если светлая тема есть в коде, см. THEMES_IMPLEMENTED ниже)
 #   city.name      название города для подписи      > Config.CITY      (пусто: погода без названия города)
 #   city.lat/lon   координаты города                > Config.LAT, Config.LON, Config.HAS_LOCATION (false, если город не задан и координаты нулевые: погоду не запрашивать)
-#   rates          "none" или "nbrb"                > Config.RATES     (курсы Нацбанка Беларуси; по умолчанию none)
-#   verses         "bible", "custom" или "off"      > Config.VERSES    (custom: берётся config/verses.local.json в формате apps/home/res/raw/verses.json: ref, text, slot = morning, day, evening)
+#   rates          "none", "auto", банк или crypto  > Config.RATES     (курсы своей страны: auto по стране города, nbrb, cbr, nbu, nbk, ecb; crypto: BTC, ETH, SOL в долларах; по умолчанию none)
+#   verses         "quotes", "bible", "custom", "off" > Config.VERSES    (по умолчанию quotes, цитаты о жизни; custom: берётся config/verses.local.json в формате apps/home/res/raw/verses.json: ref, text, slot = morning, day, evening)
 #   profile1_name  имя первого вкуса в «Волне»      > Config.PROFILE1  (по умолчанию «Профиль 1»)
 #   profile2_name  имя второго вкуса в «Волне»      > Config.PROFILE2  (по умолчанию «Профиль 2»)
 #   repo_url       ссылка на репозиторий (по желанию) > Config.USER_AGENT = "GlassTV/1.0 (+ссылка)" для запросов к Википедии и другим сервисам
@@ -83,11 +83,11 @@ if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
     fail('координаты вне допустимых пределов: lat %s, lon %s' % (lat, lon))
 has_loc = bool(name) or lat != 0.0 or lon != 0.0
 rates = s.get('rates') or 'none'
-if rates not in ('none', 'nbrb'):
-    fail('rates должен быть none или nbrb, а там "%s"' % rates)
-verses = s.get('verses') or 'off'
-if verses not in ('bible', 'custom', 'off'):
-    fail('verses должен быть bible, custom или off, а там "%s"' % verses)
+if rates not in ('none', 'auto', 'nbrb', 'cbr', 'nbu', 'nbk', 'ecb', 'crypto'):
+    fail('rates должен быть none, auto, nbrb, cbr, nbu, nbk, ecb или crypto, а там "%s"' % rates)
+verses = s.get('verses') or 'quotes'
+if verses not in ('quotes', 'bible', 'custom', 'off'):
+    fail('verses должен быть quotes, bible, custom или off, а там "%s"' % verses)
 p1 = str(s.get('profile1_name') or '').strip() or 'Профиль 1'
 p2 = str(s.get('profile2_name') or '').strip() or 'Профиль 2'
 repo = str(s.get('repo_url') or '').strip()

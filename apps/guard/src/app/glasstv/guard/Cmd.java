@@ -44,9 +44,47 @@ import android.util.Log;
 // установки (те же условия, что по расписанию; итог: logcat -s guard); url проверочный выпуск, только с ПК (пустой: убрать)
 // adb shell am broadcast -n app.glasstv.guard/.Cmd --es do hyde [--ez on true|false] [--es a check]
 // adb reverse tcp:8000 tcp:8000 && adb shell am broadcast -n app.glasstv.guard/.Cmd --es do hyde --es url http://127.0.0.1:8000/
+// Отчёт автору раз в сутки (Ping.java): без a состояние; on выбор человека (галочка мастера «Отправлять автору технические
+// отчёты», её передаёт установщик), id номер устройства от установщика ([a-z0-9]{16,40}); now отправить сейчас (итог в ответе);
+// url проверочный приёмник, только с ПК (пустой: убрать)
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do ping [--ez on true|false] [--es id <номер>] [--es a now]
+// Отладка для обновлений на Android 9–11 (AdbSelf.java): без a состояние; pair: «Сторож» входит в adb своего ТВ, на экране
+// окно «Разрешить отладку» для его ключа (мастер установки просит его здесь, ответ сразу, итог смотреть тем же do adbself);
+// probe: войти без окна; forget: удалить ключ «Сторожа»; addr: другой адрес adbd, только в отладочной сборке (виртуальный ТВ)
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do adbself [--es a pair|probe|forget] [--es addr 10.0.2.2:5575]
+// Кнопки пульта (Health.java, 10.11): проверить службу Key Mapper и при надобности перезапустить, ответ после перезапуска
+// (до 10 с): «работает», «перезапущен», «не поднялся», «не установлен» или почему нет. Установщик зовёт её после выдачи
+// Key Mapper автозапуска: служба уже в списке спецвозможностей, и сама система её заново не поднимет
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do keys
+// Пакеты, которые отключил установщик (Health.java): list полный текущий список через запятую, только с ПК (пустой:
+// списка нет); без list состояние. После обновления прошивки «Сторож» смотрит, не включила ли она их обратно
+// adb shell am broadcast -n app.glasstv.guard/.Cmd --es do disabled [--es list a.b.c,d.e.f]
 
 public class Cmd extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
+        if ("keys".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null || g.health == null) {
+                GuardService.start(c);
+                setResultData("служба «Сторожа» запускается: кнопки проверит сама через минуту");
+                return;
+            }
+            final PendingResult pr = goAsync();
+            g.health.keys(HealthRules.MANUAL, r -> {
+                Log.i("guard", "keys: " + r);
+                pr.setResultData(r);
+                pr.finish();
+            });
+            return;
+        }
+        if ("disabled".equals(i.getStringExtra("do"))) {
+            String out = !i.hasExtra("list") ? Health.listStatus(c)
+                    : this instanceof AppCmd ? "список задаёт только установщик с ПК"
+                    : Health.setList(c, i.getStringExtra("list"));
+            Log.i("guard", "disabled: " + out);
+            setResultData(out);
+            return;
+        }
         if ("svc".equals(i.getStringExtra("do"))) {
             final android.content.SharedPreferences sp = c.getApplicationContext().getSharedPreferences("guard", Context.MODE_PRIVATE);
             final String a = i.getStringExtra("a");
@@ -114,6 +152,64 @@ public class Cmd extends BroadcastReceiver {
                 pr.setResultData(out);
                 pr.finish();
             });
+            return;
+        }
+        if ("adbself".equals(i.getStringExtra("do"))) {
+            GuardService g = GuardService.running;
+            if (g == null || g.upd == null) GuardService.start(c);
+            final Hyde hy = g == null || g.upd == null ? null : g.upd.hyde;
+            final AdbSelf adb = hy != null ? hy.adb : new AdbSelf(c.getApplicationContext());
+            final String a = i.getStringExtra("a");
+            String out;
+            if (!AdbSelf.needed()) out = adb.status();
+            else if (i.hasExtra("addr")) out = adb.setAddr(i.getStringExtra("addr"));
+            else if ("pubkey".equals(a)) out = adb.publicKeyLine();
+            else if ("pair".equals(a) || "probe".equals(a) || "forget".equals(a)) {
+                // вход идёт до двух минут (ждёт человека): отдельной ниткой, ответ сразу
+                new Thread(() -> {
+                    String r = "forget".equals(a) ? adb.forget() : "pair".equals(a) ? adb.pair(AdbSelf.PAIR_WAIT) : adb.probe();
+                    Log.i("guard", "adbself " + a + ": " + r + "; " + adb.status());
+                    if ("pair".equals(a) && hy != null) hy.paired(r, "мастер установки");
+                }, "guard-adbself").start();
+                out = "pair".equals(a) ? "жду «Разрешить» на экране ТВ (до 2 минут), итог: --es do adbself" : "запущено, итог: --es do adbself";
+            } else out = adb.status();
+            Log.i("guard", "adbself: " + out);
+            setResultData(out);
+            return;
+        }
+        if ("ping".equals(i.getStringExtra("do"))) {
+            final GuardService g = GuardService.running;
+            if (g == null || g.upd == null) {
+                // Службы ещё нет (сразу после установки): выбор запомнить, служба прочтёт его при запуске
+                android.content.SharedPreferences sp = c.getApplicationContext().getSharedPreferences("guard", Context.MODE_PRIVATE);
+                android.content.SharedPreferences.Editor e = sp.edit();
+                if (i.hasExtra("on")) e.putBoolean(Ping.P_ON, i.getBooleanExtra("on", false)).putBoolean(Ping.P_ASKED, true);
+                if (PingRules.idOk(i.getStringExtra("id"))) e.putString(Ping.P_ID, i.getStringExtra("id"));
+                e.commit();
+                GuardService.start(c);
+                String out = "служба «Сторожа» запускается; отчёты автору " + (Ping.on(c) ? "включены" : "выключены")
+                        + (Hyde.releaseBuild(c) ? "; номер " + Ping.deviceId(c) : "");
+                Log.i("guard", "ping: " + out);
+                setResultData(out);
+                return;
+            }
+            if (i.hasExtra("url")) {
+                String out = this instanceof AppCmd ? "проверочный приёмник задаётся только командой с ПК" : g.upd.ping.setTestUrl(i.getStringExtra("url"));
+                Log.i("guard", "ping: " + out);
+                setResultData(out);
+                return;
+            }
+            if (i.hasExtra("on")) g.upd.ping.set(i.getBooleanExtra("on", false), i.getStringExtra("id"), "команда");
+            else if (PingRules.idOk(i.getStringExtra("id"))) c.getApplicationContext().getSharedPreferences("guard", Context.MODE_PRIVATE)
+                    .edit().putString(Ping.P_ID, i.getStringExtra("id")).apply();
+            final boolean now = "now".equals(i.getStringExtra("a"));
+            final PendingResult pr = goAsync();
+            new Thread(() -> {
+                String out = now ? "отправка: " + g.upd.ping.send() + "; " + g.upd.ping.status() : g.upd.ping.status();
+                Log.i("guard", "ping: " + out);
+                pr.setResultData(out);
+                pr.finish();
+            }, "guard-ping-cmd").start();
             return;
         }
         if ("hyde".equals(i.getStringExtra("do"))) {

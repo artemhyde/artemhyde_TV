@@ -23,11 +23,17 @@ final class Setup {
 
     static double lon(Context c) { return Double.longBitsToDouble(sp(c).getLong("lon", Double.doubleToLongBits(Config.LON))); }
 
-    static void setPlace(Context c, String city, double lat, double lon) {
-        sp(c).edit().putBoolean("hasPlace", true).putString("city", city)
+    // cc: код страны из поиска города («BY»), по нему курсы «по стране города»; пусто, если поиск его не дал
+    static void setPlace(Context c, String city, double lat, double lon, String cc) {
+        sp(c).edit().putBoolean("hasPlace", true).putString("city", city).putString("cc", cc == null ? "" : cc)
                 .putLong("lat", Double.doubleToLongBits(lat)).putLong("lon", Double.doubleToLongBits(lon)).apply();
         bump(c);
     }
+
+    // Страна города для курсов. У города, выбранного до 1.1.1, её нет: Data один раз узнаёт её поиском по названию
+    static String country(Context c) { return sp(c).getString("cc", ""); }
+
+    static void setCountry(Context c, String cc) { sp(c).edit().putString("cc", cc).apply(); }
 
     static void noPlace(Context c) {
         sp(c).edit().putBoolean("hasPlace", false).apply();
@@ -36,15 +42,27 @@ final class Setup {
 
     // ===== Курсы и стих =====
 
-    // none: строки курсов нет; nbrb: Нацбанк Беларуси (доллар, евро, сто российских рублей к белорусскому)
+    // none: строки курсов нет; auto: по стране города; nbrb, cbr, nbu, nbk, ecb: банк выбран вручную (Rates, с 1.1.1;
+    // до того был только nbrb, Нацбанк Беларуси)
     static String rates(Context c) { return sp(c).getString("rates", Config.RATES); }
 
-    static boolean ratesOn(Context c) { return "nbrb".equals(rates(c)); }
+    static boolean ratesOn(Context c) { String r = rates(c); return r != null && !r.isEmpty() && !Rates.NONE.equals(r); }
 
-    // bible: подборка Синодального перевода из приложения; off: без стиха
+    static String ratesSource(Context c) { return Rates.source(rates(c), country(c)); }
+
+    // bible: подборка Синодального перевода из приложения; quotes (10.11): цитаты о жизни и поддержке; off: без стиха.
+    // custom: свои стихи, их кладёт сборка вместо подборки Библии
     static String verses(Context c) { return sp(c).getString("verses", Config.VERSES); }
 
     static boolean versesOn(Context c) { return !"off".equals(verses(c)); }
+
+    static boolean quotes(Context c) { return "quotes".equals(verses(c)); }
+
+    // Подпись выбора словами
+    static String versesTitle(Context c) {
+        String v = verses(c);
+        return "off".equals(v) ? "не показывать" : "quotes".equals(v) ? "цитаты" : "custom".equals(v) ? "свои стихи" : "Библия";
+    }
 
     // Облегчённый режим для слабых ТВ (план Codex, блок 6): без частиц и наплыва фото, фото вдвое меньше по сторонам. on или off
     static boolean lite(Context c) { return "on".equals(sp(c).getString("lite", "off")); }

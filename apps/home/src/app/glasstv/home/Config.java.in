@@ -20,7 +20,7 @@ public final class Config {
     public static final double LON = @LON@;
     /** Есть ли город: false значит погоду не запрашивать и строку погоды не показывать. */
     public static final boolean HAS_LOCATION = @HAS_LOCATION@;
-    /** Курсы валют: none (строки курсов нет) или nbrb (Нацбанк Беларуси). */
+    /** Курсы валют: none (строки курсов нет), auto (банк страны города) или банк: nbrb, cbr, nbu, nbk, ecb (Rates). */
     public static final String RATES = "@RATES@";
     /** Стих на главном экране: bible (подборка из приложения), custom (свой файл, его кладёт сборка) или off (стиха нет). */
     public static final String VERSES = "@VERSES@";

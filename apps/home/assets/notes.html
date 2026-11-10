@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Записка">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0b10">
+<link rel="apple-touch-icon" href="__BASE__/icon.png">
+<link rel="icon" href="__BASE__/icon.png">
+<link rel="manifest" href="__BASE__/manifest.webmanifest">
+<title>Записка на ТВ</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;background:radial-gradient(120% 70% at 50% 0%,#2a2f45,#0b0b10 70%);color:#fff;
+font:17px/1.45 -apple-system,system-ui,Roboto,sans-serif;padding:max(18px,env(safe-area-inset-top)) 16px 28px}
+main{max-width:520px;margin:0 auto}
+h1{font-size:28px;margin:6px 0 2px;letter-spacing:-.02em}
+.now{margin:0 0 16px;color:rgba(255,255,255,.62);font-size:15px;min-height:1.4em;overflow-wrap:anywhere}
+.seg{display:flex;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:4px;margin-bottom:14px}
+.seg button{flex:1;border:0;border-radius:10px;padding:10px;background:none;color:rgba(255,255,255,.75);font:600 16px system-ui,sans-serif}
+.seg button.on{background:#fff;color:#111}
+textarea{width:100%;min-height:150px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);
+color:#fff;font:20px/1.4 system-ui,sans-serif;padding:14px;resize:vertical;outline:none}
+textarea:focus{border-color:rgba(255,255,255,.4)}
+.count{text-align:right;font-size:13px;color:rgba(255,255,255,.45);margin-top:4px}
+canvas{width:100%;aspect-ratio:16/9;border-radius:16px;border:1px solid rgba(255,255,255,.16);touch-action:none;display:block;background:#14161d}
+.tools{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.sw{width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,255,255,.25);cursor:pointer}
+.sw.on{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.25)}
+.size{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#fff;border-radius:12px;padding:7px 12px;font:15px system-ui,sans-serif}
+.size.on{background:rgba(255,255,255,.22)}
+.grow{flex:1}
+.btn{display:block;width:100%;margin-top:16px;padding:17px;border:0;border-radius:16px;background:#fff;color:#111;font:600 18px system-ui,sans-serif}
+.btn:active{transform:scale(.98)}
+.ghost{display:block;width:100%;margin-top:10px;padding:13px;border:1px solid rgba(255,255,255,.18);border-radius:16px;background:none;color:rgba(255,255,255,.85);font:16px system-ui,sans-serif}
+#s{margin-top:14px;min-height:1.4em;color:#5ed3b4;text-align:center}
+.tip{margin-top:22px;font-size:14px;color:rgba(255,255,255,.5);text-align:center}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<h1>Записка на ТВ</h1>
+<p class="now" id="now"></p>
+<div class="seg"><button id="tT" class="on">Текст</button><button id="tD">Рисунок</button></div>
+<section id="pT">
+<textarea id="tx" maxlength="300" placeholder="Например: ужин в холодильнике"></textarea>
+<div class="count" id="cnt">0 из 300</div>
+</section>
+<section id="pD" hidden>
+<canvas id="cv" width="1280" height="720"></canvas>
+<div class="tools">
+<span class="sw on" data-c="#ffffff" style="background:#ffffff"></span>
+<span class="sw" data-c="#ffd54a" style="background:#ffd54a"></span>
+<span class="sw" data-c="#ff6b6b" style="background:#ff6b6b"></span>
+<span class="sw" data-c="#5ec8ff" style="background:#5ec8ff"></span>
+<span class="sw" data-c="#5ed3b4" style="background:#5ed3b4"></span>
+</div>
+<div class="tools">
+<button class="size on" data-w="10">Тонко</button>
+<button class="size" data-w="26">Толсто</button>
+<span class="grow"></span>
+<button class="size" id="clr">Стереть</button>
+</div>
+</section>
+<button class="btn" id="send">Показать на ТВ</button>
+<button class="ghost" id="off">Убрать записку с экрана ТВ</button>
+<div id="s"></div>
+<p class="tip" id="tip"></p>
+</main>
+<script>
+var B='__BASE__',mode='t';
+function $(i){return document.getElementById(i)}
+function say(t){$('s').textContent=t}
+function post(p,body,type){var o={method:'POST',body:body};if(type)o.headers={'Content-Type':type};
+return fetch(B+p,o).then(function(r){return r.json()})}
+function fail(){say('Нет связи с ТВ. Телефон и ТВ в одной сети Wi-Fi? Если адрес ТВ сменился, наведите камеру на код ещё раз')}
+function state(){fetch(B+'/state').then(function(r){return r.json()}).then(function(j){
+$('now').textContent=j.kind==='text'?'Сейчас на ТВ: «'+j.text+'»':j.kind==='draw'?'Сейчас на ТВ рисунок':'Сейчас на ТВ записки нет'}).catch(function(){})}
+function tab(m){mode=m;$('tT').className=m==='t'?'on':'';$('tD').className=m==='d'?'on':'';$('pT').hidden=m!=='t';$('pD').hidden=m!=='d';say('')}
+$('tT').onclick=function(){tab('t')};$('tD').onclick=function(){tab('d')};
+$('tx').oninput=function(){$('cnt').textContent=$('tx').value.length+' из 300'};
+var cv=$('cv'),g=cv.getContext('2d'),col='#ffffff',w=10,down=false,last=null,dirty=false;
+function bg(){g.fillStyle='#14161d';g.fillRect(0,0,cv.width,cv.height);dirty=false}
+bg();
+function pos(e){var r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height}}
+function dot(p){g.fillStyle=col;g.beginPath();g.arc(p.x,p.y,w/2,0,7);g.fill();dirty=true}
+cv.addEventListener('pointerdown',function(e){e.preventDefault();down=true;last=pos(e);try{cv.setPointerCapture(e.pointerId)}catch(x){}dot(last)});
+cv.addEventListener('pointermove',function(e){if(!down)return;e.preventDefault();var p=pos(e);g.strokeStyle=col;g.lineWidth=w;g.lineCap='round';g.lineJoin='round';
+g.beginPath();g.moveTo(last.x,last.y);g.lineTo(p.x,p.y);g.stroke();last=p;dirty=true});
+function up(){down=false}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+Array.prototype.forEach.call(document.querySelectorAll('.sw'),function(s){s.onclick=function(){
+Array.prototype.forEach.call(document.querySelectorAll('.sw'),function(x){x.className='sw'});s.className='sw on';col=s.getAttribute('data-c')}});
+Array.prototype.forEach.call(document.querySelectorAll('.size[data-w]'),function(s){s.onclick=function(){
+Array.prototype.forEach.call(document.querySelectorAll('.size[data-w]'),function(x){x.className='size'});s.className='size on';w=+s.getAttribute('data-w')}});
+$('clr').onclick=function(){bg();say('')};
+function done(j){if(j.ok){say('Готово: записка на экране ТВ');state()}else say('Не вышло: '+j.error)}
+$('send').onclick=function(){
+if(mode==='t'){var t=$('tx').value.trim();if(!t){say('Напишите что-нибудь');return}say('Отправляю…');
+post('/text',t,'text/plain;charset=utf-8').then(done,fail);return}
+if(!dirty){say('Нарисуйте что-нибудь');return}say('Отправляю…');
+cv.toBlob(function(b){if(!b){say('Рисунок не собрался, попробуйте ещё раз');return}post('/draw',b,'image/png').then(done,fail)},'image/png')};
+$('off').onclick=function(){post('/clear','').then(function(j){say(j.ok?'Записка убрана с экрана':'Не вышло: '+j.error);state()},fail)};
+var ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+$('tip').textContent=ios?'Чтобы записка была под рукой: «Поделиться», потом «На экран „Домой“»':'Чтобы записка была под рукой: меню браузера, потом «Добавить на главный экран»';
+state();
+</script>
+</body>
+</html>

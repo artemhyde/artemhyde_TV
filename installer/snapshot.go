@@ -84,6 +84,9 @@ type Session struct {
 	// по нему продолжается прерванная установка), для отчёта автору (1.0.1)
 	Installed   []string `json:"installed,omitempty"`
 	HomePlanned bool     `json:"home_planned,omitempty"`
+	// DeviceID и Consent (1.2.0): номер устройства для отчётов и выбор человека (обновления, отчёты)
+	DeviceID string   `json:"device_id,omitempty"`
+	Consent  *Consent `json:"consent,omitempty"`
 }
 
 func loadSession(dir string) (*Session, error) {
@@ -120,6 +123,19 @@ func findUnfinished(root, tvID string) string {
 		}
 		if s.TVID == tvID && s.Finished == "" && s.Restored == "" {
 			return filepath.Join(root, n)
+		}
+	}
+	return ""
+}
+
+// deviceIDFromSessions: номер устройства из самой свежей установки этого ТВ, где он записан (1.2.0 и новее), иначе пусто
+func deviceIDFromSessions(root, tvID string) string {
+	if tvID == "" {
+		return ""
+	}
+	for _, d := range sessionsOf(root, tvID, false) {
+		if s, err := loadSession(d); err == nil && validDeviceID(s.DeviceID) {
+			return s.DeviceID
 		}
 	}
 	return ""

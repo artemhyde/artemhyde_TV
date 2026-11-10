@@ -57,6 +57,7 @@ final class Hyde {
     private final Context c;
     private final SharedPreferences sp, gp;
     private final Updates u;
+    final AdbSelf adb;   // Android 9–11: установка через отладку своего ТВ (AdbSelf)
     private final Updates.Out out;
     private volatile String current;    // что ставится прямо сейчас (для экрана)
     private volatile String lastStep = "";
@@ -64,6 +65,7 @@ final class Hyde {
     Hyde(Context c, Updates u, Updates.Out out) {
         this.c = c;
         this.u = u;
+        this.adb = new AdbSelf(c);
         this.out = out;
         this.sp = c.getSharedPreferences("upd", Context.MODE_PRIVATE);
         this.gp = c.getSharedPreferences("guard", Context.MODE_PRIVATE);
@@ -146,9 +148,8 @@ final class Hyde {
                 .remove("hyde.err").apply();
         Map<String, HydeRules.Have> have = have(r);
         long my = myCode();
-        String v = HydeRules.verdict(r, my, have);
-        // Android 9–11 не даёт обновлять приложения без нажатий: такой ТВ обновляет установщик на компьютере
-        if (HydeRules.UPDATE.equals(v) && android.os.Build.VERSION.SDK_INT < 31) v = HydeRules.INSTALLER;
+        if (AdbSelf.needed()) adb.keepAlive();   // раз в сутки зайти в отладку: Android 11 иначе снимет разрешение через неделю
+        String v = verdict(r, my, have);
         if (HydeRules.FRESH.equals(v)) {
             sp.edit().remove("hyde.need").remove("hyde.needWhy").remove("hyde.skipped").apply();
             clean(new HashSet<String>());
@@ -156,7 +157,7 @@ final class Hyde {
         }
         if (HydeRules.INSTALLER.equals(v)) {
             String why = HydeRules.installerWhy(r, my), ver = r.version == null ? "новый выпуск" : r.version;
-            if (why == null) why = "Android ниже 12 не обновляет приложения без нажатий";
+            if (why == null) why = adbWhy();
             boolean first = !ver.equals(sp.getString("hyde.need", null));
             sp.edit().putString("hyde.need", ver).putString("hyde.needWhy", why).remove("hyde.chain").remove("hyde.todo")
                     .remove("hyde.skipped").remove("hyde.wait").apply();
@@ -214,6 +215,47 @@ final class Hyde {
         sp.edit().putString("hyde.err", m).putLong("hyde.tried", System.currentTimeMillis()).apply();
         if (byHand || !m.equals(prev)) out.log("Обновления HYDE: проверка не вышла (" + m + ")");
         return "проверка не вышла: " + m;
+    }
+
+    // Итог проверки с учётом Android 9–11: без нажатий там только через отладку своего ТВ, иначе нужен установщик
+    private String verdict(HydeRules.Release r, long my, Map<String, HydeRules.Have> have) {
+        String v = HydeRules.verdict(r, my, have);
+        if (HydeRules.UPDATE.equals(v) && AdbSelf.needed() && !adb.ready()) v = HydeRules.INSTALLER;
+        return v;
+    }
+
+    private String adbWhy() {
+        String s = adb.state();
+        return AdbSelf.NEED.equals(s) ? "Android ниже 12, а отладку ТВ «Сторожу» не разрешили"
+                : AdbSelf.ABSENT.equals(s) ? "Android ниже 12, а «Отладка по USB» на ТВ выключена"
+                : "Android ниже 12 не обновляет приложения без нажатий";
+    }
+
+    // Android 9–11 без разрешения отладки: один раз записка и окно «Разрешить отладку», когда человек у главного экрана.
+    // true: показано (дальше ждём ответа в своей нитке)
+    private boolean askAdb() {
+        if (!GuardService.promptFree() || !u.tapMoment(GuardService.topPackage())) return false;
+        GuardService.prompted();
+        adb.markAsked();
+        // Окно системы: фокус на галочке «Всегда разрешать», вниз ведёт на «Отмена», вправо на OK (проверено на Android 9)
+        out.note("Чтобы HYDE обновлялся сам, разрешите это «Сторожу». В окне нажмите OK (поставится галочка «Всегда разрешать»), потом вниз, вправо и ещё раз OK");
+        new Thread(() -> {
+            try { Thread.sleep(Updates.NOTE_FIRST_MS); } catch (InterruptedException ignored) { }
+            paired(adb.pair(AdbSelf.PAIR_WAIT), "записка");
+        }, "guard-adb-pair").start();
+        return true;
+    }
+
+    // Итог «Разрешить»: получено, значит проверить выпуск заново сразу (что ждало установщика, встанет само)
+    void paired(String res, String how) {
+        if (AdbSelf.OK.equals(res)) {
+            out.log("Обновления HYDE: отладку ТВ «Сторожу» разрешили (" + how + "), дальше обновления встают сами");
+            sp.edit().remove("hyde.last").remove("hyde.tried").apply();
+            GuardService g = GuardService.running;
+            if (g != null) g.updSoon(CHAIN_MS);
+        } else {
+            out.log("Обновления HYDE: отладку ТВ «Сторожу» не разрешили (" + how + ": " + adb.brief() + "), обновит установщик на компьютере");
+        }
     }
 
     static HydeRules.Release parse(String txt) throws Exception {
@@ -287,11 +329,11 @@ final class Hyde {
 
     // Файл тот, что в описи: пакет, версия и подпись ключом выпуска. null: да, иначе что не так
     private String verifyFile(HydeRules.App a) {
-        PackageInfo nw = c.getPackageManager().getPackageArchiveInfo(file(a.pkg).getPath(), PackageManager.GET_SIGNING_CERTIFICATES);
+        PackageInfo nw = c.getPackageManager().getPackageArchiveInfo(file(a.pkg).getPath(), PackageManager.GET_SIGNING_CERTIFICATES | PackageManager.GET_SIGNATURES);
         if (nw == null) return "файл не читается как приложение";
         if (!a.pkg.equals(nw.packageName)) return "в файле другое приложение (" + nw.packageName + ")";
         if (nw.getLongVersionCode() != a.code) return "в файле версия " + nw.getLongVersionCode() + ", а в описи " + a.code;
-        if (!HydeRules.RELEASE_CERT.equals(cert(nw.signingInfo))) return "файл подписан не ключом выпуска";
+        if (!HydeRules.RELEASE_CERT.equals(cert(nw))) return "файл подписан не ключом выпуска";
         return null;
     }
 
@@ -304,8 +346,11 @@ final class Hyde {
         if (sp.getString("hyde.need", null) != null) {
             // Установщик уже прогнали (версии на ТВ догнали выпуск): записка и строка больше не нужны
             HydeRules.Release rr = cached();
-            if (rr != null && !HydeRules.INSTALLER.equals(HydeRules.verdict(rr, myCode(), have(rr))))
+            if (rr != null && !HydeRules.INSTALLER.equals(verdict(rr, myCode(), have(rr))))
                 sp.edit().remove("hyde.need").remove("hyde.needWhy").apply();
+        }
+        if (adb.askPending() && !askAdb()) {   // разрешения отладки нет: ждём человека у главного экрана
+            if (sp.getString("hyde.need", null) != null) { lastStep = "жду человека для «Разрешить»"; return WAIT_MS; }
         }
         if (sp.getString("hyde.need", null) != null) {
             lastStep = "нужен установщик на компьютере";
@@ -357,6 +402,12 @@ final class Hyde {
         if (s.phase == 2) out.log("Обновления HYDE: ставлю сам «Сторож» " + r.version + ", служба перезапустится");
         try {
             current = label;
+            if (AdbSelf.needed()) {   // Android 9–11: через отладку своего ТВ, итог сразу
+                lastStep = "ставлю " + label + " через отладку ТВ";
+                String err = adb.install(file(s.app.pkg), s.app.pkg);
+                done(s.app.pkg, err == null ? PackageInstaller.STATUS_SUCCESS : PackageInstaller.STATUS_FAILURE, err);
+                return CHAIN_MS;
+            }
             u.commitHyde(s.app.pkg, file(s.app.pkg));
             lastStep = "ставлю " + label;
         } catch (Exception e) {
@@ -409,7 +460,9 @@ final class Hyde {
         }
         out.log("Обновления HYDE: выпуск " + sp.getString("hyde.chain", r.version) + (ok.isEmpty() ? "" : ", обновлены: " + join(ok))
                 + (no.isEmpty() ? "" : "; не обновлены: " + join(no)));
-        sp.edit().remove("hyde.chain").remove("hyde.todo").remove("hyde.wait").apply();
+        // итог для отчёта автору (Ping): чем кончился последний выпуск
+        sp.edit().putString("hyde.result", no.isEmpty() ? "ok" : "failed").putString("hyde.resultRelease", sp.getString("hyde.chain", r.version))
+                .remove("hyde.chain").remove("hyde.todo").remove("hyde.wait").apply();
     }
 
     // Выпуску нужен установщик: один раз на выпуск записка, когда человек у главного экрана. true: сказано (или некому)
@@ -425,6 +478,7 @@ final class Hyde {
     // Скачано и ждёт установки (экран погас: хороший момент) или ждёт записки
     boolean pending() {
         if (!releaseBuild(c) || !on(c)) return false;
+        if (adb.askPending()) return true;
         String need = sp.getString("hyde.need", null);
         if (need != null) return !need.equals(sp.getString("hyde.noted", null));
         return sp.getString("hyde.chain", null) != null;
@@ -482,6 +536,7 @@ final class Hyde {
         String err = sp.getString("hyde.err", null);
         if (err != null) b.append("; ошибка: ").append(err);
         if (!lastStep.isEmpty()) b.append("; шаг: ").append(lastStep);
+        if (AdbSelf.needed()) b.append("; отладка: ").append(adb.status());
         String tb = testBase();
         if (tb != null) b.append("; проверочный адрес ").append(tb);
         return b.toString();
@@ -501,10 +556,10 @@ final class Hyde {
         Map<String, HydeRules.Have> m = new HashMap<>();
         for (HydeRules.App a : r.apps) {
             PackageInfo pi;
-            try { pi = pm.getPackageInfo(a.pkg, PackageManager.GET_SIGNING_CERTIFICATES); } catch (Exception e) { continue; }
+            try { pi = pm.getPackageInfo(a.pkg, PackageManager.GET_SIGNING_CERTIFICATES | PackageManager.GET_SIGNATURES); } catch (Exception e) { continue; }
             HydeRules.Have h = new HydeRules.Have();
             h.code = pi.getLongVersionCode();
-            h.cert = cert(pi.signingInfo);
+            h.cert = cert(pi);
             h.installer = u.installer(a.pkg);
             h.admin = admins.contains(a.pkg);
             m.put(a.pkg, h);
@@ -539,7 +594,31 @@ final class Hyde {
     }
 
     static String installedCert(PackageManager pm, String pkg) {
-        try { return cert(pm.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo); } catch (Exception e) { return null; }
+        try {
+            PackageInfo pi = pm.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES | PackageManager.GET_SIGNATURES);
+            return cert(pi);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // SHA-256 сертификата подписи скачанного файла (один подписант), или null
+    static String archiveCert(PackageManager pm, String path) {
+        PackageInfo pi = pm.getPackageArchiveInfo(path, PackageManager.GET_SIGNING_CERTIFICATES | PackageManager.GET_SIGNATURES);
+        return pi == null ? null : cert(pi);
+    }
+
+    // Из сведений о пакете: новый способ (signingInfo), а если система его не дала (Android 9–10 для файла), старый (signatures)
+    @SuppressWarnings("deprecation")
+    static String cert(PackageInfo pi) {
+        String s = cert(pi.signingInfo);
+        if (s != null || pi.signingInfo != null) return s;
+        if (pi.signatures == null || pi.signatures.length != 1) return null;
+        try {
+            return Updates.hex(MessageDigest.getInstance("SHA-256").digest(pi.signatures[0].toByteArray()));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean ready(HydeRules.App a) {

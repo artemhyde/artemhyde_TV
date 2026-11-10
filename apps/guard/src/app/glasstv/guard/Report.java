@@ -64,6 +64,7 @@ final class Report {
                 .append(Settings.System.getString(c.getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT)).append(" мс\n");
         SharedPreferences sp = c.getSharedPreferences("guard", Context.MODE_PRIVATE);
         b.append("  кнопки пульта (Key Mapper): ").append(sp.getString("keys", "?")).append('\n');
+        b.append("  отключённые установщиком: ").append(Health.listStatus(c)).append('\n');
         b.append("  права «Сторожа»: DUMP ").append(granted(c, "android.permission.DUMP")).append(", WRITE_SECURE_SETTINGS ")
                 .append(granted(c, "android.permission.WRITE_SECURE_SETTINGS")).append(", слушатель уведомлений ")
                 .append(String.valueOf(secure(c, "enabled_notification_listeners")).contains(c.getPackageName()) ? "да" : "нет").append('\n');
@@ -83,6 +84,7 @@ final class Report {
                 b.append("  ByeByeDPI: ").append(g.bye.status()).append('\n');
             if (g.upd != null) b.append("  обновления: ").append(g.upd.status()).append('\n');
             if (g.upd != null) b.append("  обновления HYDE: ").append(g.upd.hyde.status()).append('\n');
+            if (g.upd != null) b.append("  отчёты автору: ").append(g.upd.ping.status()).append('\n');
         }
         b.append("  возможности ТВ: ").append(Caps.report(c)).append('\n');
 

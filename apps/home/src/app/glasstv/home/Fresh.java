@@ -8,6 +8,8 @@ final class Fresh {
     private Fresh() { }
 
     static final long WEATHER_EVERY = 30 * 60_000L, RATES_EVERY = 3 * 3600_000L, RETRY_AFTER_FAIL = 5 * 60_000L;
+    // Крипта меняется за минуты, раз в три часа для неё мало (10.11)
+    static final long CRYPTO_EVERY = 30 * 60_000L;
     static final long WEATHER_STALE = 2 * 3600_000L, WEATHER_DEAD = 12 * 3600_000L, RATES_STALE = 36 * 3600_000L;
 
     static final int SHOW = 0, SHOW_WITH_TIME = 1, NO_LINK = 2;

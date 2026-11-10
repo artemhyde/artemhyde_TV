@@ -70,7 +70,7 @@ public class PillsActivity extends Activity {
         // Музыка: что выбрал человек («Настройки «Дома»», «Музыка»), без выбора «Волна», если стоит; нет ничего: таблетки нет
         music = Setup.musicApp(this);
         if (music != null) pills.add(new Pill("volna", Setup.VOLNA.equals(music) ? "Волна" : "Музыка", PillView.WAVE));
-        pills.add(new Pill("style", "Стиль", PillView.SHAPE));   // вид «Дома»: «Графит» или «Vision», по кругу
+        pills.add(new Pill("style", "Оформление", PillView.SHAPE));   // 10.11: раздел «Оформление» (стиль, обои, часы, виджеты, ряд)
         // Панель TCL только на TCL и только если её служба есть в прошивке (план Codex, блок 5); иначе обычные настройки Android
         if (tclPanel()) pills.add(new Pill("tcl", "Панель TCL", PillView.GRID));
         else pills.add(new Pill("settings", "Настройки ТВ", PillView.GRID));
@@ -165,9 +165,9 @@ public class PillsActivity extends Activity {
                     return i != null && open(i);
                 }
                 case "style":
-                    // Стиль «Дома»: запоминается сразу, «Дом» перестроится, как только покажется (он же под полосой)
-                    Style.toggle(this);
-                    return true;
+                    // Раньше таблетка «Стиль» переключала «Графит» и «Vision» по кругу; с 10.11 стиль, обои, часы, виджеты и ряд
+                    // выбираются в «Оформлении» с живым просмотром, и таблетка открывает его прямо на разделе «Стиль»
+                    return open(new Intent(this, HomeActivity.class).putExtra("design", true).putExtra("tab", "style"));
                 case "volna":
                     if (Setup.VOLNA.equals(music)) return open(new Intent().setClassName("app.glasstv.volna", "app.glasstv.volna.MenuActivity"));
                     Intent mi = music == null ? null : Go.plain(this, music);

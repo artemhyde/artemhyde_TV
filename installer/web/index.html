@@ -136,6 +136,8 @@
   .line { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
   .line:first-of-type { border-top: 0; }
   .line .k { color: var(--muted); } .line .v { text-align: right; }
+  .prefs { margin: 0 0 22px; padding: 4px 20px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+  .prefs .mod:first-child { border-top: 0; }
   .report { margin-top: 18px; padding: 18px 20px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
   .report > b { display: block; font: 600 19px/1.25 var(--display); margin-bottom: 6px; }
   .report .line .v { overflow-wrap: anywhere; }
@@ -281,7 +283,7 @@
     <div class="slide">
       <h1 class="title">Подойдёт ли ваш телевизор</h1>
       <div class="fit">
-        <div><b><span class="mark y">✓</span>Подойдёт</b><p>Телевизоры на Google TV или Android TV 12 и новее: TCL, Sony, Philips, Hisense, Xiaomi и другие. И приставки с Google TV: с ними HYDE будет на любом телевизоре.</p></div>
+        <div><b><span class="mark y">✓</span>Подойдёт</b><p>Телевизоры на Google TV или Android TV 9 и новее: TCL, Sony, Philips, Hisense, Xiaomi и другие. И приставки с Google TV: с ними HYDE будет на любом телевизоре.</p></div>
         <div><b><span class="mark n">✕</span>Не подойдёт</b><p>Samsung и LG: у них своя система (Tizen и webOS), приложения для Android на них не ставятся. Выход для них: приставка с Google TV в разъём HDMI.</p></div>
       </div>
       <p class="note">Всё проверено на TCL 65C6K. На другой модели мастер сначала прочитает, что умеет телевизор, и честно скажет, что заработает, а что нет.</p>
@@ -306,6 +308,12 @@
 
   <!-- ===== Мастер ===== -->
   <div id="wizard" hidden>
+    <div class="prefs" id="prefs">
+      <div class="mod"><label class="switch"><input type="checkbox" id="pf-upd" checked aria-label="Обновлять HYDE автоматически"><span></span></label>
+        <div><div class="t">Обновлять HYDE автоматически</div><div class="w">Новые версии ставит «Сторож» на телевизоре, когда тот свободен. На Android 9, 10 и 11 для этого в конце установки на телевизоре нужно один раз нажать «Разрешить».</div></div></div>
+      <div class="mod"><label class="switch"><input type="checkbox" id="pf-rep" checked aria-label="Отправлять автору технические отчёты"><span></span></label>
+        <div><div class="t">Отправлять автору технические отчёты</div><div class="w">Модель телевизора, версии Android и HYDE, что поставилось, ошибки. Без имени, адресов и названий сетей. Отчёт уходит в конце установки и раз в сутки с телевизора.</div></div></div>
+    </div>
     <section id="s1">
       <h2><span class="num">1</span>Компьютер</h2>
       <div id="pc"><p class="hint" style="margin:0">Проверяю…</p></div>
@@ -399,6 +407,9 @@ const REPO = "https://github.com/artemhyde/artemhyde_TV/blob/main/";
 let serial = "", choice = { modules: {}, home: true }, showCmd = false, stepsOpen = false, lastPlan = null, jobShown = false, adbReady = false, reportOn = false;
 
 const $ = (id) => document.getElementById(id);
+// Переключатели в начале мастера: тронул их человек, прошлый выбор этого ТВ их уже не меняет
+let prefsTouched = false;
+for (const id of ["pf-upd", "pf-rep"]) $(id).addEventListener("change", () => (prefsTouched = true));
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const on = (id, v = true) => $(id).classList.toggle("off", !v);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -690,6 +701,8 @@ async function pick(s) {
     $("s3").classList.toggle("done", !c.why);
     if (!c.why) { on("s4"); on("s5"); on("s6"); plan(); }
     installsBox(r.installs);
+    // Прошлый выбор этого ТВ: обновление не включает молча то, что человек выключил при установке
+    if (r.consent && !prefsTouched) { $("pf-upd").checked = !!r.consent.updates; $("pf-rep").checked = !!r.consent.reports; }
   } catch (e) { $("pass").innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
 
@@ -799,7 +812,8 @@ function installBox(p) {
   $("go").onclick = async () => {
     $("go").disabled = true;
     try {
-      await api("apply", { serial, modules: choice.modules, home: choice.home, allow_download: !!$("ok-dl")?.checked, tv_free: !!$("ok-free")?.checked });
+      await api("apply", { serial, modules: choice.modules, home: choice.home, allow_download: !!$("ok-dl")?.checked, tv_free: !!$("ok-free")?.checked,
+        updates: $("pf-upd").checked, reports: $("pf-rep").checked });
       jobShown = true;
       stage(4);
       $("inst").innerHTML = "";
@@ -811,7 +825,7 @@ function installBox(p) {
   };
 }
 
-const MARK = { ok: "✓", skip: "·", warn: "!", fail: "✕", lost: "✕", info: "·" };
+const MARK = { ok: "✓", skip: "·", warn: "!", fail: "✕", lost: "✕", info: "·", ask: "?" };
 
 async function poll() {
   let j;
@@ -823,6 +837,11 @@ async function poll() {
   if ($("bar")) $("bar").style.width = (last ? Math.max(4, Math.round(100 * last.n / last.total)) : 4) + "%";
   // Сейчас: чем занят установщик словами группы («Дом», «Сторож», Lampa), подробности шага только в «Подробный ход»
   if ($("now")) $("now").textContent = j.running && cur ? (cur.group ? (j.kind === "откат" ? "Возвращаю: " : "Сейчас: ") + cur.group : cur.what) + (last ? ` (шаг ${last.n} из ${last.total})` : "") : "";
+  // Просьба к человеку у телевизора (ask, Android 9, 10 и 11: «Разрешить» для «Сторожа»): крупно над ходом, пока установщик ждёт
+  const askNow = j.running && cur && cur.status === "ask";
+  if (askNow && !$("ask")) $("prog").insertAdjacentHTML("afterbegin", '<div class="msg warn" id="ask"></div>');
+  if (askNow) $("ask").innerHTML = `<b>Нужно ваше «Разрешить» на телевизоре</b><br>${esc(cur.what)}`;
+  else if ($("ask")) $("ask").remove();
   if ($("evs")) $("evs").innerHTML = evs.map((e) => `<div class="ev ${e.status}"><span class="m">${MARK[e.status] || "·"}</span><div>${esc((e.n ? e.n + ". " : "") + (e.group && e.n ? e.group + ": " : "") + e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
   if (j.running) { setTimeout(poll, 1000); return; }
   jobShown = false;
@@ -862,29 +881,23 @@ async function poll() {
   }
   afterButtons();
   if (installed) guardPanel();
-  if (reportOn && r.backup && (!Array.isArray(r.backup) || r.backup.length)) reportAsk();
+  if (reportOn && $("pf-rep").checked && r.backup && (!Array.isArray(r.backup) || r.backup.length)) reportAuto();
 }
 
-// «Поделиться результатом с автором?»: показать ровно то, что уйдёт; ничего не выбрано заранее, без «Отправить» не уходит ничего
-async function reportAsk() {
+// Технический отчёт автору (1.2.0): согласие дано переключателем в начале мастера, поэтому отчёт уходит сам, и при удаче,
+// и при сбое. Что ушло, видно здесь же под «Что в отчёте»
+async function reportAuto() {
   let p;
   try { p = await api("report/preview", { serial, lang: navigator.language || "" }); } catch (e) { return; }
   if (!p.enabled || !p.fields) return;
-  $("after").insertAdjacentHTML("beforeend", '<div class="report" id="rep"><b>Поделиться результатом с автором?</b>'
-    + '<p class="hint">Так автор узнает, на каких телевизорах HYDE работает, и поправит то, что не вышло. Уйдёт только это, без имени, адресов и номера телевизора:</p>'
-    + p.fields.map((f) => line(f.label, esc(f.value))).join("")
-    + '<div class="row" style="margin-top:14px"><button class="ghost" id="rep-yes">Отправить</button><button class="ghost" id="rep-no">Не отправлять</button></div><div id="rep-res"></div></div>');
-  const done = async (send) => {
-    $("rep-yes").disabled = $("rep-no").disabled = true;
-    try {
-      const r = await api("report/send", { send });
-      if (!send) msg("rep-res", "Хорошо, ничего не отправлено.");
-      else if (r.sent) $("rep-res").innerHTML = `<div class="msg ok">Отправлено. Номер отчёта: <b>${esc(r.id)}</b>. Чтобы автор удалил отчёт, напишите ему этот номер.</div>`;
-      else msg("rep-res", "Не отправлено: " + r.fail + ". На установку это не влияет.", "warn");
-    } catch (e) { msg("rep-res", e.message, "warn"); }
-  };
-  $("rep-yes").onclick = () => done(true);
-  $("rep-no").onclick = () => done(false);
+  let r;
+  try { r = await api("report/send", { send: true }); } catch (e) { r = { sent: false, fail: e.message }; }
+  const dev = (p.fields.find((f) => f.label === "Номер устройства") || {}).value;
+  const head = r.sent
+    ? `Технический отчёт отправлен автору, номер <b>${esc(r.id)}</b>. Удалить его: напишите автору этот номер` + (dev ? `; удалить все записи этого телевизора: номер устройства <b>${esc(dev)}</b>.` : ".")
+    : "Технический отчёт не отправлен: " + esc(r.fail || "нет связи") + ". На установку это не влияет.";
+  $("after").insertAdjacentHTML("beforeend", `<div class="report" id="rep"><div class="hint" style="margin:0">${head}</div>`
+    + `<details><summary>Что в отчёте</summary>${p.fields.map((f) => line(f.label, esc(f.value))).join("")}</details></div>`);
 }
 
 // «Проверить телевизор» и «Откатить всё»: после установки и сразу после подключения, если HYDE на этом ТВ уже ставили
@@ -926,7 +939,7 @@ function nextSteps() {
   const items = [];
   if (p.home) items.push("Нажмите на пульте «Домой»: должен открыться HYDE. Если открылось другое, нажмите здесь «Проверить телевизор»: мастер покажет, что не так.");
   else items.push("HYDE открывается из списка приложений: «Дом». Сделать его главным экраном можно потом: запустите мастер снова и выберите первый вариант.");
-  items.push("Город для погоды, цвет стекла, стихи и музыку выберите на телевизоре: плитка «Настройки «Дома»» в конце ряда.");
+  items.push("Обои, часы, виджеты, папки, город для погоды, курсы, цитату и музыку выберите на телевизоре: «Оформление» в полосе шестерёнки или плитка «Настройки «Дома»» в конце ряда.");
   if (mods.keymapper && mods.keymapper.chosen) items.push("Кнопка пульта для быстрой полосы HYDE (на TCL обычно шестерёнка): откройте на телевизоре Key Mapper, «New key map», «Tap to record trigger», нажмите эту кнопку, затем «Add action», «Launch app» (если спросит, «Ignore») и выберите «Дом».");
   if (mods.lampa && mods.lampa.chosen) items.push(`Lampa: в её настройках есть пара пунктов для удобства с пультом, они в <a href="${REPO}docs/lampa.md" target="_blank" rel="noopener">памятке по Lampa</a>.`);
   if (mods.torrserve && mods.torrserve.chosen) items.push(`TorrServe: при первом запуске он сам предложит поставить сервер, подробно в <a href="${REPO}docs/torrserve.md" target="_blank" rel="noopener">памятке по TorrServe</a>.`);

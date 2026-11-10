@@ -72,15 +72,16 @@ const usage = `hyde-install: установщик HYDE TV
   hyde-install pair адрес:порт код     сопряжение по коду с экрана ТВ
   hyde-install inspect [--tv адрес] [--json] [--save файл] [--from файл]
   hyde-install plan [--tv адрес] [--release папка] [--with м1,м2] [--without м3] [--home] [--json] [--from файл]
-  hyde-install apply [как plan] [--backup папка] [--allow-download] [--tv-free] [--yes]   установка по плану
+  hyde-install apply [как plan] [--backup папка] [--allow-download] [--tv-free] [--yes] [--no-report] [--no-auto-update]   установка по плану
   hyde-install verify [--tv адрес] [--backup папка]   проверка после установки
   hyde-install report [--tv адрес] [--send] [--test [--backup папка_журнала]]   отчёт автору о последней установке: без --send только показать; --test: проверка приёма (с папкой журнала без ТВ)
-  hyde-install restore [--tv адрес] [--backup папка] [--yes]   откат всех установок этого ТВ (или одной: --backup папка_журнала)
+  hyde-install restore [--tv адрес] [--backup папка] [--yes] [--no-report]   откат всех установок этого ТВ (или одной: --backup папка_журнала)
   hyde-install guard adb [always|service] [--tv адрес]   отладка по сети: держать всегда или ещё 2 часа, потом выключить
   hyde-install guard notes [on|off] [--tv адрес]         записки с телефона; без значения: только показать
 Модули: guard keymapper home nightmode sound picture clip keyboard volna browser
 Приложения по желанию (--with, качаются со страниц авторов, нужен --allow-download): smarttube lampa torrserve localsend files byedpi
-Отчёт автору уходит только с --report (apply, restore) или report --send; без ключа ничего не отправляется.
+Обновления и отчёты (с 1.2.0) включены заранее: «Сторож» сам ставит новые выпуски, а технический отчёт автору (модель ТВ, Android,
+что поставилось, ошибки, номер устройства; без личных данных) уходит в конце apply и restore сам. Выключить: --no-auto-update и --no-report.
 Повторный apply после обрыва продолжает незаконченную установку этого ТВ с того же места.
 Журналы и снимки «до»: ~/.glasstv/backup (папка HYDE TV: GLASSTV_HOME)`
 
@@ -308,18 +309,38 @@ func cmdPlan(args []string) error {
 			ch.Home = home
 		}
 	})
-	pl := buildPlan(rec, m, p, ch, !*noCheck)
-	if pf.from == "" { // живой ТВ: пометить то, что на нём уже так
+	var live *adbTV
+	if pf.from == "" { // живой ТВ: журналы этого ТВ (снова включённое установщик отключит снова)
 		if a, err := findADB(); err == nil {
 			if serial, err := pickSerial(a, pf.tv); err == nil {
-				markHeld(&pl, heldSteps(&adbTV{a: a, serial: serial}, &pl, nil))
+				live = &adbTV{a: a, serial: serial}
+				if id := tvIDOf(live); id != "" {
+					ch.Redisable = disabledByInstaller(sessionsOf(backupRoot(""), id, true))
+				}
 			}
 		}
+	}
+	pl := buildPlan(rec, m, p, ch, !*noCheck)
+	if live != nil { // пометить то, что на нём уже так
+		markHeld(&pl, heldSteps(live, &pl, nil))
+		// с чем пойдёт apply без ключей: прошлый выбор этого ТВ, иначе оба включены
+		c := defaultConsent()
+		if last := lastConsentOf(backupRoot(""), tvIDOf(live)); last != nil {
+			c, pl.ConsentLast = *last, true
+		}
+		pl.Consent = &c
 	}
 	if *asJSON {
 		return printJSON(pl)
 	}
 	fmt.Print(pl.Text())
+	if pl.Consent != nil {
+		from := "по умолчанию"
+		if pl.ConsentLast {
+			from = "как в прошлый раз для этого ТВ"
+		}
+		fmt.Println("Выбор (" + from + "): " + consentText(*pl.Consent) + " (выключить: --no-auto-update, --no-report).")
+	}
 	return nil
 }
 
@@ -361,7 +382,8 @@ func connectTV(tvAddr string) (*ADB, TV, error) {
 }
 
 func printEvent(e Event) {
-	mark := map[string]string{"start": "…", "ok": "ок", "skip": "пропуск", "warn": "ВНИМАНИЕ", "fail": "ОШИБКА", "lost": "СВЯЗЬ ПРОПАЛА", "info": "·"}[e.Status]
+	mark := map[string]string{"start": "…", "ok": "ок", "skip": "пропуск", "warn": "ВНИМАНИЕ", "fail": "ОШИБКА", "lost": "СВЯЗЬ ПРОПАЛА", "info": "·",
+		"ask": "НА ТЕЛЕВИЗОРЕ:"}[e.Status]
 	if e.Status == "start" {
 		return
 	}
@@ -401,8 +423,9 @@ func cmdApply(args []string) error {
 	allowDl := fs.Bool("allow-download", false, "разрешить скачать сторонние приложения из описи со страниц авторов (Key Mapper и выбранные приложения по желанию с GitHub)")
 	tvFree := fs.Bool("tv-free", false, "ТВ свободен: можно открыть «Дом» и нажать «Домой»")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
-	sendRep := fs.Bool("report", false, "после установки отправить автору отчёт (модель ТВ, Android, что поставилось и что не вышло)")
-	_ = fs.Bool("no-report", false, "не отправлять отчёт (так и без ключа)")
+	_ = fs.Bool("report", true, "оставлен для старых команд: отчёт и так уходит сам")
+	_ = fs.Bool("no-report", false, "не отправлять автору технический отчёт (модель ТВ, Android, что поставилось и что не вышло) и не включать «Сторожу» суточный отчёт")
+	_ = fs.Bool("no-auto-update", false, "не обновлять HYDE автоматически («Сторож» не ставит новые выпуски сам)")
 	via := fs.String("via", "cli", "кто запускает: cli или claude (для отчёта)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -420,6 +443,8 @@ func cmdApply(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Ключами ничего не сказано: прошлый выбор этого ТВ, иначе обновления и отчёты включены (решение автора 10.11)
+	consent := consentFromFlags(fs, lastConsentOf(backupRoot(*root), tvIDOf(tv)))
 	ch := Choices{Modules: map[string]bool{}}
 	for _, x := range splitList(*with) {
 		ch.Modules[x] = true
@@ -438,6 +463,7 @@ func cmdApply(args []string) error {
 	}
 	pl := buildPlan(rec, m, p, ch, true)
 	fmt.Print(pl.Text())
+	fmt.Println("Выбор: " + consentText(consent) + " (выключить: --no-auto-update, --no-report).")
 	if len(pl.Problems) > 0 {
 		return errors.New("установка невозможна: " + strings.Join(pl.Problems, " "))
 	}
@@ -445,11 +471,11 @@ func cmdApply(args []string) error {
 		fmt.Println("Отменено, на ТВ ничего не менял.")
 		return nil
 	}
-	res := runApply(tv, a, rec, m, ch, ApplyOpts{AllowDownload: *allowDl, TVFree: *tvFree, BackupRoot: backupRoot(*root), Emit: printEvent})
+	res := runApply(tv, a, rec, m, ch, ApplyOpts{AllowDownload: *allowDl, TVFree: *tvFree, BackupRoot: backupRoot(*root), Emit: printEvent, Consent: &consent})
 	if res.Backup != "" {
 		fmt.Println("Журнал и снимок «до»: " + res.Backup)
 	}
-	if *sendRep && res.Backup != "" {
+	if consent.Reports && res.Backup != "" {
 		var cs []Check
 		if res.Error == "" {
 			cs, _ = runVerify(tv, res.Backup)
@@ -533,8 +559,8 @@ func cmdRestore(args []string) error {
 	tvAddr := fs.String("tv", "", "адрес ТВ")
 	dir := fs.String("backup", "", "папка журнала (откатить только её) или папка журналов")
 	yes := fs.Bool("yes", false, "не спрашивать подтверждение")
-	sendRep := fs.Bool("report", false, "после возврата отправить автору отчёт (модель ТВ, Android, итог)")
-	_ = fs.Bool("no-report", false, "не отправлять отчёт (так и без ключа)")
+	_ = fs.Bool("report", true, "оставлен для старых команд: отчёт и так уходит сам")
+	_ = fs.Bool("no-report", false, "не отправлять автору технический отчёт о возврате (модель ТВ, Android, итог)")
 	via := fs.String("via", "cli", "кто запускает: cli или claude (для отчёта)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -573,7 +599,8 @@ func cmdRestore(args []string) error {
 	}
 	ra := runRestoreAll(tv, ds, printEvent)
 	fmt.Print(ra.Text())
-	if *sendRep && len(ds) > 0 {
+	// Отчёт о возврате по выбору человека в установке, которую откатили (ключ важнее)
+	if len(ds) > 0 && consentFromFlags(fs, lastConsent(ds)).Reports {
 		reportAfter(true, ds[0], "restore", *via, nil, ra.OK())
 	}
 	if c := ra.Code(); c != 0 {

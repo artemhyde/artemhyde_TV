@@ -2,24 +2,31 @@
  * @OnlyCurrentDoc
  */
 // Строка выше ограничивает скрипт этой одной таблицей: к другим файлам Google доступа у него нет.
-// HYDE TV: приём отчётов об установке в Google-таблицу автора.
-// Веб-приложение Google Apps Script, привязанное к таблице. Установщик HYDE TV присылает сюда
-// JSON (POST) только после того, как человек ответил «Да» на вопрос «Поделиться результатом с автором?».
-// Скрипт проверяет каждое поле, отбрасывает лишнее и пишет одну строку в лист «Отчёты».
-// IP-адрес отправителя Google скрипту не передаёт, и скрипт ничего, кроме присланных полей и времени приёма, не хранит.
+// HYDE TV: технические отчёты в Google-таблицу автора (версия 3, 10.11.2026: в сигнале «Сторожа» состояние
+// кнопок пульта, главного экрана и отключённых пакетов, в «Сводке» блок «Сбои на ТВ за 7 дней»).
+// Веб-приложение Google Apps Script, привязанное к таблице. Принимает два вида JSON (POST), оба только от тех,
+// у кого при установке включена галочка «Отправлять автору технические отчёты»:
+//   отчёт установщика (kind нет или "install"): одна строка в лист «Отчёты»;
+//   ежедневный сигнал «Сторожа» (kind "ping"): строка этого ТВ в листе «Устройства» обновляется, новых строк не плодит.
+// Скрипт проверяет каждое поле и отбрасывает лишнее. IP-адрес отправителя Google скрипту не передаёт,
+// хранятся только присланные поля и время приёма. Личных данных в полях нет: модель ТВ, версии, итоги, ошибки.
 //
-// Листы: «Отчёты» (все строки), «Сводка» (итоги, модели, скачивания), «Неудачи» (последние 50 сбоев),
-// «Скачивания» (раз в сутки число скачиваний архивов с GitHub).
-// Публично по адресу веб-приложения (GET) отдаётся только сводка по моделям: без номеров отчётов и текстов ошибок.
+// Листы: «Сводка» (итоги, модели, ТВ на связи по версиям, скачивания), «Устройства» (по строке на ТВ),
+// «Отчёты» (каждая установка), «Неудачи» (последние 50 сбоев), «Скачивания» (раз в сутки число скачиваний с GitHub).
+// Публично по адресу веб-приложения (GET) отдаётся только сводка: модели и сколько ТВ на какой версии, без номеров и ошибок.
+// После вставки новой версии один раз запустить setup (данные не трогает), затем «Управление развёртываниями»,
+// карандаш, «Новая версия», «Развернуть»: адрес остаётся прежним.
 
 var REPORTS = 'Отчёты';
+var DEVICES = 'Устройства';
 var SUMMARY = 'Сводка';
 var FAILURES = 'Неудачи';
 var DOWNLOADS = 'Скачивания';
 var REPO = 'artemhyde/artemhyde_TV';
-var MAX_PER_MINUTE = 30;   // больше отчётов в минуту не принимаем: защита от засорения таблицы
+var MAX_PER_MINUTE = 120;   // больше в минуту не принимаем: защита от засорения таблицы
+var PING_EVERY_H = 12;      // повторный сигнал того же ТВ раньше этого срока не пишется
 
-// Поля отчёта по порядку колонок (A: время приёма, дальше эти). [ключ, заголовок, тип, ограничение]
+// Поля отчёта установщика по порядку колонок (A: время приёма, дальше эти). [ключ, заголовок, тип, ограничение]
 var FIELDS = [
   ['report_id', 'Номер отчёта', 'id'],
   ['release', 'Выпуск', 'str', 20],
@@ -39,30 +46,74 @@ var FIELDS = [
   ['error', 'Ошибка', 'str', 500],
   ['verify_ok', 'Проверка: держится', 'int', [0, 1000]],
   ['verify_total', 'Проверка: всего', 'int', [0, 1000]],
-  ['lang', 'Язык', 'str', 10]
+  ['lang', 'Язык', 'str', 10],
+  ['device_id', 'Устройство', 'id_opt']
 ];
 // Колонки листа «Отчёты»: A время, B номер, C выпуск, D установщик, E компьютер, F путь, G марка, H модель,
 // I Android, J SDK, K профиль, L процессор, M модули, N «Дом» главным, O итог, P где сломалось, Q ошибка,
-// R проверка держится, S проверка всего, T язык.
+// R проверка держится, S проверка всего, T язык, U устройство.
 
-// Один раз запустить из редактора: создаёт листы, сводку и ежедневный снимок скачиваний.
+// Поля ежедневного сигнала «Сторожа».
+var PING_FIELDS = [
+  ['device_id', 'Устройство', 'id'],
+  ['release', 'Версия HYDE', 'str', 20],
+  ['tv_brand', 'Марка ТВ', 'str', 60],
+  ['tv_model', 'Модель ТВ', 'str', 80],
+  ['android', 'Android', 'str', 10],
+  ['sdk', 'SDK', 'int', [1, 100]],
+  ['profile', 'Профиль', 'str', 30],
+  ['abi', 'Процессор', 'str', 30],
+  ['auto_update', 'Автообновление', 'bool'],
+  ['last_update', 'Последнее обновление', 'enum', ['none', 'ok', 'failed', 'needs_installer', 'waiting']],
+  ['last_update_release', 'Обновлялся до', 'str', 20],
+  ['error', 'Последняя ошибка', 'str', 500],
+  ['lang', 'Язык', 'str', 10],
+  // С «Сторожа» 1.2.0. keys: служба Key Mapper привязана (ok), упала и поднята «Сторожем» с прошлого сигнала
+  // (repaired), не поднимается (broken), Key Mapper не стоит (absent). home: главный экран по умолчанию HYDE или нет.
+  // reenabled: сколько пакетов, отключённых установщиком, снова включено (бывает после обновления прошивки).
+  ['keys', 'Кнопки пульта', 'enum', ['ok', 'repaired', 'broken', 'absent']],
+  ['home', 'Главный экран', 'enum', ['ok', 'lost']],
+  ['reenabled', 'Включено обратно', 'int', [0, 200]]
+];
+// Колонки листа «Устройства»: A устройство, B впервые, C последний сигнал, D сигналов, E версия HYDE, F марка,
+// G модель, H Android, I SDK, J профиль, K процессор, L автообновление, M последнее обновление, N обновлялся до,
+// O последняя ошибка, P язык, Q кнопки пульта, R главный экран, S включено обратно.
+
+// Запускать из редактора после каждой новой версии скрипта: создаёт недостающие листы и колонки,
+// пересобирает «Сводку» и «Неудачи» (там только формулы) и ежедневный снимок скачиваний. Данные не трогает.
 function setup() {
   var ss = book_();
-  sheet_(REPORTS, headers_());
+  ensureHeaders_(sheet_(REPORTS, headers_()), headers_());
+  ensureHeaders_(sheet_(DEVICES, devHeaders_()), devHeaders_());
   sheet_(DOWNLOADS, ['Когда', 'Выпуск', 'Файл', 'Скачиваний']);
 
   var sm = sheet_(SUMMARY, []);
   sm.clear();
-  sm.getRange('A1').setValue('Итоги').setFontWeight('bold');
-  sm.getRange('A2').setFormula("=QUERY('Отчёты'!A:T,\"select O, count(B) where B is not null and O <> 'test' group by O order by count(B) desc label O 'Итог', count(B) 'Отчётов'\",1)");
-  sm.getRange('D1').setValue('По моделям: сколько отчётов с каждым итогом').setFontWeight('bold');
-  sm.getRange('D2').setFormula("=QUERY('Отчёты'!A:T,\"select G, H, I, count(B) where B is not null and O <> 'test' group by G, H, I pivot O\",1)");
+  sm.getRange('A1').setValue('Итоги установок').setFontWeight('bold');
+  sm.getRange('A2').setFormula("=QUERY('Отчёты'!A:U,\"select O, count(B) where B is not null and O <> 'test' group by O order by count(B) desc label O 'Итог', count(B) 'Отчётов'\",1)");
+  sm.getRange('D1').setValue('ТВ на связи за 7 дней по версиям').setFontWeight('bold');
+  sm.getRange('D2').setFormula("=IFERROR(QUERY(FILTER('Устройства'!E2:E,'Устройства'!C2:C>=TODAY()-7),\"select Col1, count(Col1) group by Col1 order by Col1 desc label Col1 'Версия HYDE', count(Col1) 'ТВ'\",0),\"пока никого\")");
+  sm.getRange('G1').setValue('Всего ТВ в таблице').setFontWeight('bold');
+  sm.getRange('G2').setFormula("=COUNTA('Устройства'!A2:A)");
+  // Сбои среди ТВ, приславших сигнал за 7 дней: колонки Q, R, S листа «Устройства»
+  var week = ",'Устройства'!C2:C,\">=\"&(TODAY()-7))";
+  sm.getRange('G4').setValue('Сбои на ТВ за 7 дней').setFontWeight('bold');
+  sm.getRange('G5').setValue('Кнопки пульта не работают');
+  sm.getRange('H5').setFormula("=COUNTIFS('Устройства'!Q2:Q,\"broken\"" + week);
+  sm.getRange('G6').setValue('Кнопки чинились сами');
+  sm.getRange('H6').setFormula("=COUNTIFS('Устройства'!Q2:Q,\"repaired\"" + week);
+  sm.getRange('G7').setValue('Главный экран не HYDE');
+  sm.getRange('H7').setFormula("=COUNTIFS('Устройства'!R2:R,\"lost\"" + week);
+  sm.getRange('G8').setValue('Отключённое включилось обратно');
+  sm.getRange('H8').setFormula("=COUNTIFS('Устройства'!S2:S,\">0\"" + week);
+  sm.getRange('A12').setValue('По моделям: сколько отчётов с каждым итогом').setFontWeight('bold');
+  sm.getRange('A13').setFormula("=QUERY('Отчёты'!A:U,\"select G, H, I, count(B) where B is not null and O <> 'test' group by G, H, I pivot O\",1)");
   sm.getRange('M1').setValue('Скачивания архивов с GitHub').setFontWeight('bold');
   sm.getRange('M2').setFormula("=QUERY('Скачивания'!A:D,\"select B, C, max(D) where B is not null group by B, C order by B desc label B 'Выпуск', C 'Файл', max(D) 'Скачиваний'\",1)");
 
   var fl = sheet_(FAILURES, []);
   fl.clear();
-  fl.getRange('A1').setFormula("=QUERY('Отчёты'!A:T,\"select A, G, H, I, C, F, P, Q where O = 'failed' or O = 'update_failed' or O = 'partial' order by A desc limit 50 label A 'Когда', G 'Марка', H 'Модель', I 'Android', C 'Выпуск', F 'Путь', P 'Где сломалось', Q 'Ошибка'\",1)");
+  fl.getRange('A1').setFormula("=QUERY('Отчёты'!A:U,\"select A, G, H, I, C, F, P, Q where O = 'failed' or O = 'update_failed' or O = 'partial' order by A desc limit 50 label A 'Когда', G 'Марка', H 'Модель', I 'Android', C 'Выпуск', F 'Путь', P 'Где сломалось', Q 'Ошибка'\",1)");
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'updateDownloads') ScriptApp.deleteTrigger(t);
@@ -75,7 +126,7 @@ function setup() {
   ss.setActiveSheet(ss.getSheetByName(SUMMARY));
 }
 
-// Приём отчёта от установщика.
+// Приём отчёта установщика или сигнала «Сторожа».
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents || e.postData.contents.length > 8000) {
@@ -92,35 +143,91 @@ function doPost(e) {
     if (n >= MAX_PER_MINUTE) return out_({ ok: false, error: 'слишком много отчётов в минуту' });
     cache.put(minute, String(n + 1), 120);
 
+    var kind = data.kind === undefined || data.kind === null || data.kind === '' ? 'install' : String(data.kind);
+    if (kind === 'ping') return ping_(data, cache);
+    if (kind !== 'install') return out_({ ok: false, error: 'неизвестный вид отчёта' });
+
     var row = [new Date()];
+    var vals = {};
     for (var i = 0; i < FIELDS.length; i++) {
       var v = clean_(data[FIELDS[i][0]], FIELDS[i]);
       if (v === null) return out_({ ok: false, error: 'неверное поле ' + FIELDS[i][0] });
       row.push(v);
+      vals[FIELDS[i][0]] = v;
     }
-    if (!row[1] || !row[2] || !row[14]) return out_({ ok: false, error: 'нет номера отчёта, выпуска или итога' });
-    if (cache.get('r' + row[1])) return out_({ ok: true, report: row[1], duplicate: true });
+    if (!vals.report_id || !vals.release || !vals.result) return out_({ ok: false, error: 'нет номера отчёта, выпуска или итога' });
+    if (cache.get('r' + vals.report_id)) return out_({ ok: true, report: vals.report_id, duplicate: true });
 
     var lock = LockService.getScriptLock();
     lock.waitLock(10000);
     try {
-      sheet_(REPORTS, headers_()).appendRow(row);
+      var sh = sheet_(REPORTS, headers_());
+      ensureHeaders_(sh, headers_());
+      sh.appendRow(row);
+      // ТВ из отчёта сразу появляется в «Устройствах», ещё до первого сигнала «Сторожа»
+      if (vals.device_id && ['ok', 'partial', 'update_ok'].indexOf(vals.result) >= 0) upsertDevice_(vals, false);
     } finally {
       lock.releaseLock();
     }
-    cache.put('r' + row[1], '1', 21600);
-    return out_({ ok: true, report: row[1] });
+    cache.put('r' + vals.report_id, '1', 21600);
+    return out_({ ok: true, report: vals.report_id });
   } catch (err) {
     return out_({ ok: false, error: 'отчёт не принят' });
   }
 }
 
-// Публичная сводка по моделям: марка, модель, Android, профиль, сколько установок и сколько удачных.
+// Ежедневный сигнал «Сторожа»: обновить строку этого ТВ в «Устройствах».
+function ping_(data, cache) {
+  var vals = {};
+  for (var i = 0; i < PING_FIELDS.length; i++) {
+    var f = PING_FIELDS[i];
+    var v = clean_(data[f[0]], f);
+    if (v === null) return out_({ ok: false, error: 'неверное поле ' + f[0] });
+    vals[f[0]] = v;
+  }
+  if (!vals.device_id || !vals.release) return out_({ ok: false, error: 'нет устройства или версии' });
+  var key = 'p' + vals.device_id;
+  if (cache.get(key)) return out_({ ok: true, duplicate: true });
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    upsertDevice_(vals, true);
+  } finally {
+    lock.releaseLock();
+  }
+  cache.put(key, '1', PING_EVERY_H * 3600);
+  return out_({ ok: true });
+}
+
+// Строка ТВ в «Устройствах»: новая или обновлённая. Пустые новые значения не затирают прежние.
+function upsertDevice_(vals, isPing) {
+  var sh = sheet_(DEVICES, devHeaders_());
+  ensureHeaders_(sh, devHeaders_());
+  var now = new Date();
+  var rest = PING_FIELDS.slice(1).map(function (f) { return vals[f[0]] === undefined ? '' : vals[f[0]]; });
+  var found = null;
+  if (sh.getLastRow() > 1) {
+    found = sh.getRange(2, 1, sh.getLastRow() - 1, 1).createTextFinder(vals.device_id).matchEntireCell(true).findNext();
+  }
+  if (found) {
+    var r = found.getRow();
+    var count = Number(sh.getRange(r, 4).getValue() || 0) + (isPing ? 1 : 0);
+    var old = sh.getRange(r, 5, 1, rest.length).getValues()[0];
+    for (var i = 0; i < rest.length; i++) if (rest[i] === '') rest[i] = old[i];
+    sh.getRange(r, 3, 1, 2).setValues([[now, count]]);
+    sh.getRange(r, 5, 1, rest.length).setValues([rest]);
+  } else {
+    sh.appendRow([vals.device_id, now, now, isPing ? 1 : 0].concat(rest));
+  }
+}
+
+// Публичная сводка: модели (сколько установок и удачных) и сколько ТВ на какой версии. Без номеров и ошибок.
 function doGet() {
+  var ss = book_();
   var stats = {};
-  var sh = book_().getSheetByName(REPORTS);
+  var sh = ss.getSheetByName(REPORTS);
   if (sh && sh.getLastRow() > 1) {
-    sh.getRange(2, 1, sh.getLastRow() - 1, FIELDS.length + 1).getValues().forEach(function (r) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, 15).getValues().forEach(function (r) {
       var result = String(r[14]);
       if (result === 'test' || !r[1]) return;
       var key = [r[6], r[7], r[8], r[10]].join('|');
@@ -134,7 +241,22 @@ function doGet() {
   }
   var list = Object.keys(stats).map(function (k) { return stats[k]; });
   list.sort(function (a, b) { return b.installs - a.installs; });
-  return out_({ ok: true, models: list });
+
+  var devices = { total: 0, active7: 0, versions: {} };
+  var dv = ss.getSheetByName(DEVICES);
+  if (dv && dv.getLastRow() > 1) {
+    var weekAgo = Date.now() - 7 * 86400000;
+    dv.getRange(2, 1, dv.getLastRow() - 1, 5).getValues().forEach(function (r) {
+      if (!r[0]) return;
+      devices.total++;
+      if (new Date(r[2]).getTime() >= weekAgo) {
+        devices.active7++;
+        var ver = String(r[4] || '?');
+        devices.versions[ver] = (devices.versions[ver] || 0) + 1;
+      }
+    });
+  }
+  return out_({ ok: true, models: list, devices: devices });
 }
 
 // Раз в сутки: сколько раз скачали архивы каждого выпуска. GitHub иногда отказывает адресам Google
@@ -152,7 +274,7 @@ function updateDownloads() {
   var rows = [];
   JSON.parse(res.getContentText()).forEach(function (rel) {
     (rel.assets || []).forEach(function (a) {
-      if (/\.(zip|tar\.gz)$/.test(a.name)) rows.push([now, rel.tag_name, a.name, a.download_count]);
+      if (/\.(zip|tar\.gz)$/.test(a.name) && a.name.indexOf('source') < 0) rows.push([now, rel.tag_name, a.name, a.download_count]);
     });
   });
   if (rows.length) {
@@ -167,6 +289,7 @@ function clean_(v, f) {
   if (v === null || v === undefined || v === '') return '';
   switch (type) {
     case 'id':
+    case 'id_opt':
       v = String(v);
       return /^[a-z0-9]{16,40}$/.test(v) ? v : null;
     case 'str':
@@ -186,7 +309,7 @@ function clean_(v, f) {
   return null;
 }
 
-// Убирает то, чего в отчёте быть не должно, даже если установщик пропустил: IP и MAC-адреса, почту.
+// Убирает то, чего в отчёте быть не должно, даже если отправитель пропустил: IP и MAC-адреса, почту.
 // Строку, начинающуюся с = + - @, таблица не должна принять за формулу.
 function scrub_(s) {
   s = s.replace(/[\u0000-\u001f\u007f]/g, ' ')
@@ -214,8 +337,19 @@ function sheet_(name, headers) {
   return sh;
 }
 
+// Дописывает в первую строку заголовки новых колонок, если лист создан прежней версией скрипта
+function ensureHeaders_(sh, headers) {
+  var have = sh.getLastColumn();
+  if (have >= headers.length) return;
+  sh.getRange(1, have + 1, 1, headers.length - have).setValues([headers.slice(have)]).setFontWeight('bold');
+}
+
 function headers_() {
   return ['Принят'].concat(FIELDS.map(function (f) { return f[1]; }));
+}
+
+function devHeaders_() {
+  return ['Устройство', 'Впервые', 'Последний сигнал', 'Сигналов'].concat(PING_FIELDS.slice(1).map(function (f) { return f[1]; }));
 }
 
 function out_(o) {

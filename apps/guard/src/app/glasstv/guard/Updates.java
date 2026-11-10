@@ -90,12 +90,14 @@ final class Updates {
     private final Set<String> inFlight = Collections.synchronizedSet(new HashSet<String>());
     private final Map<String, long[]> tapOpen = Collections.synchronizedMap(new HashMap<String, long[]>());   // пакет: {сессия, когда открыли окно}
     final Hyde hyde;   // самообновление приложений HYDE (Hyde.java): та же нитка, тот же шаг, установки по одной
+    final Ping ping;   // технический отчёт автору раз в сутки (Ping.java): та же нитка
 
     Updates(Context c, Out out) {
         this.c = c;
         this.sp = c.getSharedPreferences("upd", Context.MODE_PRIVATE);
         this.out = out;
         this.hyde = new Hyde(c, this, out);
+        this.ping = new Ping(c, out);
         // Сессии установки от прошлого запуска службы: их итог сюда уже не придёт. Бросаем, файл поставится заново
         try {
             PackageInstaller pi = c.getPackageManager().getPackageInstaller();
@@ -128,7 +130,14 @@ final class Updates {
         installReady(false, false, null);
         long next = tapWaiting() ? TICK_TAP : TICK;
         long hn = hyde.step();   // приложения HYDE после чужих: одна установка за раз, цепочкой каждые 20 с
-        return hn > 0 ? Math.min(next, hn) : next;
+        if (hn > 0) next = Math.min(next, hn);
+        if (hyde.pending()) next = Math.min(next, Hyde.WAIT_MS);   // записка или «Разрешить» ждут человека у главного экрана
+        // Кнопки пульта, главный экран, включённое прошивкой (Health): записка «запустите установщик» ждёт человека у
+        // главного экрана; при погасшем экране не смотрим, при включении ТВ шаг придёт сам
+        GuardService g = GuardService.running;
+        if (g != null && g.health != null && g.health.notePending() && !g.health.noteNow(this) && interactive()) next = Math.min(next, TICK_TAP);
+        long pn = ping.tick();   // отчёт автору: шаг проснётся к назначенному времени
+        return pn > 0 ? Math.min(next, pn) : next;
     }
 
     // Команда с ПК и кнопка «Проверить сейчас»: проверить выпуск HYDE и сделать шаг установки (условия те же, что по расписанию)
@@ -497,7 +506,8 @@ final class Updates {
         return g == null || g.playingVideo() == null;
     }
 
-    private static final Pattern LAST_USER = Pattern.compile("lastUserActivityTime=\\d+ \\((\\d+) ms ago\\)");
+    // Android 12+ пишет «lastUserActivityTime=…», Android 9–11 «mLastUserActivityTime=…»: без учёта регистра подходят оба
+    private static final Pattern LAST_USER = Pattern.compile("lastUserActivityTime=\\d+ \\((\\d+) ms ago\\)", Pattern.CASE_INSENSITIVE);
 
     static long sinceInputMs() {
         Matcher m = LAST_USER.matcher(GuardService.dumpsys("power"));

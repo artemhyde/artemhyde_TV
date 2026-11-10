@@ -5,32 +5,27 @@ import android.graphics.Bitmap;
 import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.ColorMatrixColorFilter;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
-import android.graphics.Shader;
 import android.view.View;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-// Часы-стекло в стиле «Vision». 09.11 из трёх проб выбрано «Матовое» (как Liquid Glass на айфонах), вечером того же дня:
-// прозрачнее, в стиле плашек приложений, без скачка цвета при сжатии, тоньше и меньше.
-// Поэтому стекло теперь по-настоящему прозрачное: внутри цифр ничего не подставляется, сквозь них видно живое фото под ними
-// (прежнее тело было снимком фона, и при сжатии он не совпадал с новым местом, отсюда скачок цвета). Видны только свет
-// и кромки, как у шаров ряда (Tile.glassShape): лёгкая белая вуаль, свечение по краю изнутри (у низа сильнее), яркая грань
-// сверху слева, отблеск снизу справа, мягкая тень под цифрами. Шрифт тонкий, Inter Light, как у прежних часов «Графита».
-// Картинка цифр от фона не зависит: собирается фоновым потоком только при смене времени
+// Часы-стекло (Liquid Glass), один из трёх видов часов в «Оформлении» (10.11).
+// История: 09.11 выбрано «Матовое», вечером того же дня стекло стало по-настоящему прозрачным (внутри цифр живое фото,
+// при сжатии цвет не прыгает). Потом забраковано: «пиксельная лесенка по контуру». Причины были две: готовая картинка
+// цифр рисовалась без сглаживания (краска null), а на плитках и во время сжатия она уменьшена до 0,8, и видеокарта брала
+// ближайшую точку вместо смеси соседних; и тонкая кромка получалась порогом по размытой маске, её край был почти ступенчатым.
+// Теперь: картинка всегда рисуется со сглаживанием (FILTER_BITMAP_FLAG), а свет по краю считается по точкам из гладкой
+// «высоты» цифр: у каждого места края есть направление наружу, грань к свету сверху слева светится сильнее, снизу справа
+// слабый ответный отсвет, внутри лёгкая вуаль и свечение у края. Ни одного порога: край стекла это край сглаженной буквы.
+// Картинка от фона не зависит (сквозь цифры видно живое фото) и собирается фоновым потоком раз в минуту
 final class GlassClock extends View {
-    // Выключатель стекла. В выпуск 1.1.0 стекло не входит: по контуру цифр видна лесенка, доработка в следующем обновлении.
-    // В «Vision» пока прежние тонкие часы текстом. В личной сборке стекло включено, это единственное отличие файлов,
-    // кроме имени пакета
-    static final boolean ON = false;
     static final float SIZE_SP = 112;
     private static final ExecutorService WORK = Executors.newSingleThreadExecutor();
+    // Свет сверху слева (ось y вниз)
+    private static final float LX = -0.55f, LY = -0.835f;
 
     // Готовый кадр часов: тень и стекло для одного и того же времени
     private static final class Frame {
@@ -40,11 +35,13 @@ final class GlassClock extends View {
     }
 
     private final Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-    private final Paint shadowPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final int pad;
-    private final float capTop;
+    private final Paint shadowPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+    private final Paint glassPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+    private int pad;
+    private float capTop;
     private String text = "";
     private int w, h;
+    private int gen;              // номер размера: кадр старого размера не показываем
     private volatile Frame cur;   // рисуется сейчас
 
     GlassClock(Context c, float sizePx) {
@@ -54,26 +51,44 @@ final class GlassClock extends View {
         // Цифры обычной ширины, без «tnum»: у табличной единицы Inter есть пятка, она выглядит как на печатной машинке.
         // Ширина часов от этого меняется раз в минуту, но они стоят по центру, и соседям это не мешает
         tp.setLetterSpacing(-0.01f);
+        shadowPaint.setColor(Color.argb(56, 0, 0, 0));
+        setSizePx(sizePx);
+    }
+
+    // Размер цифр в точках экрана: в «Vision» крупные, в «Графите» мельче. Новый размер: кадр собирается заново
+    void setSizePx(float sizePx) {
+        if (Math.abs(tp.getTextSize() - sizePx) < 0.5f && w > 0) return;
         tp.setTextSize(sizePx);
         Rect r = new Rect();
         tp.getTextBounds("0123456789", 0, 10, r);
         capTop = r.top;   // отрицательное: высота цифр над базовой линией
         pad = Math.round(sizePx * 0.16f);   // место под тень
-        shadowPaint.setColor(Color.argb(64, 0, 0, 0));
+        gen++;
+        cur = null;
+        String t = text;
+        text = "";
+        w = h = 0;
+        if (!t.isEmpty()) setTime(t); else requestLayout();
     }
 
     // От верха вида до базовой линии цифр: по ней часы встают на ту же линию, что и прежние
     float baseFromTop() { return pad - capTop; }
+
+    // Поле слева от цифр внутри вида (под тень): «Графит» ставит часы по левой линии экрана
+    int padLeft() { return pad; }
 
     void setTime(String t) {
         if (t == null || t.equals(text)) return;
         text = t;
         final int nw = Math.round(tp.measureText(text)) + 2 * pad, nh = Math.round(-capTop) + 2 * pad;
         if (nw != w || nh != h) { w = nw; h = nh; requestLayout(); }
+        final Paint p = new Paint(tp);   // краска для фонового потока: свою он не трогает
+        final int g = gen, pd = pad;
+        final float ct = capTop;
         WORK.execute(() -> {
-            Frame f = build(t, nw, nh);
+            Frame f = build(t, nw, nh, p, pd, ct);
             post(() -> {
-                if (!t.equals(text)) return;   // пока собирали, время сменилось: новый кадр уже в пути
+                if (!t.equals(text) || g != gen) return;   // пока собирали, время или размер сменились
                 cur = f;
                 invalidate();
             });
@@ -85,12 +100,36 @@ final class GlassClock extends View {
     @Override protected void onDraw(Canvas c) {
         Frame f = cur;
         if (f == null || f.w != getWidth() || f.h != getHeight()) return;
-        c.drawBitmap(f.shadow, f.sx, f.sy + tp.getTextSize() * 0.02f, shadowPaint);
-        c.drawBitmap(f.glass, 0, 0, null);
+        c.drawBitmap(f.shadow, f.sx, f.sy + tp.getTextSize() * 0.025f, shadowPaint);
+        c.drawBitmap(f.glass, 0, 0, glassPaint);
+    }
+
+    @Override public boolean hasOverlappingRendering() { return false; }
+
+    // Маленькая готовая картинка стеклянных часов (миниатюра в «Оформлении»): тень и стекло вместе
+    static Bitmap preview(String t, float sizePx) {
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        p.setColor(Color.WHITE);
+        p.setTypeface(Fonts.light28 != null ? Fonts.light28 : android.graphics.Typeface.DEFAULT);
+        p.setLetterSpacing(-0.01f);
+        p.setTextSize(sizePx);
+        Rect r = new Rect();
+        p.getTextBounds("0123456789", 0, 10, r);
+        int pad = Math.round(sizePx * 0.16f);
+        int W = Math.round(p.measureText(t)) + 2 * pad, H = Math.round(-r.top) + 2 * pad;
+        if (W <= 2 * pad || H <= 2 * pad) return null;
+        Frame f = build(t, W, H, p, pad, r.top);
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint sp = new Paint(Paint.FILTER_BITMAP_FLAG);
+        sp.setColor(Color.argb(56, 0, 0, 0));
+        c.drawBitmap(f.shadow, f.sx, f.sy + sizePx * 0.025f, sp);
+        c.drawBitmap(f.glass, 0, 0, new Paint(Paint.FILTER_BITMAP_FLAG));
+        return Tile.fixed(out);
     }
 
     // Тень и стекло по цифрам (поток WORK)
-    private Frame build(String t, int W, int H) {
+    private static Frame build(String t, int W, int H, Paint tp, int pad, float capTop) {
         Frame d = new Frame();
         d.text = t; d.w = W; d.h = H;
         float size = tp.getTextSize();
@@ -104,79 +143,66 @@ final class GlassClock extends View {
         d.sx = off[0];
         d.sy = off[1];
 
-        float top = pad, bottom = pad - capTop;
-        float s = Math.max(1f, size * 0.008f);
-        d.glass = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
-        Canvas gc = new Canvas(d.glass);
-        // Вуаль: чуть светлее того, что под цифрами, сверху светлее (блик); сквозь неё видно живое фото
-        paintThrough(gc, mask, new LinearGradient(0, top, 0, bottom,
-                new int[]{0x33FFFFFF, 0x17FFFFFF, 0x14FFFFFF}, new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP), W, H);
-        // Свечение по краю изнутри: мягкое, к середине штриха гаснет, у низа сильнее
-        paintThrough(gc, glow(mask, size * 0.025f), new LinearGradient(0, top, 0, bottom,
-                new int[]{0x40FFFFFF, 0x26FFFFFF, 0x59FFFFFF}, new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP), W, H);
-        // Тонкая кромка по всему краю: держит форму цифр на светлом фото
-        paintThrough(gc, band(mask, Math.max(1f, size * 0.006f)), new LinearGradient(0, top, 0, bottom,
-                0x66FFFFFF, 0x47FFFFFF, Shader.TileMode.CLAMP), W, H);
-        // Свет сверху слева: яркая грань, к низу цифры гаснет
-        paintThrough(gc, rim(mask, s, s), new LinearGradient(0, top, 0, bottom,
-                new int[]{0xF2FFFFFF, 0x8CFFFFFF, 0x33FFFFFF}, new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP), W, H);
-        // Отблеск снизу справа, слабее света
-        paintThrough(gc, rim(mask, -s * 0.8f, -s * 0.8f), new LinearGradient(0, bottom, 0, top,
-                0xA6FFFFFF, 0x26FFFFFF, Shader.TileMode.CLAMP), W, H);
+        int n = W * H;
+        int[] px = new int[n];
+        mask.getPixels(px, 0, W, 0, 0, W, H);
+        mask.recycle();
+        float[] a = new float[n];
+        for (int i = 0; i < n; i++) a[i] = (px[i] >>> 24) / 255f;
+        // Гладкая «высота» цифр для направления края и широкая для свечения изнутри
+        int r1 = Math.max(1, Math.round(size * 0.012f)), r2 = Math.max(2, Math.round(size * 0.034f));
+        float[] b = blur(a, W, H, r1), b2 = blur(a, W, H, r2);
+        // У размытой ступени наибольший наклон около 0,4 / сигма; сигма трёх проходов окна радиуса r около r + 0,5
+        float kEdge = 2.5f * (r1 + 0.5f);
+        for (int y = 0; y < H; y++) {
+            float top = 1f - y / (float) H;
+            for (int x = 0; x < W; x++) {
+                int i = y * W + x;
+                float A = a[i];
+                if (A < 0.004f) { px[i] = 0; continue; }
+                float gx = (b[x + 1 < W ? i + 1 : i] - b[x > 0 ? i - 1 : i]) * 0.5f;
+                float gy = (b[y + 1 < H ? i + W : i] - b[y > 0 ? i - W : i]) * 0.5f;
+                float gl = (float) Math.sqrt(gx * gx + gy * gy);
+                float edge = Math.min(1f, gl * kEdge);
+                float lit = gl > 1e-6f ? (-gx * LX - gy * LY) / gl : 0f;   // направление наружу против света
+                float spec = lit > 0 ? lit * lit : 0f, back = lit < 0 ? -lit * lit * lit : 0f;
+                float rim = edge * (0.28f + 0.72f * spec + 0.45f * back);
+                float glow = 1f - b2[i];
+                float veil = 0.05f + 0.09f * top;
+                float alpha = 1f - (1f - veil) * (1f - 0.30f * glow) * (1f - 0.88f * Math.min(1f, rim));
+                int al = Math.round(255f * alpha * A);
+                px[i] = (Math.min(255, al) << 24) | 0x00FFFFFF;
+            }
+        }
+        Bitmap g = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        g.setPixels(px, 0, W, 0, 0, W, H);
+        d.glass = Tile.fixed(g);
         return d;
     }
 
-    // Залить градиентом там, где есть форма (форма полноцветная: у ALPHA_8 пустые места режим DST_IN не трогает)
-    private static void paintThrough(Canvas dst, Bitmap shape, Shader sh, int W, int H) {
-        Bitmap t = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
-        Canvas tc = new Canvas(t);
-        Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
-        q.setShader(sh);
-        tc.drawRect(0, 0, W, H, q);
-        q = new Paint();
-        q.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-        tc.drawBitmap(shape, 0, 0, q);
-        dst.drawBitmap(t, 0, 0, null);
+    // Почти гауссово размытие: три прохода усредняющего окна по строкам и столбцам
+    private static float[] blur(float[] src, int w, int h, int r) {
+        float[] a = src.clone(), t = new float[Math.max(w, h)];
+        for (int pass = 0; pass < 3; pass++) {
+            box(a, w, h, r, true, t);
+            box(a, w, h, r, false, t);
+        }
+        return a;
     }
 
-    // Край со стороны сдвига: маска без самой себя, сдвинутой на (dx, dy)
-    private static Bitmap rim(Bitmap mask, float dx, float dy) {
-        Bitmap r = mask.copy(Bitmap.Config.ARGB_8888, true);
-        Paint q = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        q.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
-        new Canvas(r).drawBitmap(mask, dx, dy, q);
-        return r;
+    private static void box(float[] a, int w, int h, int r, boolean rows, float[] out) {
+        int len = rows ? w : h, lines = rows ? h : w;
+        float inv = 1f / (2 * r + 1);
+        for (int line = 0; line < lines; line++) {
+            float sum = 0;
+            for (int k = -r; k <= r; k++) sum += a[at(Math.max(0, Math.min(len - 1, k)), line, w, rows)];
+            for (int i = 0; i < len; i++) {
+                out[i] = sum * inv;
+                sum += a[at(Math.min(len - 1, i + r + 1), line, w, rows)] - a[at(Math.max(0, i - r), line, w, rows)];
+            }
+            for (int i = 0; i < len; i++) a[at(i, line, w, rows)] = out[i];
+        }
     }
 
-    // Свечение по краю изнутри: маска, из которой вычтена её размытая копия; у края ярче, к середине штриха в ноль
-    private static Bitmap glow(Bitmap mask, float e) {
-        Paint q = new Paint();
-        q.setMaskFilter(new BlurMaskFilter(Math.max(1f, e), BlurMaskFilter.Blur.NORMAL));
-        int[] o = new int[2];
-        Bitmap bl = mask.extractAlpha(q, o);
-        Bitmap r = mask.copy(Bitmap.Config.ARGB_8888, true);
-        Paint d = new Paint(Paint.FILTER_BITMAP_FLAG);
-        d.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
-        new Canvas(r).drawBitmap(bl, o[0], o[1], d);
-        return r;
-    }
-
-    // Полоса вдоль всего края внутри цифр шириной около e: маска без её «сжатой» середины
-    private static Bitmap band(Bitmap mask, float e) {
-        Paint q = new Paint();
-        q.setMaskFilter(new BlurMaskFilter(Math.max(1f, e), BlurMaskFilter.Blur.NORMAL));
-        int[] o = new int[2];
-        Bitmap bl = mask.extractAlpha(q, o);
-        Bitmap inner = Bitmap.createBitmap(mask.getWidth(), mask.getHeight(), Bitmap.Config.ARGB_8888);
-        Paint t = new Paint();
-        t.setColor(Color.WHITE);
-        float k = 6f;   // порог: середина там, где размытая маска почти целая
-        t.setColorFilter(new ColorMatrixColorFilter(new float[]{0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0, 0, 0, k, -0.82f * k * 255}));
-        new Canvas(inner).drawBitmap(bl, o[0], o[1], t);
-        Bitmap r = mask.copy(Bitmap.Config.ARGB_8888, true);
-        Paint d = new Paint();
-        d.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
-        new Canvas(r).drawBitmap(inner, 0, 0, d);
-        return r;
-    }
+    private static int at(int i, int line, int w, boolean rows) { return rows ? line * w + i : i * w + line; }
 }

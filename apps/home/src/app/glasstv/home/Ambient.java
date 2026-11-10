@@ -49,6 +49,14 @@ final class Ambient implements Data.Listener {
     final GlassClock glass;   // часы «матовое стекло» в «Vision» (09.11); прежние тонкие часы остаются в «Графите»
     private final TextView[] verse = new TextView[2];
     private int vis;   // какой из двух слоёв стиха сейчас виден
+    // Записка с телефона (10.11, Notes): стоит на месте цитаты. Текст идёт в те же строки, рисунок в свою картинку
+    private Notes.Note note;
+    private ImageView noteArt;
+    // Записка «Сторожа» на время (10.11, договор с ним: приходит рассылкой, пока «Дом» на экране): на экране блокировки
+    // встаёт на место цитаты и своей записки, потом всё возвращается. На главном экране её показывает плашка (HomeActivity)
+    private String flashText, flashRef;
+    private long flashUntil;
+    private boolean quotesShown;   // какая подборка на экране: при смене цитат на Библию текст меняется сразу
     final WeatherIcon icon;
     final LinearLayout tempRow;
     final Particles particles;
@@ -95,11 +103,14 @@ final class Ambient implements Data.Listener {
         GradientDrawable topShade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0x4D000000, 0x00000000});
         if (android.os.Build.VERSION.SDK_INT >= 29) topShade.setColors(new int[]{0x66000000, 0x4D000000, 0x00000000}, new float[]{0f, 0.62f, 1f});
         top.setBackground(topShade);
-        root.addView(top, new FrameLayout.LayoutParams(-1, px(190)));
+        // 10.11: подложки запечены в само фото экрана блокировки (lockOf), отдельными видами их нет. Градиент во весь экран,
+        // смешиваемый с фото, стоил этому ТВ 12–16 мс на каждом кадре перехода (замер на TCL); в картинке он бесплатен.
+        // Виды остаются без места на экране: старые вызовы видимости и прозрачности ничего не рисуют
+        top.setLayoutParams(new FrameLayout.LayoutParams(-1, px(190)));
         bottom = new FlatView(c);
         bottom.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x00000000, 0x33000000, 0x8C000000}));
-        root.addView(bottom, new FrameLayout.LayoutParams(-1, px(240), Gravity.BOTTOM));
+        bottom.setLayoutParams(new FrameLayout.LayoutParams(-1, px(240), Gravity.BOTTOM));
         dim = new FlatView(c);
         dim.setBackgroundColor(0xFF000000);
         dim.setAlpha(0f);
@@ -144,7 +155,7 @@ final class Ambient implements Data.Listener {
         rates.setGravity(Gravity.END);
         rates.setAlpha(0f);
         // Без погоды курс встаёт на строку названия места, а не висит ниже пустого места
-        root.addView(rates, Grid.at(rates, dp, Grid.RIGHT, Setup.weatherOn(c) ? 148 : 124, true, Grid.span(5)));
+        root.addView(rates, Grid.at(rates, dp, Grid.RIGHT, Setup.weatherOn(c) ? 148 : 124, true, Grid.span(7)));
         for (View v : new View[]{date, tempRow, place, rates}) v.addOnLayoutChangeListener(regroup);
 
         // Стих растёт вверх от общей нижней линии, ссылка на книгу на самой нижней линии экрана
@@ -162,6 +173,20 @@ final class Ambient implements Data.Listener {
         ref.setLetterSpacing(0.02f);
         root.addView(ref, Grid.at(ref, dp, Grid.MARGIN, Grid.BOTTOM, false, 0));
 
+        // Рисунок записки: 16:9 со скруглёнными углами, на месте цитаты (непрозрачный, 16 бит: смешивать нечего)
+        noteArt = new ImageView(c);
+        noteArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        noteArt.setVisibility(View.GONE);
+        final float nr = 14 * dp;
+        noteArt.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), nr); }
+        });
+        noteArt.setClipToOutline(true);
+        root.addView(noteArt, noteParams());
+        note = Notes.current(c);
+        quotesShown = Setup.quotes(c);
+        if (note != null && note.draw()) loadNoteArt(note.at);
+
         caption = Fonts.text(c, Fonts.CAPTION, Fonts.reg18, Fonts.WHITE_60);
         caption.setGravity(Gravity.END);
         caption.setSingleLine(true);
@@ -175,10 +200,16 @@ final class Ambient implements Data.Listener {
 
     // Человек поменял настройки «Дома» (город, курсы, стих): показать и спрятать строки, переставить курсы, обновить текст
     void applySetup() {
-        boolean w = Setup.weatherOn(c), r = Setup.ratesOn(c), v = Setup.versesOn(c);
+        boolean w = Setup.weatherOn(c), r = Setup.ratesOn(c), v = Setup.versesOn(c) || note != null || flashText != null;
         for (View x : new View[]{tempRow, place}) x.setVisibility(w ? View.VISIBLE : View.GONE);
         rates.setVisibility(r ? View.VISIBLE : View.GONE);
         for (View x : new View[]{verse[0], verse[1], ref}) x.setVisibility(v ? View.VISIBLE : View.GONE);
+        // Цитаты сменили на Библию или обратно: новый текст сразу, а не в следующее время суток
+        boolean q = Setup.quotes(c);
+        if (q != quotesShown) {
+            quotesShown = q;
+            if (Setup.versesOn(c)) newVerseNow();
+        }
         if (styled) layoutText();
         boolean l = Setup.lite(c);
         if (l != lite) {
@@ -189,9 +220,20 @@ final class Ambient implements Data.Listener {
         }
     }
 
+    // «Оформление» (10.11): пока открыто, частицы стоят. В уменьшенной карточке их почти не видно, а каждый их кадр
+    // перерисовывает весь экран вместе с выбором и фоном
+    boolean calm;
+
+    void setCalm(boolean on) {
+        calm = on;
+        showParticles();
+    }
+
+    private int sample() { return lite ? 2 : 1; }
+
     // Частицы только в «Графите» и не в облегчённом режиме
     private void showParticles() {
-        boolean off = vision || lite;
+        boolean off = vision || lite || calm;
         particles.setVisibility(off ? View.GONE : View.VISIBLE);
         if (off) particles.stop();
         else particles.level(active ? 1f : Particles.LOCK, 0);
@@ -257,8 +299,8 @@ final class Ambient implements Data.Listener {
         }
         glass.setPivotX(px - glass.getLeft());
         glass.setPivotY(py - glass.getTop());
-        glass.setScaleX(g / LOCK);
-        glass.setScaleY(g / LOCK);
+        glass.setScaleX(g / glassBuilt);
+        glass.setScaleY(g / glassBuilt);
     }
 
     private void animateGroup(float to, long ms) {
@@ -271,19 +313,38 @@ final class Ambient implements Data.Listener {
         groupAnim.start();
     }
 
+    // Стекло часов собрано в масштабе крупных часов экрана блокировки «Vision» (LOCK) или в своём (1 в «Графите»)
+    private float glassBuilt = LOCK;
+
     private void layoutText() {
         boolean v = vision;
+        // Часы на выбор (10.11, «Оформление»): тонкие Inter Light, плотные Inter SemiBold или стекло. Начертание ставится
+        // до раскладки: по метрикам шрифта считается базовая линия
+        String ck = Look.clock(c);
+        boolean bold = Look.BOLD.equals(ck), g = Look.GLASS.equals(ck);
+        clock.setTypeface(bold && Fonts.semi18 != null ? Fonts.semi18 : Fonts.light28);
+        clock.setLetterSpacing(bold ? -0.035f : -0.02f);
         clock.setTextSize(v ? 96 : 64);
         clock.setTranslationX(v ? 0 : -px(4));
         clock.setLayoutParams(v ? Grid.center(clock, dp, V_CLOCK) : Grid.at(clock, dp, Grid.MARGIN, 92, false, 0));
-        // В «Vision» время рисует стекло на той же базовой линии, текст часов остаётся невидимым (по нему строится раскладка)
-        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        float lockBase = V_TOP * dp + LOCK * (V_CLOCK - V_TOP) * dp;   // базовая линия крупных часов на экране блокировки
-        glp.topMargin = Math.round(lockBase - glass.baseFromTop());
+        // Стекло рисует время на той же базовой линии, текст часов остаётся невидимым (по нему строится раскладка).
+        // «Vision»: по центру, крупным (масштаб LOCK) и на плитках уменьшается. «Графит»: слева, в своём размере
+        glassBuilt = v ? LOCK : 1f;
+        glass.setSizePx((v ? GlassClock.SIZE_SP * LOCK : GlassClock.SIZE_SP * 64f / 96f) * dp);
+        FrameLayout.LayoutParams glp;
+        if (v) {
+            glp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            float lockBase = V_TOP * dp + LOCK * (V_CLOCK - V_TOP) * dp;   // базовая линия крупных часов на экране блокировки
+            glp.topMargin = Math.round(lockBase - glass.baseFromTop());
+        } else {
+            glp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+            glp.leftMargin = Math.round(Grid.MARGIN * dp - glass.padLeft() - px(4));
+            glp.topMargin = Math.round(92 * dp - glass.baseFromTop());
+        }
         glass.setLayoutParams(glp);
-        boolean g = v && GlassClock.ON;   // стекло выключено: в «Vision» видны сами часы текстом
         glass.setVisibility(g ? View.VISIBLE : View.GONE);
         clock.setVisibility(g ? View.INVISIBLE : View.VISIBLE);
+        if (g) glass.setTime(clock.getText().toString());
         // Верхняя подложка экрана блокировки: в «Vision» часы и погода там в полтора раза крупнее и опускаются до трети
         // экрана, подложка 190 dp кончалась выше строки места, и на светлом фото она пропадала (09.11, живой ТВ).
         // Тянем её до 420 dp; на плитках подложка и так гаснет
@@ -303,12 +364,13 @@ final class Ambient implements Data.Listener {
         rates.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.END);
         boolean w = Setup.weatherOn(c);
         rates.setLayoutParams(v ? Grid.center(rates, dp, w ? V_RATES : V_PLACE)
-                : Grid.at(rates, dp, Grid.RIGHT, w ? 148 : 124, true, Grid.span(5)));
+                : Grid.at(rates, dp, Grid.RIGHT, w ? 148 : 124, true, Grid.span(7)));
         for (TextView t : verse) {
             t.setGravity(v ? Gravity.CENTER_HORIZONTAL : Gravity.START);
             t.setLayoutParams(v ? Grid.aboveCenter(t, dp, 466, 680) : Grid.above(t, dp, Grid.MARGIN, 472, Grid.span(6)));
         }
         ref.setLayoutParams(v ? Grid.center(ref, dp, Grid.BOTTOM) : Grid.at(ref, dp, Grid.MARGIN, Grid.BOTTOM, false, 0));
+        noteArt.setLayoutParams(noteParams());
         caption.setLayoutParams(Grid.at(caption, dp, Grid.RIGHT, Grid.BOTTOM, true, Grid.span(7)));
         caption.setVisibility(v ? View.GONE : View.VISIBLE);
     }
@@ -338,7 +400,35 @@ final class Ambient implements Data.Listener {
         return Tile.fixed(lean);
     }
 
-    private Bitmap softOf(Bitmap bm) { return vision ? bake(bm) : Blur.of(bm, 4, SOFT_BRIGHT); }
+    private Bitmap softOf(Bitmap bm) { return softOf(bm, false); }
+
+    // Градиент (still) в «Графите» под рядом почти не темнеет, как на макете: он и так спокойный, а фото затемняется сильно
+    private Bitmap softOf(Bitmap bm, boolean still) {
+        if (vision) return bake(bm);
+        // 16 бит: 32-битную картинку во весь экран этот ТВ смешивает с тем, что под ней (замер 10.11: +12 мс на кадр)
+        return HomeActivity.opaque(still ? Blur.of(bm, 1, 0.82f) : Blur.of(bm, 4, SOFT_BRIGHT));
+    }
+
+    // Фото экрана блокировки с подложками под текст: сверху до строки даты и погоды (в «Vision» до 420 dp, там часы
+    // крупнее и ниже), снизу до 55 % на нижних 240 dp. Запекается один раз при смене фото, в 16 битах с подмешанным шумом
+    private Bitmap lockOf(Bitmap bm) {
+        if (bm == null) return null;
+        int w = bm.getWidth(), hh = bm.getHeight();
+        Bitmap out = Bitmap.createBitmap(w, hh, Bitmap.Config.RGB_565);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint d = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        c.drawBitmap(bm, 0, 0, d);
+        float topH = hh * (vision ? 420f : 190f) / Grid.H, botH = hh * 240f / Grid.H;
+        android.graphics.Paint g = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
+        g.setShader(new android.graphics.LinearGradient(0, 0, 0, topH,
+                vision ? new int[]{0x73000000, 0x5C000000, 0x00000000} : new int[]{0x66000000, 0x4D000000, 0x00000000},
+                new float[]{0f, vision ? 0.74f : 0.62f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, topH, g);
+        g.setShader(new android.graphics.LinearGradient(0, hh - botH, 0, hh, new int[]{0x00000000, 0x33000000, 0x8C000000}, null,
+                android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, hh - botH, w, hh, g);
+        return Tile.fixed(out);
+    }
 
     // ===== Жизненный цикл =====
 
@@ -349,10 +439,10 @@ final class Ambient implements Data.Listener {
         Now.attach(c, nowChanged);
         data.addListener(this);
         data.refresh();
-        Data.Photo first = data.currentPhoto();
+        Data.Photo first = Walls.current(c, data);
         if (shown == null) showPhoto(first, false);
         else {
-            drift(frame[front]);   // вернулись на экран: наплыв продолжается с текущего кадра
+            if (shownPhoto == null || !shownPhoto.still) drift(frame[front]);   // вернулись на экран: наплыв продолжается с текущего кадра
             // Пока нас не было, началось новое время суток. Раньше прежнее фото 2,2 с растворялось в новом, и при включении ТВ
             // было видно «старую картинку»: теперь сразу тёмная подложка, новое фото читается в фоне и проявляется из неё
             if (first != null && shownPhoto != null && !first.id.equals(shownPhoto.id)) wakeTo(first);
@@ -362,7 +452,7 @@ final class Ambient implements Data.Listener {
         h.removeCallbacks(tick);
         tick.run();
         h.postDelayed(rotate, CHECK_MS);
-        if (!vision && !lite) particles.level(active ? 1f : Particles.LOCK, 0);
+        if (!vision && !lite && !calm) particles.level(active ? 1f : Particles.LOCK, 0);
     }
 
     void stop() {
@@ -382,7 +472,7 @@ final class Ambient implements Data.Listener {
             Date now = new Date();
             String hm = new SimpleDateFormat("H:mm", Locale.forLanguageTag("ru")).format(now);
             clock.setText(hm);
-            if (GlassClock.ON) glass.setTime(hm);
+            if (glass.getVisibility() == View.VISIBLE) glass.setTime(hm);
             String d = new SimpleDateFormat("EEEE, d MMMM", Locale.forLanguageTag("ru")).format(now);
             date.setText(Character.toUpperCase(d.charAt(0)) + d.substring(1));
             h.postDelayed(this, 60_000 - System.currentTimeMillis() % 60_000 + 50);
@@ -399,9 +489,9 @@ final class Ambient implements Data.Listener {
             data.refresh();
             if (!active) {
                 data.prefetch();
-                Data.Photo next = data.currentPhoto();
+                Data.Photo next = Walls.current(c, data);
                 if (next != null && (shownPhoto == null || !next.id.equals(shownPhoto.id))) showPhoto(next, true);
-                if (data.nextVerse()) swapVerse(true);
+                if (data.nextVerse() && note == null && flashText == null) swapVerse(true);
             }
             h.postDelayed(this, CHECK_MS);
         }
@@ -412,12 +502,52 @@ final class Ambient implements Data.Listener {
         swapVerse(false);
     }
 
+    // Что стоит на месте цитаты: записка с телефона, если она есть, иначе цитата или стих
+    private String leadText() { return flashText != null ? flashText : note != null ? (note.draw() ? "" : note.text) : data.verse; }
+
+    private String leadRef() { return flashText != null ? flashRef : note != null ? note.caption() : Typo.ref(data.verseRef); }
+
+    // Записка «Сторожа» на месте цитаты на ms миллисекунд
+    void showGuardNote(String text, String ref, long ms) {
+        flashText = text;
+        flashRef = ref;
+        flashUntil = android.os.SystemClock.uptimeMillis() + ms;
+        h.removeCallbacks(endFlash);
+        h.postDelayed(endFlash, ms);
+        applySetup();
+        noteArtSync(false);
+        swapVerse(true);
+    }
+
+    // Сколько ещё держать записку «Сторожа» (0: её нет): экран проснулся, остаток покажет плашка главного экрана
+    long guardNoteLeft() { return flashText == null ? 0 : Math.max(0, flashUntil - android.os.SystemClock.uptimeMillis()); }
+
+    String guardNoteText() { return flashText; }
+
+    void clearGuardNote(boolean animated) {
+        if (flashText == null) return;
+        h.removeCallbacks(endFlash);
+        flashText = null;
+        flashRef = null;
+        applySetup();
+        swapVerse(animated);
+        noteArtSync(animated);
+    }
+
+    private final Runnable endFlash = () -> clearGuardNote(true);
+
     // Новый стих поверх старого: старый тает, новый проявляется с лёгким подъёмом
     private void swapVerse(boolean animated) {
         TextView old = verse[vis], next = verse[1 - vis];
-        next.setText(Typo.fix(data.verse));
-        String r = Typo.ref(data.verseRef);
-        if (!animated) {
+        next.setText(Typo.fix(leadText()));
+        String r = leadRef();
+        if (active) {
+            // Главный экран: цитата спрятана, просто подменить текст; выедет при возврате в простой
+            next.setAlpha(0f);
+            next.setTranslationY(old.getTranslationY());
+            old.setAlpha(0f);
+            ref.setText(r);
+        } else if (!animated) {
             next.setAlpha(1f);
             old.setAlpha(0f);
             ref.setText(r);
@@ -432,6 +562,79 @@ final class Ambient implements Data.Listener {
             }).start();
         }
         vis = 1 - vis;
+    }
+
+    // ===== Записка с телефона (10.11) =====
+
+    // Место рисунка: там же, где цитата, низ на её последней строке. «Vision» по центру, «Графит» у левого поля
+    private FrameLayout.LayoutParams noteParams() {
+        int w = Math.round(300 * dp), hh = Math.round(169 * dp);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hh,
+                Gravity.BOTTOM | (vision ? Gravity.CENTER_HORIZONTAL : Gravity.START));
+        if (!vision) lp.leftMargin = Math.round(Grid.MARGIN * dp);
+        lp.bottomMargin = Math.round((Grid.H - (vision ? 470 : 476)) * dp);
+        return lp;
+    }
+
+    // Рисунок читается в фоне, в размере места на экране и в 16 битах
+    private void loadNoteArt(final long at) {
+        final java.io.File f = Notes.drawFile(c);
+        final int want = Math.round(300 * dp);
+        DECODE.execute(() -> {
+            Bitmap b = null;
+            try {
+                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
+                android.graphics.BitmapFactory.Options d = new android.graphics.BitmapFactory.Options();
+                d.inPreferredConfig = Bitmap.Config.RGB_565;
+                d.inSampleSize = 1;
+                while (o.outWidth / (d.inSampleSize * 2) >= want) d.inSampleSize *= 2;
+                b = android.graphics.BitmapFactory.decodeFile(f.getPath(), d);
+            } catch (Throwable ignored) { }
+            final Bitmap fb = b;
+            h.post(() -> {
+                if (note == null || !note.draw() || note.at != at) return;
+                noteArt.setImageBitmap(fb);
+                noteArtSync(true);
+            });
+        });
+    }
+
+    // Рисунок виден только на экране блокировки и только у записки-рисунка
+    private void noteArtSync(boolean animated) {
+        boolean show = note != null && note.draw() && noteArt.getDrawable() != null && flashText == null;
+        if (!show) {
+            noteArt.animate().cancel();
+            noteArt.setVisibility(View.GONE);
+            return;
+        }
+        noteArt.setVisibility(View.VISIBLE);
+        noteArt.animate().cancel();
+        if (active) { noteArt.setAlpha(0f); return; }
+        if (!animated) { noteArt.setAlpha(1f); noteArt.setTranslationY(0); return; }
+        noteArt.setAlpha(0f);
+        noteArt.setTranslationY(px(8));
+        noteArt.animate().alpha(1f).translationY(0).setStartDelay(M.t(250)).setDuration(M.t(700)).setInterpolator(EASE).start();
+    }
+
+    // Записка пришла, ушла или сменилась: на месте цитаты сразу она (или снова цитата)
+    void noteChanged() {
+        Notes.Note n = Notes.current(c);
+        boolean same = n == null ? note == null : note != null && note.at == n.at && note.kind.equals(n.kind);
+        if (same) return;
+        note = n;
+        applySetup();
+        if (n == null) data.nextVerse();
+        if (n != null && n.draw()) {
+            noteArt.setImageDrawable(null);
+            noteArtSync(false);
+            loadNoteArt(n.at);
+        } else {
+            noteArt.setImageDrawable(null);
+            noteArtSync(false);
+        }
+        swapVerse(true);
     }
 
     // ===== Состояния главного экрана =====
@@ -458,10 +661,10 @@ final class Ambient implements Data.Listener {
             // Пока стих не виден, готовим следующий: при возвращении в простой выедет уже новый
             if (!active) return;
             data.nextVerse();
-            shownVerse.setText(Typo.fix(data.verse));
-            ref.setText(Typo.ref(data.verseRef));
+            shownVerse.setText(Typo.fix(leadText()));
+            ref.setText(leadRef());
         }, 700);
-        for (View t : new View[]{shownVerse, ref}) {
+        for (View t : new View[]{shownVerse, ref, noteArt}) {
             t.animate().cancel();
             if (on) {
                 t.animate().alpha(0f).translationY(-px(24)).setStartDelay(M.t(t == ref ? 80 : 0)).setDuration(M.t(500)).setInterpolator(EASE).start();
@@ -490,7 +693,7 @@ final class Ambient implements Data.Listener {
             g.setVisibility(View.VISIBLE);
             g.setAlpha(1f);
         }
-        for (View t : new View[]{verse[vis], ref}) {
+        for (View t : new View[]{verse[vis], ref, noteArt}) {
             t.animate().cancel();
             t.setTranslationY(0);
             t.setAlpha(1f);
@@ -503,6 +706,50 @@ final class Ambient implements Data.Listener {
         applyGroup(vision ? LOCK : 1f);
         if (!vision && !lite) particles.level(Particles.LOCK, 0);
         resumeDrift();
+    }
+
+    // Сразу активный вид, без переходов (10.11, вход в «Оформление»): пока главный экран уменьшается в карточку, внутри
+    // него ничего не должно двигаться, тогда он сжимается одной готовой картинкой видеокарты
+    void setActiveNow() {
+        if (active) return;
+        active = true;
+        if (blurAnim != null) blurAnim.cancel();
+        blurLevel = 1f;
+        soft[front].setAlpha(1f);
+        sharp[front].setVisibility(View.INVISIBLE);
+        for (View g : new View[]{top, bottom}) {
+            g.animate().cancel();
+            g.setAlpha(0f);
+            g.setVisibility(View.INVISIBLE);
+        }
+        for (View t : new View[]{verse[vis], ref, noteArt}) {
+            t.animate().cancel();
+            t.setAlpha(0f);
+            t.setTranslationY(-px(24));
+        }
+        caption.animate().cancel();
+        caption.setAlpha(0f);
+        rates.animate().cancel();
+        rates.setAlpha(1f);
+        if (groupAnim != null) groupAnim.cancel();
+        applyGroup(1f);
+        if (!vision && !lite) particles.level(1f, 0);
+        pauseDrift();
+    }
+
+    // Другие часы (10.11, «Оформление»): прежние тают, новые проявляются на том же месте
+    void applyClock(boolean animated) {
+        if (!styled) return;
+        final View out = glass.getVisibility() == View.VISIBLE ? glass : clock;
+        if (!animated) { layoutText(); return; }
+        out.animate().cancel();
+        out.animate().alpha(0f).setStartDelay(0).setDuration(M.t(140)).setInterpolator(EASE).withEndAction(() -> {
+            layoutText();
+            View in = glass.getVisibility() == View.VISIBLE ? glass : clock;
+            if (out != in) out.setAlpha(1f);
+            in.setAlpha(0f);
+            in.animate().alpha(1f).setStartDelay(0).setDuration(M.t(280)).setInterpolator(EASE).start();
+        }).start();
     }
 
     // Сетка «Все приложения»: фон ещё темнее, часы и погода гаснут.
@@ -573,7 +820,8 @@ final class Ambient implements Data.Listener {
                 // Без связи давно: градусы полусуточной давности хуже, чем честное «нет связи» (план Codex, блок 6)
                 icon.set(-1, true);
                 temp.setText("");
-                place.setText(city.isEmpty() ? "Погода: нет связи" : city + " · нет связи");
+                String why = data.weatherProblem();
+                place.setText(city.isEmpty() ? "Погода: " + why : city + " · " + why);
             } else {
                 icon.set(data.code, data.day);
                 temp.setText(Data.deg(data.temp));
@@ -585,20 +833,25 @@ final class Ambient implements Data.Listener {
             }
         }
         if (Setup.ratesOn(c)) {
-            // Один шаблон для всех трёх: знак и курс к белорусскому рублю, рубль за сотню
-            String r = "$\u2009" + Data.rate2(data.usd) + "  ·  €\u2009" + Data.rate2(data.eur)
-                    + "  ·  ₽\u2009" + Data.rate2(data.rub) + " за\u00A0100";
+            // Знак и курс в своих деньгах через точку (Rates): «$ 2,99 · € 3,34 · ₽ 3,66 за 100»
+            StringBuilder b = new StringBuilder();
+            for (Rates.Item it : data.rates) {
+                if (b.length() > 0) b.append("  ·  ");
+                b.append(it.sym).append('\u2009').append(Rates.format(it.v)).append(it.tail);
+            }
+            String r = b.toString();
             int st = data.ratesState(now);
-            if (st == Fresh.NO_LINK) r = "Курсы: нет связи";
+            if (st == Fresh.NO_LINK) r = "Курсы: " + data.ratesProblem();
             else if (st == Fresh.SHOW_WITH_TIME)
                 r += "  ·  на " + new SimpleDateFormat("d.MM", Locale.forLanguageTag("ru")).format(new Date(data.ratesAt()));
             rates.setText(r);
         }
-        if (Setup.versesOn(c) && verse[0].getText().length() == 0 && verse[1].getText().length() == 0) {
-            verse[vis].setText(Typo.fix(data.verse));
-            ref.setText(Typo.ref(data.verseRef));
+        if ((Setup.versesOn(c) || note != null) && verse[0].getText().length() == 0 && verse[1].getText().length() == 0
+                && ref.getText().length() == 0) {
+            verse[vis].setText(Typo.fix(leadText()));
+            ref.setText(leadRef());
         }
-        if (shown == null) showPhoto(data.currentPhoto(), true);
+        if (shown == null) showPhoto(Walls.current(c, data), true);
     }
 
     // Смена фото через растворение и медленный наплыв без разворота (эффект Кена Бёрнса)
@@ -611,34 +864,61 @@ final class Ambient implements Data.Listener {
         final Runnable reveal = () -> wake.animate().alpha(0f).setDuration(M.t(700)).setInterpolator(EASE)
                 .withEndAction(() -> wake.setVisibility(View.GONE)).start();
         DECODE.execute(() -> {
-            Bitmap bm = Data.decode(ph.file, lite ? 2 : 1);
-            Bitmap blurred = bm == null ? null : softOf(bm);
+            Bitmap bm = ph.load(sample());
+            Bitmap blurred = bm == null ? null : softOf(bm, ph.still);
+            Bitmap fr = frostOf(blurred);
+            Bitmap lk = lockOf(bm);
             h.post(() -> {
-                if (bm != null) applyPhoto(ph, bm, blurred, false);
+                if (bm != null) applyPhoto(ph, bm, lk, blurred, false, 0, fr);
                 reveal.run();
             });
         });
     }
 
     // Фото читается и размывается в фоне: на главном потоке это дёргало бы анимации
-    private void showPhoto(Data.Photo ph, boolean fade) {
+    private void showPhoto(Data.Photo ph, boolean fade) { showPhoto(ph, fade, 2200); }
+
+    // Матовое стекло шаров Liquid Glass: то, что видно за рядом в «Vision» (копия под ряд), размытое в маленькую картинку
+    private Bitmap frostOf(Bitmap soft) { return vision && soft != null ? Blur.of(soft, 3, 1f) : null; }
+
+    // fadeMs: сколько длится растворение (смена по времени суток медленная, примерка обоев в «Оформлении» быстрая)
+    private void showPhoto(Data.Photo ph, boolean fade, long fadeMs) {
         if (ph == null) return;
         if (!fade) {   // первый кадр нужен сразу, без чёрного экрана
-            Bitmap bm = Data.decode(ph.file, lite ? 2 : 1);
-            if (bm != null) applyPhoto(ph, bm, softOf(bm), false);
+            Bitmap bm = ph.load(sample());
+            if (bm != null) { Bitmap s = softOf(bm, ph.still); applyPhoto(ph, bm, lockOf(bm), s, false, fadeMs, frostOf(s)); }
             return;
         }
+        final int ticket = ++wallTicket;
         DECODE.execute(() -> {
-            Bitmap bm = Data.decode(ph.file, lite ? 2 : 1);
+            if (ticket != wallTicket) return;   // пока ждали очереди, выбрали другие обои
+            Bitmap bm = ph.load(sample());
             if (bm == null) return;
-            Bitmap blurred = softOf(bm);
-            h.post(() -> applyPhoto(ph, bm, blurred, true));
+            Bitmap blurred = softOf(bm, ph.still);
+            Bitmap fr = frostOf(blurred);
+            Bitmap lk = lockOf(bm);
+            h.post(() -> { if (ticket == wallTicket) applyPhoto(ph, bm, lk, blurred, true, fadeMs, fr); });
         });
     }
 
-    private void applyPhoto(Data.Photo ph, Bitmap bm, Bitmap blurred, boolean fade) {
+    private volatile int wallTicket;
+
+    // «Оформление»: показать выбранные (или примеряемые) обои сразу, растворением за fadeMs
+    void showWall(long fadeMs) {
+        Data.Photo ph = Walls.current(c, data);
+        if (ph == null || (shownPhoto != null && ph.id.equals(shownPhoto.id))) return;
+        showPhoto(ph, true, fadeMs);
+    }
+
+    // Что сейчас на экране: резкая картинка (для фона «Оформления» и стекла Liquid Glass)
+    Bitmap shownBitmap() { return shown; }
+
+    Data.Photo shownPhoto() { return shownPhoto; }
+
+    private void applyPhoto(Data.Photo ph, Bitmap bm, Bitmap lock, Bitmap blurred, boolean fade, long fadeMs, Bitmap frost) {
+        Liquid.setFrost(frost, 1f);
         int back = 1 - front;
-        sharp[back].setImageBitmap(bm);
+        sharp[back].setImageBitmap(lock != null ? lock : bm);
         // Плитки открыты и размытая копия закрывает экран целиком: резкое фото под ней не рисовать. Раньше оно
         // оставалось видимым, если фото сменилось при открытых плитках, и стоило видеоядру лишний проход 1080p (27.10)
         sharp[back].setVisibility(active && blurLevel >= 0.999f ? View.INVISIBLE : View.VISIBLE);
@@ -662,9 +942,9 @@ final class Ambient implements Data.Listener {
         };
         if (fade) {
             root.setBackgroundColor(0xFF07070A);
-            next.animate().alpha(1f).setDuration(M.t(2200)).setInterpolator(new AccelerateDecelerateInterpolator())
+            next.animate().alpha(1f).setDuration(M.t(fadeMs)).setInterpolator(new AccelerateDecelerateInterpolator())
                     .withEndAction(() -> { root.setBackground(null); drop.run(); }).start();
-            cur.animate().alpha(0f).setDuration(M.t(2200)).setInterpolator(new AccelerateDecelerateInterpolator()).start();
+            cur.animate().alpha(0f).setDuration(M.t(fadeMs)).setInterpolator(new AccelerateDecelerateInterpolator()).start();
         } else {
             next.setAlpha(1f);
             cur.setAlpha(0f);
@@ -675,8 +955,16 @@ final class Ambient implements Data.Listener {
         shown = bm;
         shownPhoto = ph;
         caption.setText(captionText(ph));
-        drift(next);
+        if (ph.still) {
+            // Градиент: наплыв не нужен, экран блокировки стоит и не перерисовывается
+            stopDrift();
+            next.setScaleX(1f);
+            next.setScaleY(1f);
+        } else drift(next);
+        if (onWall != null) onWall.run();
     }
+
+    Runnable onWall;   // обои сменились: «Оформление» обновляет свой фон, ряд Liquid Glass своё стекло
 
     // Подпись: место, а после точки мелким и тусклым автор с лицензией
     private CharSequence captionText(Data.Photo ph) {
@@ -714,6 +1002,7 @@ final class Ambient implements Data.Listener {
     }
 
     private void pauseDrift() {
+        if (driftView != null) Liquid.bgScale = driftView.getScaleX();   // за рядом фото стоит с этим наплывом
         if (driftMark == 0) return;
         driftDone += android.os.SystemClock.uptimeMillis() - driftMark;
         driftMark = 0;

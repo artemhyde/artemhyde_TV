@@ -1,6 +1,5 @@
 package app.glasstv.guard;
 
-import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -27,7 +26,6 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.accessibility.AccessibilityManager;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -37,7 +35,6 @@ import java.util.Locale;
 // беспроводную отладку после перезагрузки и смены сети, службу Key Mapper (кнопки пульта),
 // принимает записки с телефона из домашней сети и показывает их поверх экрана
 public class GuardService extends Service {
-    static final String KEYMAPPER = "io.github.sds100.keymapper/io.github.sds100.keymapper.system.accessibility.MyAccessibilityService";
     static final int NOTE_PORT = 8765;
 
     // Слушать ли порт записок: значение по умолчанию лежит в ресурсе res/values/config.xml
@@ -46,6 +43,13 @@ public class GuardService extends Service {
         return c.getSharedPreferences("guard", MODE_PRIVATE).getBoolean("notesOn", c.getResources().getBoolean(R.bool.notes_enabled_default));
     }
     static GuardService running;
+
+    // Просьбы к человеку на экране (записка «Разрешить отладку», вопрос про отчёты автору): не больше одной за раз,
+    // следующая не раньше чем через 10 минут, чтобы два окна не вылезли друг на друга
+    static final long PROMPT_GAP = 10 * 60_000;
+    private static volatile long promptAt;
+    static boolean promptFree() { return System.currentTimeMillis() - promptAt >= PROMPT_GAP; }
+    static void prompted() { promptAt = System.currentTimeMillis(); }
 
     final Handler h = new Handler(Looper.getMainLooper());
     SharedPreferences p;
@@ -70,18 +74,29 @@ public class GuardService extends Service {
         loadNightHours(p);   // часы ночи до первых таймеров ночи и картинки
         watchAdb();
         keepAdb("запуск");
-        // Прошивка сменилась: закрытые функции TCL и Dolby проверяются заново, итог в журнал и запиской (план Codex, блок 5)
+        // Кнопки пульта, главный экран и отключённые установщиком пакеты (Health.java, задача 10.11)
+        health = new Health(this, h, new Health.Out() {
+            @Override public void log(String s) { h.post(() -> GuardService.this.log(s)); }
+            @Override public void note(String s) { showNote(s); }
+            @Override public void soon(long ms) { updSoon(ms); }
+        });
+        health.start();
+        // Прошивка сменилась: закрытые функции TCL и Dolby проверяются заново, итог в журнал и запиской (план Codex, блок 5).
+        // Заодно главный экран и пакеты, которые отключил установщик: прошивка TCL умеет включать их обратно
         final String fw = Caps.firmwareNews(p);
         if (fw != null) new Thread(() -> {
             String rep = Caps.report(this);
             h.post(() -> {
                 log(fw);
                 log(rep);
+                prompted();   // записка «запустите установщик» (Health) не перебьёт эту: следующая просьба не раньше чем через 10 минут
                 showNote("Прошивка ТВ обновилась. Функции TCL и Dolby проверены заново, итог на экране «Сторож»");
             });
+            health.afterFirmware();
+            health.home(HealthRules.FIRMWARE);
         }, "guard-caps").start();
         // Сразу после загрузки службы спецвозможностей ещё поднимаются: Key Mapper смотрим через минуту
-        h.postDelayed(checkKeys, SystemClock.elapsedRealtime() < 5 * 60_000 ? 60_000 : 3_000);
+        h.postDelayed(startCheck, SystemClock.elapsedRealtime() < 5 * 60_000 ? 60_000 : 3_000);
         h.postDelayed(periodic, 15 * 60_000);
         h.postDelayed(nightTick, 10_000);
         h.postDelayed(idleTick, 60_000);
@@ -166,6 +181,7 @@ public class GuardService extends Service {
         if (veil != null) try { getSystemService(android.view.WindowManager.class).removeView(veil); } catch (Exception ignored) { }
         if (sound != null) { sound.shutdown(); sound = null; }
         if (bye != null) { bye.stop(); bye = null; }
+        if (health != null) health.stop();
         super.onDestroy();
     }
 
@@ -180,16 +196,16 @@ public class GuardService extends Service {
             } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
                 netEventAt = SystemClock.elapsedRealtime();   // после сна сеть и отладка поднимаются заново
                 homeCancel();
-                // Телевизор включили: через пару секунд проверить пульт и отладку
-                h.removeCallbacks(checkKeys);
-                h.postDelayed(checkKeys, 4_000);
+                // Телевизор включили: через пару секунд проверить пульт, главный экран и отладку
+                h.removeCallbacks(wakeCheck);
+                h.postDelayed(wakeCheck, 4_000);
                 h.postDelayed(() -> keepAdb("включение экрана", false), 4_000);
                 h.postDelayed(svcTick, 20_000);   // сеть после сна поднимается не сразу
                 h.removeCallbacks(dnsTick);
                 h.postDelayed(dnsTick, 25_000);
                 if (bye != null) bye.screen(true);
-                // Записка «нужен установщик»: ТВ только что включили, сверху «Дом», человек у пульта
-                if (upd != null && upd.hyde.pending()) { h.removeCallbacks(updTick); h.postDelayed(updTick, 12_000); }
+                // Записки «нужен установщик» и вопрос про отчёты автору: ТВ только что включили, сверху «Дом», человек у пульта
+                if (upd != null && (upd.hyde.pending() || upd.ping.askPending() || health.notePending())) { h.removeCallbacks(updTick); h.postDelayed(updTick, 12_000); }
                 // Звук выключили на время проверки, пока ТВ спал: вернуть, как только экран включился
                 if (p.getBoolean("unmuteOnWake", false)) h.postDelayed(() -> {
                     p.edit().remove("unmuteOnWake").apply();
@@ -221,7 +237,7 @@ public class GuardService extends Service {
             keepAdb("проверка", false);
             noDream();
             applyPq("проверка");
-            checkKeys.run();
+            health.keys(HealthRules.PERIODIC);   // после неудачи только смотрит: перезапуск при включении ТВ и после установки пакета
             h.postDelayed(this, 15 * 60_000);
         }
     };
@@ -336,7 +352,10 @@ public class GuardService extends Service {
     static final long IDLE_APP_MS = 10 * 60_000;
     private long idleSentFor = -1;     // нажатие, после которого блокировку уже открыли: второй раз не открываем
     private boolean idleDenied;
-    private static final java.util.regex.Pattern LAST_USER = java.util.regex.Pattern.compile("lastUserActivityTime=(\\d+) \\((\\d+) ms ago\\)");
+    // Android 12+ пишет «lastUserActivityTime=…», Android 9–11 «mLastUserActivityTime=…» (10.11, виртуальный Android TV 9):
+    // без учёта регистра подходят оба, иначе на старых ТВ простой и «человек у пульта» не видны
+    private static final java.util.regex.Pattern LAST_USER = java.util.regex.Pattern.compile("lastUserActivityTime=(\\d+) \\((\\d+) ms ago\\)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
 
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
@@ -755,7 +774,7 @@ public class GuardService extends Service {
     // в файл идёт «выключать». Собирает и раскладывает файл «Дом» (Transfer.java), сюда приходит только часть «Сторожа»
     static final java.util.Set<String> EXPORT_KEYS = Prefs.set("nightEnabled", "nightLevel", "nightFrom", "nightTo", "adbMode",
             "notesOn", "dnsPref", "svcUrl", "svcPkg", "svcName", "pqAuto", "smartOn", "smartLevel", "smartMode", "smartTune",
-            "eqOn", "eqDe", "eqVl", "eqBass", "eqTreble", Hyde.P_ON);
+            "eqOn", "eqDe", "eqVl", "eqBass", "eqTreble", Hyde.P_ON, Ping.P_ON);
 
     static String exportJson(Context c) throws Exception {
         org.json.JSONObject o = Prefs.dump(c.getSharedPreferences("guard", MODE_PRIVATE), EXPORT_KEYS, null);
@@ -1209,59 +1228,18 @@ public class GuardService extends Service {
         log(on ? "Записки с телефона включены" : "Записки с телефона выключены");
     }
 
-    // ===== Key Mapper: если его служба упала, фирменные кнопки пульта молчат =====
+    // ===== Кнопки пульта и главный экран (Health.java): если служба Key Mapper упала, фирменные кнопки пульта молчат =====
 
-    boolean keyMapperAlive() {
-        AccessibilityManager am = getSystemService(AccessibilityManager.class);
-        ComponentName want = ComponentName.unflattenFromString(KEYMAPPER);
-        for (AccessibilityServiceInfo s : am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
-            ComponentName c = ComponentName.unflattenFromString(s.getId());
-            if (want.equals(c)) return true;
-        }
-        return false;
-    }
-
-    final Runnable checkKeys = () -> {
-        if (keyMapperAlive()) { p.edit().putString("keys", "работает").apply(); return; }
-        // Key Mapper не стоит (на ТВ без своих кнопок его не ставят): честно так и сказать и не вписывать
-        // несуществующую службу в настройки спецвозможностей
-        try {
-            getPackageManager().getPackageInfo("io.github.sds100.keymapper", 0);
-        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-            p.edit().putString("keys", "не установлен").apply();
-            return;
-        }
-        ContentResolver cr = getContentResolver();
-        try {
-            String was = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-            String others = without(was, "io.github.sds100.keymapper");
-            // Выключить и снова включить службу: система заново её поднимет
-            Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, others);
-            h.postDelayed(() -> {
-                Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                        others.isEmpty() ? KEYMAPPER : others + ":" + KEYMAPPER);
-                Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1);
-                h.postDelayed(() -> {
-                    boolean ok = keyMapperAlive();
-                    p.edit().putString("keys", ok ? "перезапущен в " + now() : "не поднялся").apply();
-                    log(ok ? "Key Mapper упал и перезапущен" : "Key Mapper не поднялся: открыть его и нажать Fix");
-                }, 3_000);
-            }, 800);
-        } catch (SecurityException e) {
-            log("Key Mapper упал, а прав перезапустить нет");
-        }
+    Health health;
+    final Runnable checkKeys = () -> health.keys(HealthRules.MANUAL);   // кнопка «Проверить сейчас»
+    private final Runnable startCheck = () -> {
+        health.keys(HealthRules.START);
+        health.home(HealthRules.START);
     };
-
-    private static String without(String list, String pkg) {
-        if (list == null || list.isEmpty()) return "";
-        StringBuilder b = new StringBuilder();
-        for (String s : list.split(":")) {
-            if (s.isEmpty() || s.startsWith(pkg + "/")) continue;
-            if (b.length() > 0) b.append(':');
-            b.append(s);
-        }
-        return b.toString();
-    }
+    private final Runnable wakeCheck = () -> {
+        health.keys(HealthRules.WAKE);
+        health.home(HealthRules.WAKE);
+    };
 
     // ===== Присмотр за DNS (DnsWatch) =====
     DnsWatch dns;
@@ -1311,8 +1289,28 @@ public class GuardService extends Service {
 
     // ===== Записки =====
 
-    void showNote(String text) {
-        h.post(() -> card.show(text));
+    // Когда сверху «Дом», записку показывает он сам, в своём месте и стиле: карточка «Сторожа» слева сверху закрывала его часы
+    // (10.11, снимок с настоящего ТВ). Договор с «Домом»: упорядоченная рассылка app.glasstv.home.NOTE с полем text под разрешением HYDE;
+    // «Дом» ловит её только пока он на экране и отвечает RESULT_OK. Не ответил (не на экране, старый «Дом», открыто его
+    // «Оформление»): своя карточка. Поле from: phone (записка с телефона) или guard (сообщение «Сторожа»), для подписи в «Доме»
+    static final String HOME_NOTE = "app.glasstv.home.NOTE", HYDE_PERMISSION = "app.glasstv.permission.HYDE";
+
+    void showNote(String text) { showNote(text, "guard"); }
+
+    void showNote(String text, String from) {
+        h.post(() -> {
+            try {
+                sendOrderedBroadcast(new Intent(HOME_NOTE).setPackage(HydeRules.HOME).putExtra("text", text).putExtra("from", from), HYDE_PERMISSION,
+                        new BroadcastReceiver() {
+                            @Override public void onReceive(Context c, Intent i) {
+                                if (getResultCode() == android.app.Activity.RESULT_OK) Log.i("guard", "записка: показал «Дом»");
+                                else card.show(text);
+                            }
+                        }, h, android.app.Activity.RESULT_CANCELED, null, null);
+            } catch (Exception e) {
+                card.show(text);
+            }
+        });
         log("Записка: " + text);
     }
 

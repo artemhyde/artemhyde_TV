@@ -12,7 +12,7 @@ final class Fonts {
     static final int WHITE = 0xFFFFFFFF, WHITE_92 = 0xEBFFFFFF, WHITE_72 = 0xB8FFFFFF, WHITE_60 = 0x99FFFFFF;
     static final int ACCENT = 0xFF5ED3B4;
 
-    static Typeface reg18, med18, light24, reg24, med24, light28;
+    static Typeface reg18, med18, light24, reg24, med24, light28, semi18;
 
     static void init(Context c) {
         M.init(c);
@@ -23,6 +23,7 @@ final class Fonts {
         reg24 = load(c, "Inter_24pt-Regular");
         med24 = load(c, "Inter_24pt-Medium");
         light28 = load(c, "Inter_28pt-Light");
+        semi18 = load(c, "Inter_18pt-SemiBold");   // «Плотные» часы и заголовки «Оформления» (10.11)
     }
 
     private static Typeface load(Context c, String name) {

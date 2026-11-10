@@ -92,7 +92,7 @@ final class NoteServer {
                 long now = System.currentTimeMillis();
                 if (now - lastNoteAt < 3000) { reply(out, 429, "text/plain", "подождите пару секунд"); return; }
                 lastNoteAt = now;
-                g.showNote(text);
+                g.showNote(text, "phone");
                 reply(out, 200, "text/plain", "ok");
             } else if (method.equals("GET")) {
                 reply(out, 200, "text/html", PAGE);

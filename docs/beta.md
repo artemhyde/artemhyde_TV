@@ -1,7 +1,7 @@
 # Бета HYDE TV: что проверить и что прислать
 
 **Кому подходит**  
-Телевизор или приставка на Google TV либо Android TV 12 и новее: TCL, Sony, Philips, Hisense, Xiaomi, Chromecast с Google TV и другие. Samsung и LG не подходят (своя система, [compatibility.md](compatibility.md)). Своими глазами HYDE проверен только на TCL 65C6K и на виртуальном Google TV, поэтому особенно нужны другие марки и хотя бы один человек, который ставит такое впервые.
+Телевизор или приставка на Google TV либо Android TV 9 и новее: TCL, Sony, Philips, Hisense, Xiaomi, Chromecast с Google TV и другие. Samsung и LG не подходят (своя система, [compatibility.md](compatibility.md)). Своими глазами HYDE проверен только на TCL 65C6K и на виртуальном Google TV, поэтому особенно нужны другие марки и хотя бы один человек, который ставит такое впервые.
 
 **Как поставить**  
 Архив выпуска для вашей системы, окно мастера в браузере: [install/windows.md](install/windows.md). Всё, что меняется на телевизоре, записывается, и кнопка «Вернуть как было» возвращает как было.

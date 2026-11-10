@@ -306,6 +306,9 @@ func runRestoreAll(tv TV, dirs []string, emit func(Event)) RestoreAll {
 			break
 		}
 	}
+	if ra.Code() != 3 { // «Сторож» остался (откат одной установки): список того, что ещё отключено; после полного отката слать некому
+		guardDisabledAfterRestore(tv, dirs, emit)
+	}
 	return ra
 }
 

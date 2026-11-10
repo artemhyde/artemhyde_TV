@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -36,7 +37,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-// Данные для главного экрана и заставки: погода города из Config, курсы Нацбанка и стих (если включены в Config) и фото.
+// Данные для главного экрана и заставки: погода города, курсы своей страны (Rates) и стих (если включены) и фото.
 // Фото и стих меняются три раза в день: утро 06:00–12:00, день 12:00–18:00, вечер и ночь 18:00–06:00.
 // Подборка фото лежит в приложении (res/raw/photos.json), сами файлы качаются с Wikimedia Commons.
 // Всё кешируется: без интернета показывается последнее, что удалось получить
@@ -46,10 +47,18 @@ final class Data {
     static final class Photo {
         final String id, url, caption, credit;
         final File file;
+        // Обои без подборки (10.11, «Оформление»): градиент рисуется сам, своё фото читается из своего файла (Walls)
+        final Walls.Maker maker;
+        final boolean still;   // неподвижные обои (градиент): без медленного наплыва, экрану нечего перерисовывать
         Photo(String id, String url, String caption, String credit, File file) {
-            this.id = id; this.url = url; this.caption = caption; this.credit = credit; this.file = file;
+            this(id, url, caption, credit, file, null, false);
         }
-        boolean ready() { return file.length() > MIN_BYTES; }
+        Photo(String id, String url, String caption, String credit, File file, Walls.Maker maker, boolean still) {
+            this.id = id; this.url = url; this.caption = caption; this.credit = credit; this.file = file;
+            this.maker = maker; this.still = still;
+        }
+        boolean ready() { return maker != null || (file != null && file.length() > MIN_BYTES); }
+        Bitmap load(int sample) { return maker != null ? maker.make(sample) : decode(file, sample); }
     }
 
     private static final int MIN_BYTES = 50_000;            // меньше: скачалась ошибка, а не фото
@@ -75,12 +84,13 @@ final class Data {
     double temp = Double.NaN, feels = Double.NaN, tMax = Double.NaN, tMin = Double.NaN;
     int code = -1;
     boolean day = true;
-    // Курсы: рублей за 1 USD, 1 EUR, 100 RUB
-    double usd = Double.NaN, eur = Double.NaN, rub = Double.NaN;
+    // Курсы своей страны (Rates, с 1.1.1): позиции строки и источник, из которого они
+    volatile List<Rates.Item> rates = new ArrayList<>();
+    volatile String ratesSrc = "";
     // Стих
     String verse = "", verseRef = "";
 
-    private final List<String[]> verses = new ArrayList<>();
+    private final List<String[]> verses = new ArrayList<>(), quotes = new ArrayList<>();
 
     // Что включено, решают настройки на ТВ (Setup, 06.11; значения сборки Config там только начальные):
     // без города нет погоды, без курсов нет строки курсов, без стихов нет стиха
@@ -109,19 +119,25 @@ final class Data {
 
     // ===== Стихи: подборка из Синодального перевода лежит в приложении =====
 
-    // Подборка грузится всегда (она в самом приложении): стих можно включить на ТВ без перезапуска
+    // Подборки грузятся всегда (они в самом приложении): стих или цитату можно включить на ТВ без перезапуска.
+    // 10.11: вторая подборка, цитаты о жизни и поддержке (отзыв: «библейский стих нетипично для обычных людей»)
     private void loadVerses() {
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(app.getResources().openRawResource(R.raw.verses), StandardCharsets.UTF_8))) {
+        read(R.raw.verses, verses, "стихи");
+        read(R.raw.quotes, quotes, "цитаты");
+    }
+
+    private void read(int res, List<String[]> into, String what) {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(app.getResources().openRawResource(res), StandardCharsets.UTF_8))) {
             StringBuilder b = new StringBuilder();
             String line;
             while ((line = r.readLine()) != null) b.append(line);
             JSONArray a = new JSONArray(b.toString());
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i);
-                verses.add(new String[]{o.getString("text"), o.getString("ref"), o.optString("slot", "")});
+                into.add(new String[]{o.getString("text"), o.optString("ref", ""), o.optString("slot", "")});
             }
         } catch (Exception e) {
-            Log.w("home", "стихи не прочитались", e);
+            Log.w("home", what + " не прочитались", e);
         }
     }
 
@@ -132,23 +148,27 @@ final class Data {
     static final String[] SLOT_NAMES = {"morning", "day", "evening"};
 
     boolean nextVerse() {
-        if (verses.isEmpty()) return false;
+        // Какая подборка на экране: цитаты или стихи (Setup.verses). У каждой свой номер и своё время выбора
+        boolean q = Setup.quotes(app);
+        List<String[]> list = q ? quotes : verses;
+        if (list.isEmpty()) return false;
+        String ik = q ? "quote" : "verse", kk = ik + "Key";
         Calendar now = Calendar.getInstance();
         String key = Rotation.keyOf(now);
-        int idx = p.getInt("verse", -1);
+        int idx = p.getInt(ik, -1);
         String slot = SLOT_NAMES[Rotation.slotOf(now)];
         // Стих не своего времени суток (выбран до разметки) тоже меняется сразу
-        boolean wrong = idx >= 0 && idx < verses.size() && !verses.get(idx)[2].isEmpty() && !slot.equals(verses.get(idx)[2]);
-        if (!key.equals(p.getString("verseKey", "")) || idx < 0 || idx >= verses.size() || wrong) {
+        boolean wrong = idx >= 0 && idx < list.size() && !list.get(idx)[2].isEmpty() && !slot.equals(list.get(idx)[2]);
+        if (!key.equals(p.getString(kk, "")) || idx < 0 || idx >= list.size() || wrong) {
             List<Integer> pool = new ArrayList<>();
-            for (int i = 0; i < verses.size(); i++) if (slot.equals(verses.get(i)[2]) && i != idx) pool.add(i);
-            if (pool.isEmpty()) for (int i = 0; i < verses.size(); i++) if (i != idx) pool.add(i);   // без разметки: любой
+            for (int i = 0; i < list.size(); i++) if (slot.equals(list.get(i)[2]) && i != idx) pool.add(i);
+            if (pool.isEmpty()) for (int i = 0; i < list.size(); i++) if (i != idx) pool.add(i);   // без разметки: любой
             idx = pool.isEmpty() ? 0 : pool.get(rnd.nextInt(pool.size()));
-            p.edit().putInt("verse", idx).putString("verseKey", key).apply();
+            p.edit().putInt(ik, idx).putString(kk, key).apply();
         }
-        boolean changed = !verses.get(idx)[0].equals(verse);
-        verse = verses.get(idx)[0];
-        verseRef = verses.get(idx)[1];
+        boolean changed = !list.get(idx)[0].equals(verse);
+        verse = list.get(idx)[0];
+        verseRef = list.get(idx)[1];
         return changed;
     }
 
@@ -158,8 +178,10 @@ final class Data {
     void setupChanged() {
         temp = feels = tMax = tMin = Double.NaN;
         code = -1;
-        usd = eur = rub = Double.NaN;
-        p.edit().remove("weatherAt").remove("ratesAt").remove("weatherFailAt").remove("ratesFailAt").apply();
+        rates = new ArrayList<>();
+        ratesSrc = "";
+        p.edit().remove("weatherAt").remove("ratesAt").remove("weatherFailAt").remove("ratesFailAt")
+                .remove("weatherWhy").remove("ratesWhy").apply();
         refresh();
         changed();
     }
@@ -174,7 +196,8 @@ final class Data {
             try {
                 boolean any = false;
                 if (Setup.weatherOn(app) && Fresh.due(now, weatherAt(), p.getLong("weatherFailAt", 0), Fresh.WEATHER_EVERY, Double.isNaN(temp))) { loadWeather(); any = true; }
-                if (Setup.ratesOn(app) && Fresh.due(now, ratesAt(), p.getLong("ratesFailAt", 0), Fresh.RATES_EVERY, Double.isNaN(usd))) { loadRates(); any = true; }
+                long every = Rates.CRYPTO.equals(Setup.rates(app)) ? Fresh.CRYPTO_EVERY : Fresh.RATES_EVERY;
+                if (Setup.ratesOn(app) && Fresh.due(now, ratesAt(), p.getLong("ratesFailAt", 0), every, rates.isEmpty())) { loadRates(); any = true; }
                 any |= loadPhotos();
                 if (any) { save(); changed(); }
             } finally {
@@ -186,7 +209,43 @@ final class Data {
     long weatherAt() { return p.getLong("weatherAt", 0); }
     long ratesAt() { return p.getLong("ratesAt", 0); }
     int weatherState(long now) { return Fresh.weather(now, weatherAt(), p.getLong("weatherFailAt", 0), Double.isNaN(temp)); }
-    int ratesState(long now) { return Fresh.rates(now, ratesAt(), p.getLong("ratesFailAt", 0), Double.isNaN(usd)); }
+    int ratesState(long now) { return Fresh.rates(now, ratesAt(), p.getLong("ratesFailAt", 0), rates.isEmpty()); }
+
+    // Причина последнего сбоя (10.11: у первого пользователя «нет связи», а интернет на ТВ был). Первая строка для экрана
+    // («нет связи», «проверьте время на ТВ», «сервер недоступен»), вторая для «Настроек «Дома»» и команды с ПК
+    String weatherProblem() { return part(p.getString("weatherWhy", ""), 0, "нет связи"); }
+    String weatherDetail() { return part(p.getString("weatherWhy", ""), 1, ""); }
+    String ratesProblem() { return part(p.getString("ratesWhy", ""), 0, "нет связи"); }
+    String ratesDetail() { return part(p.getString("ratesWhy", ""), 1, ""); }
+    long weatherFailAt() { return p.getLong("weatherFailAt", 0); }
+    long ratesFailAt() { return p.getLong("ratesFailAt", 0); }
+
+    private static String part(String s, int i, String def) {
+        String[] a = s.split("\n", 2);
+        return a.length > i && !a[i].isEmpty() ? a[i] : def;
+    }
+
+    // Сбой словами: что видно на экране и почему. Сначала причины в цепочке (Android прячет их внутрь IOException)
+    static String[] why(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.net.UnknownHostException)
+                return new String[]{"нет связи", "адрес сервера не находится: нет интернета или не работает DNS"};
+            if (t instanceof javax.net.ssl.SSLException || t instanceof java.security.cert.CertificateException)
+                return new String[]{"проверьте время на ТВ", "защищённое соединение не сложилось, чаще всего из-за неверных даты и времени на ТВ ("
+                        + t.getClass().getSimpleName() + ")"};
+            if (t instanceof java.net.SocketTimeoutException || t instanceof java.net.ConnectException || t instanceof java.net.NoRouteToHostException)
+                return new String[]{"нет связи", "сервер не отвечает, сеть до него не доходит (" + t.getClass().getSimpleName() + ")"};
+        }
+        String m = e.getMessage() == null ? "" : e.getMessage();
+        if (m.startsWith("HTTP ")) { String[] f = m.split(" "); return new String[]{"сервер недоступен", "сервер ответил кодом " + (f.length > 1 ? f[1] : "?")}; }
+        if (e instanceof JSONException) return new String[]{"сервер недоступен", "сервер прислал непонятный ответ"};
+        return new String[]{"нет связи", e.getClass().getSimpleName() + (m.isEmpty() ? "" : ": " + m)};
+    }
+
+    private void failed(String key, Exception e) {
+        String[] w = why(e);
+        p.edit().putLong(key + "FailAt", System.currentTimeMillis()).putString(key + "Why", w[0] + "\n" + w[1]).apply();
+    }
 
     // Только фото: дёшево, если всё уже скачано. Экран зовёт это раз в минуту, чтобы фото следующего
     // времени суток успело лечь на диск заранее
@@ -209,32 +268,74 @@ final class Data {
             JSONObject d = j.getJSONObject("daily");
             tMax = d.getJSONArray("temperature_2m_max").getDouble(0);
             tMin = d.getJSONArray("temperature_2m_min").getDouble(0);
-            p.edit().putLong("weatherAt", System.currentTimeMillis()).apply();
+            p.edit().putLong("weatherAt", System.currentTimeMillis()).remove("weatherWhy").apply();
             return true;
         } catch (Exception e) {
             Log.w("home", "погода не загрузилась", e);
-            p.edit().putLong("weatherFailAt", System.currentTimeMillis()).apply();
+            failed("weather", e);
             return false;
         }
     }
 
     private boolean loadRates() {
         try {
-            usd = rate("USD");
-            eur = rate("EUR");
-            rub = rate("RUB");
-            p.edit().putLong("ratesAt", System.currentTimeMillis()).apply();
+            String setting = Setup.rates(app);
+            String cc = Rates.AUTO.equals(setting) ? countryOf() : Setup.country(app);
+            String src = Rates.source(setting, cc);
+            List<Rates.Item> l;
+            switch (src) {
+                case Rates.NBRB: l = Rates.nbrb(nbrb("USD"), nbrb("EUR"), nbrb("RUB")); break;
+                case Rates.CBR: l = Rates.cbr(new String(getBytes(Rates.CBR_URL), StandardCharsets.ISO_8859_1)); break;   // windows-1251, нужны только латиница и цифры
+                case Rates.NBU:
+                    try { l = Rates.nbu(get(Rates.NBU_URL)); if (l.isEmpty()) throw new JSONException("НБУ: в ответе нет курсов"); }
+                    catch (Exception e) { Log.w("home", "НБУ не ответил, курсы monobank", e); l = Rates.monobank(get(Rates.MONO_URL)); }
+                    break;
+                case Rates.NBK: l = Rates.nbk(get(Rates.NBK_URL)); break;
+                case Rates.CRYPTO:
+                    try { l = Rates.binance(get(Rates.BINANCE_URL)); if (l.isEmpty()) throw new JSONException("Binance: в ответе нет цен"); }
+                    catch (Exception e) { Log.w("home", "лента цен Binance не ответила, запасной адрес", e); l = Rates.binance(get(Rates.BINANCE_URL2)); }
+                    break;
+                default: l = Rates.ecb(get(Rates.ECB_URL), cc);
+            }
+            if (l.isEmpty()) throw new JSONException("в ответе нет нужных валют");
+            rates = l;
+            ratesSrc = src;
+            p.edit().putLong("ratesAt", System.currentTimeMillis()).remove("ratesWhy").apply();
             return true;
         } catch (Exception e) {
             Log.w("home", "курсы не загрузились", e);
-            p.edit().putLong("ratesFailAt", System.currentTimeMillis()).apply();
+            failed("rates", e);
             return false;
         }
     }
 
-    private double rate(String cur) throws Exception {
-        JSONObject j = new JSONObject(get("https://api.nbrb.by/exrates/rates/" + cur + "?parammode=2"));
+    private double nbrb(String cur) throws Exception {
+        JSONObject j = new JSONObject(get(String.format(Locale.US, Rates.NBRB_URL, cur)));
         return j.getDouble("Cur_OfficialRate");
+    }
+
+    // Страна города для курсов «по стране». Город выбран до 1.1.1 (страны нет): один раз спросить поиск Open-Meteo
+    // по тому же названию и взять результат, ближайший к сохранённым координатам. Не вышло: пусто, тогда ЕЦБ
+    private String countryOf() {
+        String cc = Setup.country(app), city = Setup.city(app);
+        if (!cc.isEmpty() || !Setup.weatherOn(app) || city.isEmpty()) return cc;
+        try {
+            JSONObject j = new JSONObject(get("https://geocoding-api.open-meteo.com/v1/search?name="
+                    + URLEncoder.encode(city, "UTF-8") + "&count=10&language=ru&format=json"));
+            JSONArray a = j.optJSONArray("results");
+            double la = Setup.lat(app), lo = Setup.lon(app), best = 1.0;
+            String code = "";
+            if (a != null) for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                double d = Math.abs(o.optDouble("latitude", 999) - la) + Math.abs(o.optDouble("longitude", 999) - lo);
+                if (d < best) { best = d; code = o.optString("country_code", ""); }
+            }
+            if (!code.isEmpty()) Setup.setCountry(app, code);
+            return code;
+        } catch (Exception e) {
+            Log.w("home", "страна города не определилась", e);
+            return "";
+        }
     }
 
     // ===== Фото: подборка по времени суток =====
@@ -432,9 +533,7 @@ final class Data {
             putFinite(j, "tMax", tMax);
             putFinite(j, "tMin", tMin);
             j.put("code", code).put("day", day);
-            putFinite(j, "usd", usd);
-            putFinite(j, "eur", eur);
-            putFinite(j, "rub", rub);
+            j.put("rl", Rates.encode(rates)).put("rs", ratesSrc);
             p.edit().putString("cache", j.toString()).apply();
         } catch (Exception ignored) { }
     }
@@ -448,9 +547,13 @@ final class Data {
             tMin = j.optDouble("tMin", Double.NaN);
             code = j.optInt("code", -1);
             day = j.optBoolean("day", true);
-            usd = j.optDouble("usd", Double.NaN);
-            eur = j.optDouble("eur", Double.NaN);
-            rub = j.optDouble("rub", Double.NaN);
+            if (j.has("rl")) {
+                rates = Rates.decode(j.optString("rl"));
+                ratesSrc = j.optString("rs", "");
+            } else if (j.has("usd")) {   // кэш до 1.1.1: только Нацбанк Беларуси
+                rates = Rates.nbrb(j.optDouble("usd", Double.NaN), j.optDouble("eur", Double.NaN), j.optDouble("rub", Double.NaN));
+                ratesSrc = Rates.NBRB;
+            }
         } catch (Exception ignored) { }
     }
 

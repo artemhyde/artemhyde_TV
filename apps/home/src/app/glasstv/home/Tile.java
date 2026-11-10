@@ -199,6 +199,31 @@ final class Tile extends View {
     private android.graphics.BitmapShader sheenShader;
     private final Matrix sheenM = new Matrix();
 
+    // Свой значок для шара 160x160 со значком 128 посередине, как картинки assets/orbs (папка: четыре значка)
+    private Bitmap ownIcon;
+
+    // Материал Liquid Glass (10.11, Liquid.java): у шара прозрачное стекло с размытыми обоями внутри и белый знак
+    private boolean liquid;
+    private Drawable liquidIcon;
+    private Liquid.FrostPaint frostP;
+    private final Matrix frostM = new Matrix(), frostT = new Matrix(), frostLast = new Matrix();
+    private int frostVer = -1;
+
+    Tile liquid(Drawable icon) { liquid = true; liquidIcon = icon; return this; }
+
+    boolean isLiquidOrb() { return liquid && orb; }
+
+    // Перед кадром «Дом» спрашивает: сдвинулся ли шар относительно обоев (карусель, пружина, каскад)? Тогда перерисовать,
+    // чтобы матовое стекло показывало то, что лежит за шаром сейчас. Стоит на месте: ничего не делаем
+    void frostCheck(View root) {
+        if (!liquid || !orb || Liquid.frost == null) return;
+        if (!Liquid.toRoot(this, root, frostT)) return;
+        frostT.preTranslate(0, -lift);
+        if (frostVer != Liquid.version || !frostT.equals(frostLast)) invalidate();
+    }
+
+    Tile icon(Bitmap b) { ownIcon = b; return this; }
+
     Tile orb(int d, int cellW, int cellH, float dp) {
         orb = true;
         orbD = d;
@@ -228,9 +253,16 @@ final class Tile extends View {
             g.setShader(new RadialGradient(cx, cy - orbD * 0.04f, orbD * 0.46f, new int[]{withAlpha(tint, a), tint & 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
             c.drawCircle(cx, cy, orbD * 0.47f, g);
         }
-        Bitmap own = orbIcon(getContext(), pkg);
+        Bitmap own = ownIcon != null ? ownIcon : liquid ? null : orbIcon(getContext(), pkg);
         Paint ip = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        if (own != null) {
+        if (liquid && own == null) {
+            // Liquid Glass: белый знак (свой для плиток HYDE, у чужого приложения силуэт значка) с лёгкой тенью
+            int ms = Math.round(orbD * 0.40f);
+            Bitmap mk = Liquid.mark(pkg, liquidIcon, label, ms);
+            ip.setShadowLayer(cssBlur(10 * dp / 2f), 0, dp, 0x59000000);
+            if (mk != null) c.drawBitmap(mk, cx - ms / 2f, cy - ms / 2f, ip);
+            ip.clearShadowLayer();
+        } else if (own != null) {
             // Свой значок 160x160 (значок 128 по центру, вокруг тень): значок занимает 0,46 диаметра
             float s = orbD * 0.46f / 128f;
             float iw = own.getWidth() * s, ih = own.getHeight() * s;
@@ -266,6 +298,56 @@ final class Tile extends View {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // ===== Папка (10.11) =====
+
+    // Четыре значка папки сеткой 2x2 в картинке 160x160 (блок 128 посередине, как у картинок assets/orbs)
+    static Bitmap folderIcon(java.util.List<android.graphics.drawable.Drawable> icons) {
+        Bitmap b = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        int s = 58, gap = 12, x0 = (160 - 2 * s - gap) / 2;
+        Paint sh = new Paint(Paint.ANTI_ALIAS_FLAG);
+        sh.setColor(0x59000000);
+        sh.setMaskFilter(new BlurMaskFilter(5f, BlurMaskFilter.Blur.NORMAL));
+        Paint ip = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        for (int i = 0; i < 4; i++) {
+            float x = x0 + (i % 2) * (s + gap), y = x0 + (i / 2) * (s + gap);
+            if (i < icons.size()) {
+                c.drawRoundRect(new RectF(x, y + 3, x + s, y + s + 3), s * 0.26f, s * 0.26f, sh);
+                c.drawBitmap(Sheet.appIcon(icons.get(i), s * 2, false), null, new RectF(x, y, x + s, y + s), ip);
+            } else {
+                Paint e = new Paint(Paint.ANTI_ALIAS_FLAG);
+                e.setColor(0x1FFFFFFF);
+                c.drawRoundRect(new RectF(x, y, x + s, y + s), s * 0.26f, s * 0.26f, e);
+            }
+        }
+        return Tile.fixed(b);
+    }
+
+    // Плитка-папка «Графита»: четыре значка над подписью, как у плитки приложения (Tile.app)
+    static Bitmap folderContent(Context ctx, java.util.List<android.graphics.drawable.Drawable> icons, String label, int w, int h) {
+        float k = w / W0;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Bitmap ic = folderIcon(icons);
+        float side = 112 * k;
+        c.drawBitmap(ic, null, new RectF(200 * k - side / 2f, 82 * k - side / 2f, 200 * k + side / 2f, 82 * k + side / 2f),
+                new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG));
+        TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        t.setTypeface(Fonts.med18);
+        t.setTextSize(32 * k);
+        t.setLetterSpacing(-0.005f);
+        t.setColor(Theme.APP_LABEL);
+        t.setTextAlign(Paint.Align.CENTER);
+        CharSequence s = TextUtils.ellipsize(label, t, w - 40 * k, TextUtils.TruncateAt.END);
+        Paint.FontMetrics fm = t.getFontMetrics();
+        float base = 168 * k - (fm.ascent + fm.descent) / 2f;
+        t.setShadowLayer(cssBlur(14 * k), 0, 4 * k, Theme.APP_LABEL_SHADOW[0]);
+        c.drawText(s, 0, s.length(), w / 2f, base, t);
+        t.setShadowLayer(cssBlur(1 * k), 0, 1 * k, Theme.APP_LABEL_SHADOW[1]);
+        c.drawText(s, 0, s.length(), w / 2f, base, t);
+        return b;
     }
 
     // Обрезать прозрачные поля, не трогая размеров основной картинки
@@ -325,6 +407,17 @@ final class Tile extends View {
             c.drawBitmap(orbRest, restX, restY, paint);
             return;
         }
+        if (liquid && Liquid.frost != null && getRootView() != null) {
+            // Матовое стекло: размытые обои кругом, совмещённые с экраном (Liquid.frostPaint)
+            if (frostP == null) frostP = new Liquid.FrostPaint();
+            View rootV = frostRoot();
+            if (rootV != null && Liquid.frostPaint(this, rootV, frostP, frostM, frostT, lift)) {
+                c.drawCircle(ox + orbD / 2f, orbD / 2f, orbD / 2f - 0.5f, frostP);
+                Liquid.toRoot(this, rootV, frostLast);
+                frostLast.preTranslate(0, -lift);
+                frostVer = Liquid.version;
+            }
+        }
         float ha = Math.min(1f, (halo + breath) * f) * (quiet ? 0.35f : 1f);
         if (haloBmp != null && ha > 0.004f) {
             // Ореол под стеклом: снаружи шара светится цветом значка, внутри его закрывает стекло
@@ -362,6 +455,11 @@ final class Tile extends View {
         drawChevrons(c, getWidth() / 2f, orbD / 2f, orbD / 2f);
     }
 
+    // Корень главного экрана, относительно которого лежат обои (его задаёт «Дом»)
+    static View frostRootView;
+
+    private View frostRoot() { return frostRootView; }
+
     // ===== Пружина, ореол, дыхание и блик сферы =====
 
     private void ensureSprings() {
@@ -383,8 +481,17 @@ final class Tile extends View {
         push.eps = 0.5f;
     }
 
+    static boolean calmFocus;   // фокус без посадки (вход в «Оформление»): шар сразу в своём размере, без ореола и дыхания
+
     private void orbFocus(boolean f) {
         ensureSprings();
+        if (f && calmFocus) {
+            removeCallbacks(breathTick);
+            removeCallbacks(landLater);
+            setTranslationZ(1);
+            spring.snap(ORB_GROW);
+            return;
+        }
         removeCallbacks(breathTick);
         removeCallbacks(landLater);
         if (breath != 0f) breath = 0f;
@@ -670,10 +777,11 @@ final class Tile extends View {
         if (orb) {
             setPivotX(w / 2f);
             setPivotY(orbD / 2f);
-            String key = "orb" + orbD;
+            String key = "orb" + orbD + (liquid ? "L" : "");
             chrome = CHROME.get(key);
             if (chrome == null) {
-                chrome = new Bitmap[]{glassShape(orbD, orbD, orbK, orbD / 2f, false), glassShape(orbD, orbD, orbK, orbD / 2f, true)};
+                chrome = liquid ? new Bitmap[]{Liquid.orbGlass(orbD, false), Liquid.orbGlass(orbD, true)}
+                        : new Bitmap[]{glassShape(orbD, orbD, orbK, orbD / 2f, false), glassShape(orbD, orbD, orbK, orbD / 2f, true)};
                 CHROME.put(key, chrome);
             }
             buildRest();

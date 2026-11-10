@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Курсы на Android 9–12 (10.11, выпуск 1.1.1): сайты Банка России и ЕЦБ подписаны новыми корневыми сертификатами, которых
+     в старых Android нет (HARICA TLS RSA Root CA 2021 и Sectigo Public Server Authentication Root E46), и курсы падали
+     с «защищённое соединение не сложилось». Корни взяты из набора Mozilla, отпечатки SHA-256:
+     HARICA D9:5D:0E:8E:DA:79:52:5B:F9:BE:B1:1B:14:D2:10:0D:32:94:98:5F:0C:62:D9:FA:BD:9C:D9:99:EC:CB:7B:1D,
+     Sectigo C9:0F:26:F0:FB:1B:40:18:B2:22:27:51:9B:5C:A2:B5:3E:2C:A5:B3:BE:5C:F1:8E:FE:1B:EF:47:38:0C:53:83.
+     Доверие к ним только для этих двух сайтов, системные корни остаются как есть -->
+<network-security-config>
+    <domain-config>
+        <domain includeSubdomains="true">cbr.ru</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/harica_tls_rsa_root_2021" />
+        </trust-anchors>
+    </domain-config>
+    <domain-config>
+        <domain includeSubdomains="true">ecb.europa.eu</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sectigo_public_server_root_e46" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

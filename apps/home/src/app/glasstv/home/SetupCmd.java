@@ -38,8 +38,32 @@ public class SetupCmd extends BroadcastReceiver {
                 if (ThemeChoice.needsRestart(app))
                     new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 500);
             });
+        } else if ("net".equals(d)) {
+            // Погода и курсы для поддержки (10.11): когда в последний раз пришли и почему не пришли
+            Data x = Data.get(app);
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d.MM H:mm", java.util.Locale.US);
+            String w = "погода: " + (!Setup.weatherOn(app) ? "выключена" : "город " + Setup.city(app) + " (" + Setup.country(app) + ")"
+                    + ", пришла " + (x.weatherAt() > 0 ? f.format(new java.util.Date(x.weatherAt())) : "ни разу")
+                    + (x.weatherFailAt() > x.weatherAt() ? ", сбой " + f.format(new java.util.Date(x.weatherFailAt())) + ": " + x.weatherDetail() : ""));
+            String k = "курсы: " + (!Setup.ratesOn(app) ? "выключены" : Setup.rates(app) + " → " + Setup.ratesSource(app)
+                    + ", пришли " + (x.ratesAt() > 0 ? f.format(new java.util.Date(x.ratesAt())) : "ни разу")
+                    + (x.ratesFailAt() > x.ratesAt() ? ", сбой " + f.format(new java.util.Date(x.ratesFailAt())) + ": " + x.ratesDetail() : ""));
+            finish(r, w + "; " + k);
+        } else if ("guardnote".equals(d)) {
+            // Проверка записки «Сторожа» с ПК (10.11): «Дом» шлёт себе ту же упорядоченную рассылку, что и «Сторож».
+            // --es text «текст» [--es from phone|guard]. Итог (показал ли «Дом») пишется в журнал «home»: ждать его здесь нельзя,
+            // упорядоченные рассылки идут по одной, и эта ждала бы саму себя до таймаута системы (проверено: «Дом» зависал)
+            Intent n = new Intent(HomeActivity.NOTE_ACTION).setPackage(app.getPackageName()).putExtra("text", String.valueOf(i.getStringExtra("text")));
+            if (i.hasExtra("from")) n.putExtra("from", i.getStringExtra("from"));
+            app.sendOrderedBroadcast(n, HomeActivity.HYDE_PERMISSION, new BroadcastReceiver() {
+                @Override public void onReceive(Context c2, Intent x) {
+                    Log.i("home", "записка «Сторожа», проверка: " + (getResultCode() == android.app.Activity.RESULT_OK ? "показал «Дом»"
+                            : "«Дом» не показал (не на экране или открыто «Оформление»), показал бы «Сторож»"));
+                }
+            }, null, android.app.Activity.RESULT_CANCELED, null, null);
+            finish(r, "записка отправлена, итог в журнале: logcat -s home");
         } else {
-            finish(r, "нужно --es do export или --es do import --es file путь");
+            finish(r, "нужно --es do export, --es do import --es file путь, --es do net или --es do guardnote --es text «текст»");
         }
     }
 

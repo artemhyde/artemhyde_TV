@@ -1,10 +1,12 @@
 package main
 
-// Отчёт об установке для автора (1.0.1). Уходит только после явного «Да» человека: кнопка «Отправить» в окне мастера,
-// ключ --report у команд apply и restore или «hyde-install report --send». Без ключа и без кнопки не уходит ничего.
-// Без адреса приёма (пустая константа и нет HYDE_REPORT_URL) вопрос не задаётся вовсе.
+// Отчёт об установке для автора. С 1.2.0 (решение автора 10.11) согласие даётся в начале: галочка «Отправлять автору
+// технические отчёты» в окне мастера включена заранее, у команд apply и restore отчёт уходит сам, ключ --no-report его
+// выключает. Отчёт уходит в конце установки, обновления и отката, и при удаче, и при сбое. До 1.2.0 отчёт уходил только
+// после явного «Отправить». Без адреса приёма (пустая константа и нет HYDE_REPORT_URL) ничего не уходит.
 // В отчёте нет имени, адресов, серийного номера, android_id и названий сетей: модель ТВ, Android, что поставилось,
-// что не вышло и на каком шаге. Номер отчёта человек видит и может попросить автора удалить его.
+// что не вышло и на каком шаге, номер устройства (случайный, его не вывести из ТВ). Номера отчёта и устройства человек
+// видит и может попросить автора удалить записи по ним.
 
 import (
 	"bytes"
@@ -79,6 +81,9 @@ type Report struct {
 	VerifyOK         int      `json:"verify_ok"`
 	VerifyTotal      int      `json:"verify_total"`
 	Lang             string   `json:"lang,omitempty"`
+	// DeviceID (1.2.0): случайный номер ТВ ([a-z0-9]{16,40}), тот же у суточного сигнала «Сторожа»; по нему таблица
+	// заводит строку устройства, и по нему же автор удаляет записи
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 // ReportField: строка «что уйдёт» для показа человеку до согласия
@@ -170,6 +175,9 @@ func reportFromSession(dir, kind, via, lang string, checks []Check, restoreOK bo
 		Profile:          c.Profile,
 		ABI:              strings.Join(c.ABI, ","),
 		Lang:             shortLang(lang),
+	}
+	if validDeviceID(ss.DeviceID) {
+		r.DeviceID = ss.DeviceID
 	}
 	// что поставил план; в журналах до 1.0.1 его нет, тогда выбор человека
 	r.Modules = append(r.Modules, ss.Installed...)
@@ -273,6 +281,9 @@ func (r Report) Fields() []ReportField {
 		{"HYDE главным экраном", home},
 		{"Итог", nonEmpty(res[r.Result], r.Result)},
 	}
+	if r.DeviceID != "" {
+		f = append(f, ReportField{"Номер устройства", r.DeviceID})
+	}
 	if r.VerifyTotal > 0 {
 		f = append(f, ReportField{"Проверка", fmt.Sprintf("держится %d из %d", r.VerifyOK, r.VerifyTotal)})
 	}
@@ -353,7 +364,7 @@ func printReport(r Report) {
 	}
 }
 
-// reportAfter: общий конец apply и restore в командной строке: --report отправляет, иначе ничего не уходит
+// reportAfter: общий конец apply и restore в командной строке: отчёт уходит сам, если человек не выключил его (--no-report)
 func reportAfter(send bool, dir, kind, via string, checks []Check, restoreOK bool) {
 	if !send || dir == "" {
 		return
@@ -372,5 +383,13 @@ func reportAfter(send bool, dir, kind, via string, checks []Check, restoreOK boo
 		fmt.Println("Отчёт не отправлен: " + err.Error())
 		return
 	}
-	fmt.Println("Отчёт отправлен, номер " + r.ReportID + ". Чтобы автор удалил его, напишите ему этот номер.")
+	fmt.Println("Отчёт отправлен, номер " + r.ReportID + reportDeleteHint(r))
+}
+
+// reportDeleteHint: как попросить удалить записи: по номеру отчёта, а все записи этого ТВ по номеру устройства
+func reportDeleteHint(r Report) string {
+	if r.DeviceID != "" {
+		return ". Чтобы автор удалил его, напишите ему этот номер, а чтобы удалил все записи этого телевизора, номер устройства " + r.DeviceID + "."
+	}
+	return ". Чтобы автор удалил его, напишите ему этот номер."
 }

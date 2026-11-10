@@ -51,6 +51,9 @@ type ModuleChoice struct {
 type Choices struct {
 	Modules map[string]bool `json:"modules"`
 	Home    *bool           `json:"home"`
+	// Redisable: пакеты, которые установщик отключал раньше (журналы этого ТВ на этом компьютере, disabledByInstaller).
+	// «Дом» уже главный экран, а такой пакет снова включён (обычно после обновления прошивки): план отключает его снова
+	Redisable []string `json:"-"`
 }
 
 type Plan struct {
@@ -65,6 +68,10 @@ type Plan struct {
 	Notes     []string       `json:"notes"`
 	Problems  []string       `json:"problems"`
 	InstallMB float64        `json:"install_mb"`
+	// Consent (1.2.0): с чем пойдёт apply без ключей: прошлый выбор этого ТВ с этого компьютера или оба включены
+	// (заполняет команда plan у живого ТВ; ConsentLast: выбор взят из прошлой установки)
+	Consent     *Consent `json:"consent,omitempty"`
+	ConsentLast bool     `json:"consent_last,omitempty"`
 }
 
 // shq: значение в одинарных кавычках для оболочки ТВ
@@ -292,6 +299,19 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 					}
 				}
 			}
+			// И на любом ТВ: что установщик отключал раньше (журналы), а оно снова включено. На Google TV других марок иначе
+			// повторный запуск писал «всё уже так», а «Домой» снова уходил к Google TV (10.11, виртуальный Google TV 14)
+			for _, d := range ch.Redisable {
+				do := "pm disable-user --user 0 " + d
+				dup := false
+				for _, s := range pl.Steps {
+					dup = dup || s.Do == do
+				}
+				if p.Has(d) && !p.Disabled[d] && !dup {
+					add(Step{Group: g, What: "отключить снова " + d + ": установщик отключал его раньше, а он снова включён (обычно после обновления прошивки), «Домой» может уходить к нему",
+						Do: do, Undo: "pm enable --user 0 " + d})
+				}
+			}
 		} else {
 			// Главный экран Google TV (launcherx) и его страховка забирают кнопку «Домой». На TCL роль даже не меняется,
 			// пока они включены: отключаются до смены. На Google TV других марок роль меняется, но «Домой» всё равно
@@ -365,6 +385,11 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 	}
 	if c.ABI32 {
 		pl.Notes = append(pl.Notes, "ТВ 32-битный: чужие приложения без 32-битной сборки на нём не встанут.")
+	}
+	if c.SDK > 0 && c.SDK < 31 {
+		pl.Notes = append(pl.Notes, "Android "+c.Android+": с галочкой «Обновлять HYDE автоматически» в конце установки на экране ТВ появится "+
+			"«Разрешить отладку по USB?» для «Сторожа», так он сможет ставить новые версии HYDE сам. Нажмите OK, потом вниз, вправо на кнопку справа "+
+			"и ещё раз OK. Не нажмёте за 2 минуты: ничего не сломается, новые версии поставит установщик.")
 	}
 	if !pl.Home && chosen["home"] {
 		pl.Notes = append(pl.Notes, "Главный экран остаётся прежним: «Дом» открывается из списка приложений. Сделать его главным можно потом.")

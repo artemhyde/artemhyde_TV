@@ -25,7 +25,7 @@ Honest downsides: so far tested on one TV (TCL 65C6K, Android 14), you need a co
 The apps on the TV are in Russian. The setup wizard speaks your language: write to Claude in English and it answers in English.
 
 **Two home screen styles**  
-Switched by the "Style" pill in the gear-button strip, instantly, no restart.  
+Switched in «Оформление» (Appearance: the pill in the gear-button strip or the first line of «Настройки «Дома»»), instantly, no restart. Since 1.2.0 the same section sets the wallpaper (photo of the day, four calm backgrounds or your own photo sent from a phone by QR code), the clock (thin, bold or glass), widgets with their own settings (weather city, your bank or cryptocurrency, life quotes or the Bible, music app, a note sent from a phone) and folders in the app row. A note from a phone or from Guard shows at the bottom of the home screen and instead of the quote on the lock screen.  
 "Graphite": clock and weather at the edges, the photo under the row blurred and dimmed, glass tiles from the left edge, "Continue" and "Volna" capsules under the row.  
 ![Graphite style](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/home.png?v=0411b)
 
@@ -73,7 +73,7 @@ Only you type passwords, the wizard never sees or types them. Signing in is opti
   - A second person with their own taste: a channel inside the same account with the same name as in "Volna". Its likes never reach the main profile. Without an account the second taste lives on the TV only.
 
 **How to install**  
-You need: Google TV or Android TV 12 or newer, and a computer with Windows, macOS or Linux on the same home network.
+You need: Google TV or Android TV 9 or newer, and a computer with Windows, macOS or Linux on the same home network.
 
 Ready release (the main way, no Claude and no build tools needed):
 1. On the Releases page download the archive for your system: `HYDE-TV-<version>-Windows.zip`, `-macOS-Apple.zip`, `-macOS-Intel.zip`, `-Linux-x64.tar.gz` or `-Linux-ARM64.tar.gz`.
@@ -91,11 +91,11 @@ You change your TV and its system at your own risk. This is an unofficial projec
 
 **What it does**
 
-"Dom" (Home): the home screen. A photo for the time of day, clock, weather, a verse, app tiles and an "All apps" screen. When nobody touches the TV it becomes a lock screen with the clock and the verse: the Android screensaver is switched off completely, so there is no second screen on top of it.  
+"Dom" (Home): the home screen. A photo for the time of day, clock, weather, a quote, app tiles and an "All apps" screen. When nobody touches the TV it becomes a lock screen with the clock and a quote: the Android screensaver is switched off completely, so there is no second screen on top of it.  
 ![All apps](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/apps.png?v=0411b)
 
 
-Pills strip on the remote's gear button: Night, Sound, Picture, Volna, Style, TCL panel. It appears over any app or film. A long press on the gear can open the TCL panel: this does not work on every TV, and if it does not, the TCL panel stays in the strip.  
+Pills strip on the remote's gear button: Night, Sound, Picture, Volna, Appearance, TCL panel. It appears over any app or film. A long press on the gear can open the TCL panel: this does not work on every TV, and if it does not, the TCL panel stays in the strip.  
 ![Pills strip](https://cdn.jsdelivr.net/gh/artemhyde/artemhyde_TV@main/docs/screenshots/pills.png?v=0411b)
 
 "Zvuk" (Sound): a glass strip over the film. Four modes (Cinema, Music and concerts, Night, Clean) and sliders: speech clarity, levelling of explosions and whispers, bass depth, detail. You change it by ear, the film does not stop.  
@@ -140,8 +140,8 @@ More on what is tied to TCL: [docs/tcl.md](tcl.md).
 - System packages are only disabled, not removed. There is a "do not touch" list (data/tcl-never-touch.txt).
 - The repository holds no ready APKs and no keys. Ready apps come in the release archives, signed with the release key (fingerprint in [docs/release.md](release.md)); when building from source you sign them with your own key.
 - Third-party apps are downloaded from their authors' links and checked against the signature fingerprint.
-- The wizard never enters passwords, never accepts terms for you, and sends nothing out on its own, except the city name to Open-Meteo and downloads from the list. The apps on the TV then reach services on their own: weather by your city's coordinates (Open-Meteo), photos (Wikimedia), optionally exchange rates, YouTube Music and lyrics; the Guard checks GitHub and GitLab for app updates and checks the internet connection and DNS. The full list is in [docs/architecture.md](architecture.md).
-- The wireless debugging you enable on the TV only accepts computers you confirmed, but any device on the home network can send a request. Never press "Allow" without looking. Guard can show notes from a phone (port 8765 on the home network, only with the six-digit code shown on Guard's screen): the wizard checks whether the port is listening and tells you plainly.
+- The wizard never enters passwords, never accepts terms for you, and sends nothing out on its own, except the city name to Open-Meteo, downloads from the list and, unless you untick «Отправлять автору технические отчёты» (send technical reports to the author) at the start, a technical report to the author after installing, updating or restoring (TV model, Android, result, a random device number; no name, addresses or TV serial number; details in [faq.md](faq.md), in Russian). The apps on the TV then reach services on their own: weather by your city's coordinates (Open-Meteo), photos (Wikimedia), optionally exchange rates, YouTube Music and lyrics; the Guard checks GitHub and GitLab for app updates, checks the internet connection and DNS and, with the same box ticked, sends the author a short daily summary (HYDE version, TV model, Android, the last update and its error). The full list is in [docs/architecture.md](architecture.md).
+- The wireless debugging you enable on the TV only accepts computers you confirmed, but any device on the home network can send a request. Never press "Allow" without looking. While the «Своё фото» (own photo) panel is open, for at most 15 minutes, Home accepts a photo from a phone (port 8766 on the home network, a one-time code in the address), and while notes are on it accepts a note (port 8767, a random key in the address). Guard can show notes from a phone (port 8765 on the home network, only with the six-digit code shown on Guard's screen): the wizard checks whether the port is listening and tells you plainly.
 - CLAUDE.md is plain text that your Claude executes. Read it. Download the project only from this repository, and read other people's copies yourself.
 
 **Honest limitations**

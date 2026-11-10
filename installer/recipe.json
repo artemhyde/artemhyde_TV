@@ -33,6 +33,8 @@
       "steps": [
         {"what": "право менять защищённые настройки", "do": "pm grant io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS", "undo": "pm revoke io.github.sds100.keymapper android.permission.WRITE_SECURE_SETTINGS"},
         {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +io.github.sds100.keymapper", "undo": "dumpsys deviceidle whitelist -io.github.sds100.keymapper"},
+        {"what": "автозапуск (прошивка TCL): иначе после выгрузки служба кнопок не поднимается и пульт молча не работает", "do": "appops set io.github.sds100.keymapper AUTO_START allow", "undo": "appops set io.github.sds100.keymapper AUTO_START default", "when": "tcl", "silent_ok": true},
+        {"what": "запуск системой и другими приложениями (прошивка TCL)", "do": "appops set io.github.sds100.keymapper ASSOC_START allow", "undo": "appops set io.github.sds100.keymapper ASSOC_START default", "when": "tcl", "silent_ok": true},
         {"kind": "a11y", "what": "служба кнопок в спецвозможностях", "service": "io.github.sds100.keymapper/io.github.sds100.keymapper.system.accessibility.MyAccessibilityService"}
       ]
     },
@@ -59,7 +61,8 @@
         {"what": "окно поверх других приложений", "do": "appops set app.glasstv.nightmode SYSTEM_ALERT_WINDOW allow", "undo": "appops set app.glasstv.nightmode SYSTEM_ALERT_WINDOW default"},
         {"what": "менять яркость", "do": "appops set app.glasstv.nightmode WRITE_SETTINGS allow", "undo": "appops set app.glasstv.nightmode WRITE_SETTINGS default"},
         {"what": "уведомления", "do": "pm grant app.glasstv.nightmode android.permission.POST_NOTIFICATIONS", "undo": "pm revoke app.glasstv.nightmode android.permission.POST_NOTIFICATIONS", "when": "android13"},
-        {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +app.glasstv.nightmode", "undo": "dumpsys deviceidle whitelist -app.glasstv.nightmode"}
+        {"what": "не усыплять в ожидании", "do": "dumpsys deviceidle whitelist +app.glasstv.nightmode", "undo": "dumpsys deviceidle whitelist -app.glasstv.nightmode"},
+        {"what": "автозапуск (прошивка TCL): иначе после выгрузки и после обновления таймер сна и затемнение молча пропадают", "do": "appops set app.glasstv.nightmode AUTO_START allow", "undo": "appops set app.glasstv.nightmode AUTO_START default", "when": "tcl", "silent_ok": true}
       ]
     },
     {
@@ -156,7 +159,9 @@
       "group": "apps",
       "third_party": "ru.yourok.torrserve",
       "updates": "guard",
-      "steps": []
+      "steps": [
+        {"what": "автозапуск (прошивка TCL): иначе после загрузки ТВ или выгрузки сервер не поднимается, и Lampa не открывает торренты", "do": "appops set ru.yourok.torrserve AUTO_START allow", "undo": "appops set ru.yourok.torrserve AUTO_START default", "when": "tcl", "silent_ok": true}
+      ]
     },
     {
       "module": "localsend",

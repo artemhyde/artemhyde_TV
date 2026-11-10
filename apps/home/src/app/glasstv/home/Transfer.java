@@ -56,7 +56,7 @@ final class Transfer {
         o.put("setup", Prefs.dump(c.getSharedPreferences(Setup.PREFS, Context.MODE_PRIVATE), null, Prefs.set("rev")));
         o.put("style", Prefs.dump(c.getSharedPreferences(Style.PREFS, Context.MODE_PRIVATE), Prefs.set(Style.KEY), null));
         o.put("dock", Prefs.dump(c.getSharedPreferences(HomeActivity.DOCK_PREFS, Context.MODE_PRIVATE),
-                Prefs.set(HomeActivity.DOCK_KEY, HomeActivity.HIDE_KEY), null));
+                Prefs.set(HomeActivity.DOCK_KEY, HomeActivity.HIDE_KEY, Folders.KEY), null));
         return o;
     }
 
@@ -64,7 +64,7 @@ final class Transfer {
         if (o == null) return 0;
         int n = load(c, Setup.PREFS, o.optJSONObject("setup"), null, Prefs.set("rev"))
                 + load(c, Style.PREFS, o.optJSONObject("style"), Prefs.set(Style.KEY), null)
-                + load(c, HomeActivity.DOCK_PREFS, o.optJSONObject("dock"), Prefs.set(HomeActivity.DOCK_KEY, HomeActivity.HIDE_KEY), null);
+                + load(c, HomeActivity.DOCK_PREFS, o.optJSONObject("dock"), Prefs.set(HomeActivity.DOCK_KEY, HomeActivity.HIDE_KEY, Folders.KEY), null);
         Setup.bump(c);   // «Дом» перерисует экран с новыми настройками
         return n;
     }

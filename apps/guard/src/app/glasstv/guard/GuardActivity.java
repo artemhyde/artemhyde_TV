@@ -23,8 +23,8 @@ import java.net.Inet4Address;
 public class GuardActivity extends Activity {
     private float dp;
     private Typeface regular, medium, semibold;
-    private TextView adb, keys, bye, notes, mem, night, hyde, log;
-    private TextView soundBtn, adbBtn, notesBtn, hydeBtn, reportRow;
+    private TextView adb, keys, bye, notes, mem, night, hyde, adbSelf, log;
+    private TextView soundBtn, adbBtn, notesBtn, hydeBtn, pingBtn, reportRow;
     private int soundColor = 0xFFF5F5F7;
     private final Handler h = new Handler(Looper.getMainLooper());
 
@@ -57,6 +57,8 @@ public class GuardActivity extends Activity {
         night = row(root, "Ночью подсветка ниже");
         // Самообновление HYDE (Hyde.java): только у сборки выпуска, своя сборка обновляется установщиком
         if (Hyde.releaseBuild(this)) hyde = row(root, "Обновления HYDE");
+        // Android 9–11: обновления без нажатий идут через отладку ТВ (AdbSelf), её состояние отдельной строкой
+        if (hyde != null && AdbSelf.needed()) adbSelf = row(root, "Отладка для обновлений");
         reportRow = row(root, "Отчёт для помощи");
         reportRow.setText("кнопка «Отчёт» сохранит его в «Загрузки», без личных данных");
         reportRow.setTextColor(0xFFF5F5F7);
@@ -71,7 +73,7 @@ public class GuardActivity extends Activity {
         });
         button(buttons, "Пробная записка", v -> {
             GuardService g = GuardService.running;
-            if (g != null) g.showNote("Так будет выглядеть записка с телефона");
+            if (g != null) g.showNote("Так будет выглядеть записка с телефона", "phone");
         });
         button(buttons, "Ночная подсветка вкл/выкл", v -> {
             GuardService g = GuardService.running;
@@ -112,13 +114,29 @@ public class GuardActivity extends Activity {
             h.removeCallbacksAndMessages(null);
             h.postDelayed(this::refresh, 500);
         });
-        // Выключатель самообновления HYDE: по умолчанию включено (config.xml)
-        if (hyde != null) hydeBtn = (TextView) button(switches, "Обновлять HYDE сам: вкл", v -> {
+        // Выключатели самообновления HYDE (по умолчанию включено, config.xml) и отчётов автору: отдельным рядом,
+        // в одном с отладкой и записками они не помещаются (1.2.0)
+        LinearLayout hydeRow = new LinearLayout(this);
+        hydeRow.setPadding(0, 0, 0, px(24));
+        if (hyde != null) hydeBtn = (TextView) button(hydeRow, "Обновлять HYDE сам: вкл", v -> {
             GuardService g = GuardService.running;
             boolean want = !Hyde.on(this);
             if (g != null && g.upd != null) g.upd.hyde.setOn(want, "экран «Сторож»");
             else {                                             // служба ещё поднимается: выбор запомнить, она его прочтёт
                 getSharedPreferences("guard", MODE_PRIVATE).edit().putBoolean(Hyde.P_ON, want).apply();
+                GuardService.start(this);
+            }
+            h.removeCallbacksAndMessages(null);
+            h.postDelayed(this::refresh, 500);
+        });
+        if (hyde != null) pingBtn = (TextView) button(hydeRow, "Отчёты автору: выкл", v -> {
+            GuardService g = GuardService.running;
+            boolean want = !Ping.on(this);
+            if (g != null && g.upd != null) {
+                g.upd.ping.set(want, null, "экран «Сторож»");
+                if (want) g.updSoon(Hyde.CHAIN_MS);
+            } else {
+                getSharedPreferences("guard", MODE_PRIVATE).edit().putBoolean(Ping.P_ON, want).putBoolean(Ping.P_ASKED, true).apply();
                 GuardService.start(this);
             }
             h.removeCallbacksAndMessages(null);
@@ -135,6 +153,7 @@ public class GuardActivity extends Activity {
             }, "guard-report").start();
         });
         root.addView(switches);
+        if (hydeRow.getChildCount() > 0) root.addView(hydeRow);
 
         TextView logTitle = text("Что делал", 13, 0x80F5F5F7, medium);
         logTitle.setLetterSpacing(0.08f);
@@ -208,6 +227,13 @@ public class GuardActivity extends Activity {
             hyde.setText(hy == null ? "«Сторож» запускается" : hy.brief());
             hyde.setTextColor(hy != null && hy.attention() ? 0xFFFFB454 : hy != null && hy.fresh() ? 0xFF5ED3B4 : 0xFFF5F5F7);
             hydeBtn.setText(Hyde.on(this) ? "Обновлять HYDE сам: вкл" : "Обновлять HYDE сам: выкл");
+            pingBtn.setText(Ping.on(this) ? "Отчёты автору: вкл" : "Отчёты автору: выкл");
+            if (adbSelf != null) {
+                String st = hy == null ? null : hy.adb.state();
+                adbSelf.setText(hy == null ? "«Сторож» запускается" : !Hyde.on(this) ? "не нужна: обновления выключены"
+                        : AdbSelf.OK.equals(st) ? "разрешена «Сторожу»: обновления встают сами" : hy.adb.brief());
+                adbSelf.setTextColor(AdbSelf.OK.equals(st) ? 0xFF5ED3B4 : st == null || hy.adb.pairingNow() ? 0xFFF5F5F7 : 0xFFFFB454);
+            }
         }
         refreshSound(g);
         log.setText(getSharedPreferences("guard", MODE_PRIVATE).getString("log", ""));

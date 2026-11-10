@@ -23,7 +23,7 @@ type Event struct {
 	Total  int    `json:"total"`
 	Group  string `json:"group"`
 	What   string `json:"what"`
-	Status string `json:"status"` // start, ok, skip, warn, fail, lost, info
+	Status string `json:"status"` // start, ok, skip, warn, fail, lost, info; ask: просьба к человеку у ТВ, установщик ждёт
 	Detail string `json:"detail,omitempty"`
 }
 
@@ -32,6 +32,8 @@ type ApplyOpts struct {
 	TVFree        bool   // ТВ свободен: можно открыть «Дом» и нажать «Домой»
 	BackupRoot    string // где папки журналов (backup/<метка>)
 	Emit          func(Event)
+	// Consent: выбор человека в начале (обновления, отчёты), уходит «Сторожу» в конце; nil: «Сторожу» ничего не передаётся
+	Consent *Consent
 }
 
 type ApplyResult struct {
@@ -159,6 +161,12 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		}
 		return fail(fmt.Errorf("паспорт ТВ не прочитан: %v", err))
 	}
+	// Журналы этого ТВ на этом компьютере: что установщик отключал раньше (снова включённое план отключит снова)
+	tvID := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
+	root := nonEmpty(o.BackupRoot, defaultBackupRoot())
+	if ch.Redisable == nil && tvID != "" {
+		ch.Redisable = disabledByInstaller(sessionsOf(root, tvID, true))
+	}
 	pl := buildPlan(rec, m, p, ch, true)
 	if len(pl.Problems) > 0 {
 		return fail(errors.New(strings.Join(pl.Problems, " ")))
@@ -189,17 +197,25 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 	}
 
 	// Папка журнала: продолжение незаконченной установки этого ТВ или новая со снимком «до»
-	tvID := strings.TrimSpace(firstLine(mustShell(tv, "settings get secure android_id")))
-	root := nonEmpty(o.BackupRoot, defaultBackupRoot())
 	dir := findUnfinished(root, tvID)
 	var held []string
+	devID := ""
 	if dir != "" {
 		res.Resumed = true
 		emit(Event{Status: "info", What: "продолжаю незаконченную установку", Detail: dir})
 		if s, err := loadSession(dir); err == nil {
 			held = s.Held
+			devID = s.DeviceID
 		}
-	} else {
+	}
+	if !validDeviceID(devID) {
+		if devID = deviceIDFromGuard(tv); devID == "" {
+			if devID = deviceIDFromSessions(root, tvID); devID == "" {
+				devID = newDeviceID()
+			}
+		}
+	}
+	if dir == "" {
 		// Что на ТВ уже так до этой установки (обновление поверх стоящего выпуска): это не выполняется заново и не
 		// пишется в журнал. Запоминается в session.json, чтобы после обрыва знать, что было до начала
 		l := &tvLook{tv: tv}
@@ -226,7 +242,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			return fail(fmt.Errorf("снимок «до» не сделан, на ТВ ничего не менял: %v", err))
 		}
 		s := &Session{Label: filepath.Base(dir), TVID: tvID, Model: pl.Caps.Model, Release: m.Release, Modules: ch.Modules, Home: ch.Home,
-			Started: time.Now().Format("2006-01-02 15:04:05"), Held: held, HomePlanned: pl.Home}
+			Started: time.Now().Format("2006-01-02 15:04:05"), Held: held, HomePlanned: pl.Home, DeviceID: devID, Consent: o.Consent}
 		for _, mc := range pl.Modules {
 			if mc.Chosen {
 				s.Installed = append(s.Installed, mc.Module)
@@ -398,15 +414,28 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 	res.Finished = true
 	// Повторный запуск, где всё уже так: журнал пуст, откатывать нечего. Пустую папку не оставляем, чтобы откат и
 	// проверка не ходили по пустым установкам
+	if o.Consent != nil {
+		consentToGuard(tv, *o.Consent, devID, emit)
+		guardAdbSelf(tv, pl.Caps.SDK, *o.Consent, emit) // Android 9, 10 и 11: одно «Разрешить» для «Сторожа» (путь Б)
+	}
+	guardDisabled(tv, sessionsOf(root, tvID, true), emit) // что отключал установщик: «Сторож» следит после обновления прошивки
+	guardKeys(tv, emit)                                   // служба кнопок Key Mapper в списке, но не привязана (TCL): перезапуск
 	if es, err := readLedger(led); err == nil && len(es) == 0 && !res.Resumed {
 		if os.RemoveAll(dir) == nil {
 			res.Backup = ""
+			rememberConsent(root, tvID, o.Consent, devID)
 			emit(Event{Status: "info", What: fmt.Sprintf("на ТВ всё уже так: изменений нет, журнал не нужен (пропущено %d)", res.Skipped)})
 			return res
 		}
 	}
 	if s, err := loadSession(dir); err == nil {
 		s.Finished, s.LastError, s.FailedStep = time.Now().Format("2006-01-02 15:04:05"), "", ""
+		if s.DeviceID == "" {
+			s.DeviceID = devID
+		}
+		if o.Consent != nil {
+			s.Consent = o.Consent
+		}
 		_ = saveSession(dir, s)
 	}
 	emit(Event{Status: "info", What: fmt.Sprintf("установка закончена: изменений %d, пропущено %d, предупреждений %d", res.Done, res.Skipped, res.Warnings)})
