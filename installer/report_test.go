@@ -67,9 +67,11 @@ func TestReportFromSession(t *testing.T) {
 	if r.Result != "update_ok" || !r.HomeSwitched || r.VerifyOK != 2 || r.VerifyTotal != 2 || r.Error != "" {
 		t.Fatalf("обновление: %+v", r)
 	}
-	r, _ = reportFromSession(dir, "apply", "cli", "", []Check{{OK: true}, {OK: false}}, false)
-	if r.Result != "partial" {
-		t.Fatalf("не всё держится: %+v", r)
+	r, _ = reportFromSession(dir, "apply", "cli", "", []Check{{OK: true}, {What: "«Дом»: использование приложений", OK: false, Detail: "сейчас GET_USAGE_STATS: default"},
+		{What: "«Сторож»: поверх других окон", OK: false}}, false)
+	if r.Result != "partial" || r.FailedStep != "проверка после установки" ||
+		r.Error != "не держится: «Дом»: использование приложений (сейчас GET_USAGE_STATS: default); «Сторож»: поверх других окон" {
+		t.Fatalf("не всё держится: в отчёте нет названий проверок: %+v", r)
 	}
 	r, _ = reportFromSession(dir, "restore", "cli", "", nil, true)
 	if r.Result != "restored" || r.HomeSwitched {

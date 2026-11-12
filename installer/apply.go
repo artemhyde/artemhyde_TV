@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -68,6 +69,10 @@ func cmdOK(out string, err error) bool {
 	return !strings.Contains(low, "exception") && !strings.HasPrefix(t, "error") && !strings.HasPrefix(t, "failure")
 }
 
+// unknownOp: прошивка не знает такого разрешения appops. На TCL с Android 11 нет AUTO_START и ASSOC_START (12.11):
+// там и ограничения автозапуска нет, выдавать нечего, а отменять при откате тоже нечего
+func unknownOp(out string) bool { return strings.Contains(out, "Unknown operation string") }
+
 func lastLine(s string) string {
 	ls := strings.Split(strings.TrimSpace(s), "\n")
 	return strings.TrimSpace(ls[len(ls)-1])
@@ -93,8 +98,41 @@ func runTVCmd(tv TV, cmd string) (string, error) {
 	return out, fmt.Errorf("не прошло: %s", nonEmpty(lastLine(out), "без ответа"))
 }
 
+var protectPoll = 2 * time.Second
+
+const playStore = "com.android.vending"
+
+// installWatched: установка файла, а пока она идёт, взгляд на экран ТВ. Google Play Защита держит установку приложений,
+// собранных под старый Android, своим окном «Unsafe app blocked» (12.11, Google TV 14: Lampa и TorrServe), и установщик
+// молча ждал. Окно на экране (сверху Play Маркет): просьба человеку onAsk, установка ждёт его решения; отказ («Got it»)
+// второй раз не переспрашивается. seen: окно было
+func installWatched(tv TV, file, installer string, onAsk func()) (seen bool, err error) {
+	var mu sync.Mutex
+	isSeen := func() bool { mu.Lock(); defer mu.Unlock(); return seen }
+	done := make(chan error, 1)
+	go func() { done <- installFileStop(tv, file, installer, isSeen) }()
+	t := time.NewTicker(protectPoll)
+	defer t.Stop()
+	for {
+		select {
+		case err = <-done:
+			return isSeen(), err
+		case <-t.C:
+			if !isSeen() && topPackage(tv) == playStore {
+				mu.Lock()
+				seen = true
+				mu.Unlock()
+				onAsk()
+			}
+		}
+	}
+}
+
 // installFile: поставить файл; installer непустой: от имени этого приложения (стороннее, которое потом обновляет «Сторож»)
-func installFile(tv TV, file, installer string) error {
+func installFile(tv TV, file, installer string) error { return installFileStop(tv, file, installer, nil) }
+
+// installFileStop: как installFile; stop() true: после неудачи второй попытки нет (человек отказался в окне Play Защиты)
+func installFileStop(tv TV, file, installer string, stop func() bool) error {
 	for try := 0; try < 2; try++ {
 		out, _ := tv.Install(file, installer)
 		if strings.Contains(out, "Success") {
@@ -111,7 +149,7 @@ func installFile(tv TV, file, installer string) error {
 		case strings.Contains(out, "INSTALL_FAILED_INSUFFICIENT_STORAGE"):
 			return errors.New("на ТВ не хватает места")
 		}
-		if try == 0 {
+		if try == 0 && (stop == nil || !stop()) {
 			time.Sleep(retryPause)
 			continue
 		}
@@ -128,6 +166,7 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		emit0 = func(Event) {}
 	}
 	cur := "" // шаг, который сейчас идёт: на нём и остановилась установка, если что-то не вышло (для отчёта)
+	t0 := time.Now()
 	emit := func(e Event) {
 		if e.Status == "start" {
 			cur = strings.TrimSpace(strings.Trim(e.Group+": "+e.What, ": "))
@@ -142,7 +181,9 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		res.FailedStep = cur
 		if res.Backup != "" {
 			if s, e := loadSession(res.Backup); e == nil {
-				s.LastError, s.FailedStep = res.Error, cur
+				// Минута запуска в тексте для отчёта: обрыв на 20-й минуте и дальше похож на сон ТВ без нажатий (12.11)
+				s.LastError = fmt.Sprintf("%s (на %d-й минуте запуска)", res.Error, int(time.Since(t0).Minutes())+1)
+				s.FailedStep = cur
 				_ = saveSession(res.Backup, s)
 			}
 		}
@@ -253,6 +294,16 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 		}
 	}
 	res.Backup = dir
+	// Пока идёт установка, ТВ не засыпает: Google TV по умолчанию засыпает через 20 минут без нажатий пульта, а во сне
+	// пропадает сеть и связь (12.11: обрыв в конце долгой установки на Google TV 14). Режим «не гаснуть при питании»
+	// на время запуска; в конце как в снимке «до». Оборвалось посреди: вернёт следующий запуск или откат
+	if _, err := tv.Shell("settings put global "+stayOnKey+" 7", 20*time.Second); err == nil {
+		defer func() {
+			if tv.State() == "device" {
+				_, _ = tv.Shell(stayOnBack(dir), 20*time.Second)
+			}
+		}()
+	}
 	led := filepath.Join(dir, "ledger.tsv")
 	prev, _ := readLedger(led)
 	done := map[string]bool{}
@@ -301,9 +352,18 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			homeCand = s.Package // новый главный экран: из шага смены роли, а не из первого шага группы (07.11, тест на TCL)
 		}
 	}
+	// Приложения по желанию, которые человек не дал поставить в окне Play Защиты: их шаги и плитки пропускаются,
+	// остальное ставится (12.11)
+	declined := map[string]bool{}
+	declinedGroup := map[string]bool{}
 	for i, s := range pl.Steps {
 		ev := Event{N: i + 1, Total: len(pl.Steps), Group: s.Group, What: s.What}
 		say := func(st, detail string) { e := ev; e.Status, e.Detail = st, detail; emit(e) }
+		if declinedGroup[s.Group] || (s.Kind == "install" && declinedTarget(m, rec, p, declined, s.Package)) {
+			res.Skipped++
+			say("skip", "без приложения: Play Защита не дала его поставить")
+			continue
+		}
 		switch {
 		case s.Kind == "download":
 			continue
@@ -343,7 +403,23 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			if err := journal(LedgerEntry{What: what, Do: s.Do, Undo: undo}); err != nil {
 				return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", err))
 			}
-			if err := installFile(tv, file, s.Installer); err != nil {
+			seen, err := installWatched(tv, file, s.Installer, func() {
+				emit(Event{N: ev.N, Total: ev.Total, Group: s.Group, Status: "ask", Detail: "Нужно ваше решение на телевизоре",
+					What: "На экране ТВ окно Google Play Защиты про «" + s.Group + "»: его собрали под старый Android. Поставить: пультом «More details» (Подробнее), потом «Install anyway» (Всё равно установить). Не нужно: «Got it» (Понятно), остальное поставится без него"})
+			})
+			if err != nil {
+				if s.Kind == "install3p" && seen && !errors.Is(err, errLost) {
+					// Человек отказался: приложения на ТВ нет, строку журнала убираем, иначе проверка сочла бы его
+					// «не держится», а откат удалял бы то, чего нет
+					if derr := dropLedger(led, s.Do); derr != nil {
+						return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", derr))
+					}
+					delete(done, s.Do)
+					declined[s.Package], declinedGroup[s.Group] = true, true
+					res.Warnings++
+					say("warn", "не поставлено: Play Защита не дала, «Install anyway» не выбрали. Остальное ставлю без него")
+					continue
+				}
 				return fail(fmt.Errorf("%s: %w", s.Group, err))
 			}
 			res.Done++
@@ -366,9 +442,14 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 			say("ok", "")
 		default:
 			if done[s.Do] {
-				res.Skipped++
-				say("skip", "уже сделано")
-				continue
+				// В журнале есть. Держится или проверить нечем: сделано. Не держится: прошлый запуск остановился на этой
+				// команде (строка журнала пишется до неё), выполнить снова. Без этого каждый повтор проскакивал прошлый
+				// сбой как «уже сделано» и падал на следующем шаге (12.11: TCL на Android 11, 8 запусков за 12 минут)
+				if ok, known, _ := (&tvLook{tv: tv}).holds(s.Do); !known || ok {
+					res.Skipped++
+					say("skip", "уже сделано")
+					continue
+				}
 			}
 			if wasHeld[s.Do] {
 				if ok, known, _ := (&tvLook{tv: tv}).holds(s.Do); known && ok {
@@ -387,11 +468,32 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 				continue
 			}
 			say("start", "")
-			if err := journal(LedgerEntry{What: s.Group + ": " + s.What, Do: s.Do, Undo: s.Undo}); err != nil {
-				return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", err))
+			entry := LedgerEntry{What: s.Group + ": " + s.What, Do: s.Do, Undo: s.Undo}
+			// Шаг под прошивку TCL пишется в журнал после успеха: не прошёл, и в журнале нет строки, которую проверка
+			// сочла бы «не держится», а откат пытался бы отменить. Обрыв посреди оставит разве что выданное разрешение
+			// автозапуска: повтор его выдаст и запишет, удаление приложения откатом снимет его вместе с приложением
+			if !s.Soft {
+				if err := journal(entry); err != nil {
+					return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", err))
+				}
 			}
 			if _, err := runTVCmd(tv, s.Do); err != nil {
-				return fail(fmt.Errorf("%s: %s: %w", s.Group, s.What, err))
+				switch {
+				case errors.Is(err, errLost) || !s.Soft:
+					return fail(fmt.Errorf("%s: %s: %w", s.Group, s.What, err))
+				case unknownOp(err.Error()):
+					res.Skipped++
+					say("skip", "на этой прошивке такого разрешения нет: шаг не нужен")
+				default:
+					res.Warnings++
+					say("warn", err.Error()+"; шаг для прошивки TCL, установка идёт дальше")
+				}
+				continue
+			}
+			if s.Soft {
+				if err := journal(entry); err != nil {
+					return fail(fmt.Errorf("журнал не пишется, дальше не иду: %v", err))
+				}
 			}
 			// Команда прошла, а держится ли изменение? Служба «Сторожа» после запуска поднимается не мгновенно, и ответ
 			// «прошло» ещё не значит, что настройка встала: ещё одна попытка, потом честное предупреждение
@@ -440,6 +542,26 @@ func runApply(tv TV, a *ADB, rec Recipe, m *Manifest, ch Choices, o ApplyOpts) (
 	}
 	emit(Event{Status: "info", What: fmt.Sprintf("установка закончена: изменений %d, пропущено %d, предупреждений %d", res.Done, res.Skipped, res.Warnings)})
 	return res
+}
+
+// declinedTarget: плитка, чьё приложение не дала поставить Play Защита, а замены на ТВ нет (plan.go, tile_alts)
+func declinedTarget(m *Manifest, rec Recipe, p Passport, declined map[string]bool, pkg string) bool {
+	if len(declined) == 0 {
+		return false
+	}
+	for i := range m.Apps {
+		a := &m.Apps[i]
+		if a.Package != pkg || !strings.HasPrefix(a.Module, "tile-") || len(a.Depends) == 0 || !declined[a.Depends[0]] {
+			continue
+		}
+		for _, alt := range rec.TileAlts[a.Depends[0]] {
+			if p.Has(alt) && !p.Disabled[alt] {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func mustShell(tv TV, cmd string) string {

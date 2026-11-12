@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -34,6 +35,11 @@ type fakeTV struct {
 	grants    map[string]bool // «пакет право», «пакет OP», «+пакет» белого списка, компонент администратора и слушателя
 	guardUp   bool            // служба «Сторожа» уже отвечает
 	nightOff  bool            // ночная подсветка «Сторожа» выключена
+	noOps     map[string]bool // разрешения appops, которых прошивка не знает (TCL на Android 11: AUTO_START, ASSOC_START)
+	// protect: пакет → решение человека в окне Play Защиты («decline»: «Got it», иначе «Install anyway»). Пока окно
+	// на экране, сверху Play Маркет; установка ждёт (идёт в своём потоке, поэтому экран под замком mu)
+	protect map[string]string
+	mu      sync.Mutex
 }
 
 func newFakeTV(tcl bool) *fakeTV {
@@ -116,6 +122,9 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 	if f.failAll[cmd] {
 		return "Error: test failure", errors.New("exit 1")
 	}
+	if strings.HasPrefix(cmd, "appops ") && len(w) >= 4 && f.noOps[w[3]] {
+		return "Error: Unknown operation string: " + w[3] + "\n", errors.New("exit 255")
+	}
 	if f.failOnce[cmd] {
 		delete(f.failOnce, cmd)
 		return "Error: test failure once", errors.New("exit 1")
@@ -157,6 +166,8 @@ func (f *fakeTV) Shell(cmd string, _ time.Duration) (string, error) {
 	case strings.HasPrefix(cmd, "cmd role get-role-holders") || cmd == homeHolderCmd:
 		return f.home + "\n", nil
 	case strings.HasPrefix(cmd, "dumpsys activity activities"):
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		return fmt.Sprintf("  topResumedActivity=ActivityRecord{abc u0 %s/.Main t1}\n", f.top), nil
 	case strings.HasPrefix(cmd, "dumpsys activity services app.glasstv.guard"):
 		if _, ok := f.pkgs["app.glasstv.guard"]; ok {
@@ -298,6 +309,20 @@ func (f *fakeTV) Install(apk, installer string) (string, error) {
 	if pkg == "" {
 		return "Failure [unknown file " + apk + "]", errors.New("exit 1")
 	}
+	if how, ok := f.protect[pkg]; ok {
+		f.mu.Lock()
+		was := f.top
+		f.top = "com.android.vending"
+		f.mu.Unlock()
+		time.Sleep(60 * time.Millisecond) // человек читает окно
+		f.mu.Lock()
+		f.top = was
+		f.mu.Unlock()
+		f.ran = append(f.ran, "play protect "+pkg)
+		if how == "decline" {
+			return "Failure [INSTALL_FAILED_VERIFICATION_FAILURE]", errors.New("exit 1")
+		}
+	}
 	f.ran = append(f.ran, "install "+pkg+prefixed(" от имени ", installer))
 	f.pkgs[pkg] = 10000
 	return "Performing Streamed Install\nSuccess\n", nil
@@ -312,8 +337,8 @@ func applyEnv(t *testing.T, tcl bool) (*fakeTV, *Manifest, Recipe) {
 	m.SignerCert = "cafe"
 	old := certOf
 	certOf = func(string) (string, error) { return "cafe", nil }
-	homeWait, retryPause = 0, 0
-	t.Cleanup(func() { certOf, homeWait, retryPause = old, 3*time.Second, 2*time.Second })
+	homeWait, retryPause, protectPoll = 0, 0, 5*time.Millisecond
+	t.Cleanup(func() { certOf, homeWait, retryPause, protectPoll = old, 3*time.Second, 2*time.Second, 2*time.Second })
 	f := newFakeTV(tcl)
 	for _, a := range m.Apps {
 		f.files[a.File] = a.Package
@@ -431,10 +456,20 @@ func TestApplyResumeAfterLoss(t *testing.T) {
 	if !res.Lost || res.Finished {
 		t.Fatalf("обрыв: %+v", res)
 	}
+	// На время установки ТВ не засыпает; связь пропала, и вернуть было некому
+	if f.settings["global:"+stayOnKey] != "7" {
+		t.Fatalf("на время установки не включено «не засыпать»: %q", f.settings["global:"+stayOnKey])
+	}
+	if s, _ := loadSession(res.Backup); s == nil || !strings.Contains(s.LastError, "-й минуте запуска)") {
+		t.Fatalf("в ошибке для отчёта нет минуты запуска: %+v", s)
+	}
 	f.online, f.loseAfter = true, ""
 	res2 := runApply(f, nil, rec, m, noKM(false), ApplyOpts{BackupRoot: root})
 	if !res2.Resumed || !res2.Finished || res2.Backup != res.Backup {
 		t.Fatalf("продолжение: %+v", res2)
+	}
+	if v, ok := f.settings["global:"+stayOnKey]; ok {
+		t.Fatalf("после установки «не засыпать» осталось %q, а до неё записи не было", v)
 	}
 	seen := map[string]int{}
 	for _, e := range ledgerOf(t, res.Backup) {
@@ -495,6 +530,103 @@ func TestApplyStopsOnRealFailure(t *testing.T) {
 	}
 	if _, ok := f.pkgs["app.glasstv.home"]; ok {
 		t.Fatal("после ошибки установка пошла дальше")
+	}
+}
+
+// 12.11, TCL на Android 11: прошивка не знает AUTO_START и ASSOC_START. Шаги автозапуска пропускаются без строки в журнале,
+// установка доходит до конца, проверка вся зелёная, откат без ошибок
+func TestApplyTCLUnknownOps(t *testing.T) {
+	f, m, rec := applyEnv(t, true)
+	f.noOps = map[string]bool{"AUTO_START": true, "ASSOC_START": true}
+	var skips int
+	res := runApply(f, nil, rec, m, noKM(false), ApplyOpts{BackupRoot: t.TempDir(), Emit: func(e Event) {
+		if e.Status == "skip" && strings.Contains(e.Detail, "такого разрешения нет") {
+			skips++
+		}
+	}})
+	if !res.Finished || res.Error != "" || res.Warnings != 0 || skips < 2 {
+		t.Fatalf("установка на TCL без AUTO_START: %+v, пропусков %d", res, skips)
+	}
+	for _, e := range ledgerOf(t, res.Backup) {
+		if strings.Contains(e.Do, "AUTO_START") || strings.Contains(e.Do, "ASSOC_START") {
+			t.Fatalf("в журнале шаг, который не прошёл: %s", e.Do)
+		}
+	}
+	// Журнал установщика 1.2.0: строка упавшего шага осталась. Проверка её не считает, откат не спотыкается
+	if err := appendLedger(filepath.Join(res.Backup, "ledger.tsv"), LedgerEntry{What: "«Сторож»: автозапуск (прошивка TCL)",
+		Do: "appops set app.glasstv.guard AUTO_START allow", Undo: "appops set app.glasstv.guard AUTO_START default"}); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := runVerify(f, res.Backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cs {
+		if !c.OK {
+			t.Fatalf("проверка: %s (%s)", c.What, c.Detail)
+		}
+	}
+	if r := runRestore(f, res.Backup, nil); r.Fail != 0 || r.Lost || r.Error != "" {
+		t.Fatalf("откат: %+v", r)
+	}
+}
+
+// Установка оборвалась и больше не запускалась, человек нажал «Вернуть как было»: «не засыпать» как до установки
+func TestRestoreAfterLossReturnsSleep(t *testing.T) {
+	f, m, rec := applyEnv(t, false)
+	f.settings["global:"+stayOnKey] = "0"
+	f.loseAfter = "appops set app.glasstv.home GET_USAGE_STATS allow"
+	res := runApply(f, nil, rec, m, noKM(false), ApplyOpts{BackupRoot: t.TempDir()})
+	if !res.Lost || f.settings["global:"+stayOnKey] != "7" {
+		t.Fatalf("обрыв: %+v, не засыпать %q", res, f.settings["global:"+stayOnKey])
+	}
+	f.online, f.loseAfter = true, ""
+	if r := runRestore(f, res.Backup, nil); r.Fail != 0 || f.settings["global:"+stayOnKey] != "0" {
+		t.Fatalf("откат: %+v, не засыпать %q", r, f.settings["global:"+stayOnKey])
+	}
+}
+
+// Шаг под прошивку TCL не прошёл по другой причине: предупреждение, установка идёт дальше, строки в журнале нет
+func TestApplyTCLSoftStepWarns(t *testing.T) {
+	f, m, rec := applyEnv(t, true)
+	f.failAll["appops set app.glasstv.home AUTO_START allow"] = true
+	res := runApply(f, nil, rec, m, noKM(false), ApplyOpts{BackupRoot: t.TempDir()})
+	if !res.Finished || res.Warnings == 0 {
+		t.Fatalf("шаг автозапуска остановил установку: %+v", res)
+	}
+	for _, e := range ledgerOf(t, res.Backup) {
+		if e.Do == "appops set app.glasstv.home AUTO_START allow" {
+			t.Fatal("в журнале шаг, который не прошёл")
+		}
+	}
+	if _, ok := f.pkgs["app.glasstv.tile.settings"]; !ok {
+		t.Fatal("после предупреждения установка не дошла до плиток")
+	}
+}
+
+// Повтор после остановки: упавший шаг в журнале есть (строка пишется до команды), но не держится: выполняется снова,
+// а не проскакивает как «уже сделано» (12.11: каждый повтор падал на следующем шаге)
+func TestApplyResumeRetriesFailedStep(t *testing.T) {
+	f, m, rec := applyEnv(t, false)
+	root := t.TempDir()
+	const grant = "pm grant app.glasstv.guard android.permission.DUMP"
+	f.failAll[grant] = true
+	if res := runApply(f, nil, rec, m, noKM(false), ApplyOpts{BackupRoot: root}); res.Finished {
+		t.Fatalf("ошибка должна остановить: %+v", res)
+	}
+	delete(f.failAll, grant)
+	res := runApply(f, nil, rec, m, noKM(false), ApplyOpts{BackupRoot: root})
+	if !res.Resumed || !res.Finished {
+		t.Fatalf("продолжение: %+v", res)
+	}
+	if !f.grants["app.glasstv.guard android.permission.DUMP"] {
+		t.Fatal("упавший шаг не выполнен снова: продолжение сочло его сделанным")
+	}
+	cs, _ := runVerify(f, res.Backup)
+	for _, c := range cs {
+		if !c.OK {
+			t.Fatalf("проверка после продолжения: %s (%s)", c.What, c.Detail)
+		}
 	}
 }
 

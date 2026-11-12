@@ -87,6 +87,10 @@ final class Report {
             if (g.upd != null) b.append("  отчёты автору: ").append(g.upd.ping.status()).append('\n');
         }
         b.append("  возможности ТВ: ").append(Caps.report(c)).append('\n');
+        // Погода и курсы «Дома» (12.11): пришли ли и почему нет, без города и страны
+        String[] hs = PingRules.homeState(Ping.homeState(c));
+        if (hs[0] != null) b.append("  погода «Дома»: ").append(hs[0]).append('\n');
+        if (hs[1] != null) b.append("  курсы «Дома»: ").append(hs[1]).append('\n');
 
         b.append("\nЖурнал «Сторожа» (последние записи)\n");
         for (String line : sp.getString("log", "").split("\n")) if (!line.trim().isEmpty()) b.append("  ").append(line).append('\n');

@@ -27,6 +27,8 @@ final class PingRules {
         // Присмотр (HealthRules): keys ok|repaired|broken|absent, home ok|lost (null: «Дома» нет), reenabled 0–200 (-1: списка нет)
         String keys, home;
         int reenabled = -1;
+        // С 1.2.1: погода и курсы «Дома» одной строкой: «ок», «выключено», «сбой, …: причина» (null: «Дом» не ответил)
+        String weather, rates;
     }
 
     static boolean idOk(String id) { return id != null && ID.matcher(id).matches(); }
@@ -128,7 +130,19 @@ final class PingRules {
         if (KEYS.contains(i.keys)) str(b, "keys", i.keys);
         if (HOME.contains(i.home)) str(b, "home", i.home);
         if (i.reenabled >= 0) b.append(",\"reenabled\":").append(Math.min(i.reenabled, HealthRules.MAX_LIST));
+        // 12.11: пришли ли погода и курсы и почему нет. Скрипт таблицы до версии 4 эти поля молча пропускает
+        if (i.weather != null && !i.weather.isEmpty()) str(b, "weather", cut(cleanError(i.weather), STATE_MAX));
+        if (i.rates != null && !i.rates.isEmpty()) str(b, "rates", cut(cleanError(i.rates), STATE_MAX));
         return b.append('}').toString();
+    }
+
+    static final int STATE_MAX = 200;
+
+    // Ответ «Дома» на вопрос о состоянии: две строки, погода и курсы; не ответил или ответ чужой: {null, null}
+    static String[] homeState(String data) {
+        if (data == null || data.isEmpty()) return new String[]{null, null};
+        String[] a = data.split("\n", 2);
+        return new String[]{a[0].trim(), a.length > 1 ? a[1].trim() : null};
     }
 
     static final java.util.List<String> KEYS = java.util.Arrays.asList(HealthRules.OK, HealthRules.REPAIRED, HealthRules.BROKEN, HealthRules.ABSENT);

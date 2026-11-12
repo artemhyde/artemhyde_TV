@@ -30,7 +30,7 @@ final class GlassClock extends View {
     // Готовый кадр часов: тень и стекло для одного и того же времени
     private static final class Frame {
         String text;
-        int w, h, sx, sy;
+        int w, h, sx, sy, gen;
         Bitmap shadow, glass;
     }
 
@@ -43,6 +43,8 @@ final class GlassClock extends View {
     private int w, h;
     private int gen;              // номер размера: кадр старого размера не показываем
     private volatile Frame cur;   // рисуется сейчас
+    private Frame prev;           // прежний кадр: стоит на экране, пока вид не принял размер нового
+    private volatile Frame next;  // следующая минута, собранная заранее
 
     GlassClock(Context c, float sizePx) {
         super(c);
@@ -64,7 +66,7 @@ final class GlassClock extends View {
         capTop = r.top;   // отрицательное: высота цифр над базовой линией
         pad = Math.round(sizePx * 0.16f);   // место под тень
         gen++;
-        cur = null;
+        cur = prev = next = null;
         String t = text;
         text = "";
         w = h = 0;
@@ -77,11 +79,23 @@ final class GlassClock extends View {
     // Поле слева от цифр внутри вида (под тень): «Графит» ставит часы по левой линии экрана
     int padLeft() { return pad; }
 
+    // Смена минуты без мигания (12.11, живой TCL): раньше при новой ширине цифр вид сразу менял размер, а onDraw не рисует
+    // кадр другого размера, и до готовности нового в фоне часы пропадали. Теперь размер вида меняется вместе с новым кадром,
+    // а следующая минута собирается заранее и в смену минуты готова сразу. Скачок времени (включение после сна) прежнее
+    // время не показывает ни кадра (09.11): часы пустые, пока не готов новый кадр, как было
     void setTime(String t) {
         if (t == null || t.equals(text)) return;
+        boolean tick = t.equals(nextMinute(text));
         text = t;
+        Frame ready = next;
+        if (ready != null && ready.gen == gen && t.equals(ready.text)) {
+            next = null;
+            show(ready);
+            prebuild(t);
+            return;
+        }
+        if (!tick) { cur = prev = null; invalidate(); }
         final int nw = Math.round(tp.measureText(text)) + 2 * pad, nh = Math.round(-capTop) + 2 * pad;
-        if (nw != w || nh != h) { w = nw; h = nh; requestLayout(); }
         final Paint p = new Paint(tp);   // краска для фонового потока: свою он не трогает
         final int g = gen, pd = pad;
         final float ct = capTop;
@@ -89,16 +103,56 @@ final class GlassClock extends View {
             Frame f = build(t, nw, nh, p, pd, ct);
             post(() -> {
                 if (!t.equals(text) || g != gen) return;   // пока собирали, время или размер сменились
-                cur = f;
-                invalidate();
+                show(f);
+                prebuild(t);
             });
         });
+    }
+
+    // Новый кадр и размер вида разом: до раскладки под новый размер onDraw рисует прежний кадр
+    private void show(Frame f) {
+        if (cur != null && (cur.w != f.w || cur.h != f.h)) prev = cur;
+        cur = f;
+        if (f.w != w || f.h != h) { w = f.w; h = f.h; requestLayout(); }
+        invalidate();
+    }
+
+    // Следующая минута фоновым потоком, пока идёт эта
+    private void prebuild(String t) {
+        final String n = nextMinute(t);
+        if (n == null) return;
+        final int nw = Math.round(tp.measureText(n)) + 2 * pad, nh = Math.round(-capTop) + 2 * pad;
+        final Paint p = new Paint(tp);
+        final int g = gen, pd = pad;
+        final float ct = capTop;
+        WORK.execute(() -> {
+            if (g != gen) return;
+            Frame f = build(n, nw, nh, p, pd, ct);
+            f.gen = g;
+            next = f;
+        });
+    }
+
+    // «H:mm» → следующая минута в том же виде; другой вид: null (заранее не собираем)
+    static String nextMinute(String t) {
+        int i = t == null ? -1 : t.indexOf(':');
+        if (i < 1 || i != t.length() - 3) return null;
+        try {
+            int h = Integer.parseInt(t.substring(0, i)), m = Integer.parseInt(t.substring(i + 1));
+            if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+            if (++m == 60) { m = 0; h = (h + 1) % 24; }
+            return (i == 2 && t.charAt(0) == '0' && h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Override protected void onMeasure(int a, int b) { setMeasuredDimension(Math.max(1, w), Math.max(1, h)); }
 
     @Override protected void onDraw(Canvas c) {
         Frame f = cur;
+        if (f != null && f.w == getWidth() && f.h == getHeight()) prev = null;
+        else f = prev;   // новый кадр ждёт раскладку под свой размер: прежний ещё на месте
         if (f == null || f.w != getWidth() || f.h != getHeight()) return;
         c.drawBitmap(f.shadow, f.sx, f.sy + tp.getTextSize() * 0.025f, shadowPaint);
         c.drawBitmap(f.glass, 0, 0, glassPaint);

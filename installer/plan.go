@@ -31,6 +31,9 @@ type Step struct {
 	Sha256    string `json:"sha256,omitempty"`
 	Size      int64  `json:"size,omitempty"`
 	Installer string `json:"installer,omitempty"`
+	// Soft: шаг под прошивку TCL. Прошивка не знает такого разрешения: шаг не нужен, пропуск; не прошёл иначе:
+	// предупреждение, установка идёт дальше (12.11: TCL на Android 11 без AUTO_START и ASSOC_START)
+	Soft bool `json:"soft,omitempty"`
 }
 
 type ModuleChoice struct {
@@ -237,7 +240,7 @@ func buildPlan(rec Recipe, m *Manifest, p Passport, ch Choices, checkFiles bool)
 				}
 				add(Step{Group: g, What: st.What + " (прежняя: " + nonEmpty(cur, "по умолчанию") + ")", Do: "ime enable " + st.IME + "; ime set " + st.IME, Undo: undo})
 			default:
-				add(Step{Group: g, What: st.What, Do: st.Do, Undo: st.Undo, Run: st.Run})
+				add(Step{Group: g, What: st.What, Do: st.Do, Undo: st.Undo, Run: st.Run, Soft: st.When == "tcl"})
 			}
 		}
 		if rm.Module == "guard" && !c.TCL && rec.NightOff.Do != "" {

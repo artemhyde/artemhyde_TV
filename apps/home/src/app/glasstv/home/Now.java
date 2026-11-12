@@ -15,6 +15,15 @@ public class Now extends BroadcastReceiver {
     private static int shown;   // сколько наших экранов (главный, заставка) сейчас открыто
 
     @Override public void onReceive(Context c, Intent i) {
+        // «Сторож» собирает суточную сводку автору (12.11): две строки, погода и курсы, пришли или почему нет (Fresh.report)
+        if ("state".equals(i.getStringExtra("do"))) {
+            Context app = c.getApplicationContext();
+            Data x = Data.get(app);
+            long now = System.currentTimeMillis();
+            setResultData(Fresh.report(Setup.weatherOn(app), now, x.weatherAt(), x.weatherFailAt(), x.weatherProblem(), x.weatherDetail())
+                    + "\n" + Fresh.report(Setup.ratesOn(app), now, x.ratesAt(), x.ratesFailAt(), x.ratesProblem(), x.ratesDetail()));
+            return;
+        }
         // «Волна» только что запустилась и спрашивает, открыт ли наш экран
         if (i.getBooleanExtra("hello", false)) {
             if (shown > 0) tellVolna(c, true);

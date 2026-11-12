@@ -38,4 +38,18 @@ final class Fresh {
         if (now - failAt < RETRY_AFTER_FAIL) return false;
         return empty || now - okAt > every;
     }
+
+    // Строка для суточной сводки «Сторожа» автору (12.11: погода «нет связи» у двух человек, а спросить их нельзя).
+    // Только пришло ли и почему нет: без города, страны и адресов
+    static String report(boolean on, long now, long okAt, long failAt, String problem, String detail) {
+        if (!on) return "выключено";
+        if (!failing(okAt, failAt)) return okAt > 0 ? "ок" : "ещё не загружалось";
+        return "сбой, " + (okAt > 0 ? "данные " + ago(now - okAt) + " назад" : "данных не было ни разу") + ": " + problem
+                + (detail == null || detail.isEmpty() ? "" : " (" + detail + ")");
+    }
+
+    static String ago(long ms) {
+        long m = Math.max(0, ms) / 60_000;
+        return m < 60 ? m + " мин" : m < 48 * 60 ? m / 60 + " ч" : m / (24 * 60) + " дн";
+    }
 }

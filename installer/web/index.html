@@ -312,7 +312,7 @@
       <div class="mod"><label class="switch"><input type="checkbox" id="pf-upd" checked aria-label="Обновлять HYDE автоматически"><span></span></label>
         <div><div class="t">Обновлять HYDE автоматически</div><div class="w">Новые версии ставит «Сторож» на телевизоре, когда тот свободен. На Android 9, 10 и 11 для этого в конце установки на телевизоре нужно один раз нажать «Разрешить».</div></div></div>
       <div class="mod"><label class="switch"><input type="checkbox" id="pf-rep" checked aria-label="Отправлять автору технические отчёты"><span></span></label>
-        <div><div class="t">Отправлять автору технические отчёты</div><div class="w">Модель телевизора, версии Android и HYDE, что поставилось, ошибки. Без имени, адресов и названий сетей. Отчёт уходит в конце установки и раз в сутки с телевизора.</div></div></div>
+        <div><div class="t">Отправлять автору технические отчёты</div><div class="w">Модель телевизора, версии Android и HYDE, что поставилось, ошибки, работают ли погода и курсы. Без имени, адресов, города и названий сетей. Отчёт уходит в конце установки и раз в сутки с телевизора.</div></div></div>
     </div>
     <section id="s1">
       <h2><span class="num">1</span>Компьютер</h2>
@@ -840,7 +840,7 @@ async function poll() {
   // Просьба к человеку у телевизора (ask, Android 9, 10 и 11: «Разрешить» для «Сторожа»): крупно над ходом, пока установщик ждёт
   const askNow = j.running && cur && cur.status === "ask";
   if (askNow && !$("ask")) $("prog").insertAdjacentHTML("afterbegin", '<div class="msg warn" id="ask"></div>');
-  if (askNow) $("ask").innerHTML = `<b>Нужно ваше «Разрешить» на телевизоре</b><br>${esc(cur.what)}`;
+  if (askNow) $("ask").innerHTML = `<b>${esc(cur.detail || "Нужно ваше «Разрешить» на телевизоре")}</b><br>${esc(cur.what)}`;
   else if ($("ask")) $("ask").remove();
   if ($("evs")) $("evs").innerHTML = evs.map((e) => `<div class="ev ${e.status}"><span class="m">${MARK[e.status] || "·"}</span><div>${esc((e.n ? e.n + ". " : "") + (e.group && e.n ? e.group + ": " : "") + e.what)}${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</div></div>`).join("");
   if (j.running) { setTimeout(poll, 1000); return; }

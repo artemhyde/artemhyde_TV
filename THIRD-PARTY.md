@@ -14,13 +14,13 @@ MIT, см. [LICENSE](LICENSE). Строка авторства: «Copyright (c) 
 | Lampa | top.rootu.lampa | у Android-приложения на странице не указана (права на раздачу нет, только ссылка); веб-часть GPL-2.0 | Каталог фильмов, по желанию; меняем только её собственные настройки | github.com/lampa-app/LAMPA, github.com/yumata/lampa-source |
 | TorrServe | ru.yourok.torrserve | GPL-3.0 (клиент и сервер TorrServer) | Сервер торрентов для Lampa, необязательный модуль (docs/torrserve.md) | github.com/YouROK/TorrServe, github.com/YouROK/TorrServer |
 | ByeByeDPI | io.github.romanvht.byedpi | GPL-3.0 (проверено по LICENSE); внутри ByeDPI (hufrea) и hev-socks5-tunnel | Необязательный модуль: YouTube при замедлении у провайдера, работает на самом ТВ без сервера (docs/byedpi.md). Ставится файл автора без изменений, список приложений загружается его же импортом настроек | github.com/romanvht/ByeByeDPI |
-| Just Player | com.brouken.player | GPL-3.0 (по памяти, перепроверить) | Видеоплеер, по желанию | github.com/moneytoo/Player |
-| Aurora Store | com.aurora.store | GPL-3.0 (по памяти, перепроверить); подпись F-Droid | Каталог Google Play без входа, по желанию | f-droid.org/packages/com.aurora.store |
-| Material Files | me.zhanghai.android.files | GPL-3.0 (по памяти, перепроверить) | Файловый менеджер, по желанию | github.com/zhanghai/MaterialFiles |
+| Just Player | com.brouken.player | Unlicense, общественное достояние (проверено по LICENSE) | Видеоплеер, по желанию | github.com/moneytoo/Player |
+| Aurora Store | com.aurora.store | GPL-3.0 (проверено по LICENSE); подпись F-Droid | Каталог Google Play без входа, по желанию | f-droid.org/packages/com.aurora.store |
+| Material Files | me.zhanghai.android.files | GPL-3.0 (проверено по LICENSE) | Файловый менеджер, по желанию | github.com/zhanghai/MaterialFiles |
 | LocalSend | org.localsend.localsend_app | Apache-2.0 (проверено по LICENSE) | Файлы и приложения с телефона или компьютера на ТВ, по желанию | github.com/localsend/localsend |
 | Aura Music | github.com/TeamAuraMusic/AuraMusic, тег v3.2.0 | GPL-3.0, форк Metrolist (проверено по LICENSE) | Играет звук для «Волны», по желанию. Своя сборка из исходников с патчами папки aura/ (пакет app.glasstv.aura), папка aura/ под GPL-3.0 | github.com/TeamAuraMusic/AuraMusic |
 | Twitch | tv.twitch.android.app | закрытое приложение, только из Google Play, копий нет | Официальный клиент, по желанию | play.google.com |
-| NewPipe | org.schabi.newpipe | GPL-3.0 (по памяти, перепроверить) | YouTube в окне поверх всего, по желанию | github.com/TeamNewPipe/NewPipe |
+| NewPipe | org.schabi.newpipe | GPL-3.0 (проверено по LICENSE) | YouTube в окне поверх всего, по желанию | github.com/TeamNewPipe/NewPipe |
 
 **TV Bro (браузер)**  
 Исходники TV Bro (github.com/truefedex/tv-bro, автор Fedir Tsapana, 2019) можно использовать с сохранением авторства и текста условий: копия лежит в tvbro/LICENSE-TVBro.md. Двоичный файл можно распространять либо без изменений и только с github.com/truefedex/tv-bro/releases, либо изменённым, но тогда название не должно содержать «TV Bro», нельзя тот же значок и тот же идентификатор приложения, и в самой программе должно быть окно «О программе» с текстом, что она использует исходники TV Bro, и ссылкой.  

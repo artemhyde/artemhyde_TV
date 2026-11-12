@@ -165,6 +165,20 @@ var runtimeKeys = [][3]string{
 	{"secure", "accessibility_enabled", "спецвозможности"},
 	{"secure", "screensaver_enabled", "заставка Android"},
 	{"system", "screen_off_timeout", "через сколько гаснет экран"},
+	{"global", stayOnKey, "не засыпать при питании (на время установки)"},
+}
+
+// «Не гаснуть при питании»: установщик включает его на время запуска (apply), чтобы ТВ не уснул посреди установки;
+// оборвалось посреди, его вернёт откат вместе с остальными настройками мимо журнала (runtimeKeys)
+const stayOnKey = "stay_on_while_plugged_in"
+
+// stayOnBack: команда, которая вернёт «не гаснуть при питании» как в снимке «до» (не было записи: удалить)
+func stayOnBack(dir string) string {
+	snap, _ := readSettingsList(filepath.Join(dir, "settings-global.txt"))
+	if v, ok := snap[stayOnKey]; ok {
+		return "settings put global " + stayOnKey + " " + shq(v)
+	}
+	return "settings delete global " + stayOnKey
 }
 
 // readSettingsList: «key=value» из settings-<ns>.txt снимка; null значит «не было»
@@ -231,6 +245,10 @@ func runRestoreWith(tv TV, dir string, emit func(Event), removed map[string]bool
 		case tv.State() != "device":
 			r.Lost = true
 			ev.Status, ev.Detail = "lost", "связь с ТВ пропала: дальше ничего не выполняю"
+		case unknownOp(out):
+			// Журнал установщика 1.2.0 на TCL с Android 11: шаг автозапуска упал, а строка в журнале осталась
+			r.Gone++
+			ev.Status, ev.Detail = "skip", "на этой прошивке такого разрешения нет: отменять нечего"
 		default:
 			if p := pkgOf(cmd); p != "" && !hasPackage(tv, p) {
 				r.Gone++

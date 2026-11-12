@@ -250,6 +250,65 @@ func TestApplyKeyMapperFreshInstall(t *testing.T) {
 	}
 }
 
+// 12.11, Google TV 14: Play Защита держит установку Lampa окном «Unsafe app blocked». Установщик говорит человеку, что
+// нажать; отказался: Lampa и её плитки нет, строки в журнале нет, остальное поставлено, проверка зелёная; разрешил: как обычно
+func TestApplyPlayProtect(t *testing.T) {
+	for _, how := range []string{"decline", "allow"} {
+		f, m, rec := applyEnv(t, false)
+		body := []byte("lampa apk")
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+		tp := m.Third("top.rootu.lampa")
+		tp.Files[0].URL = srv.URL + "/app-lite-release.apk"
+		sum := sha256.Sum256(body)
+		tp.Files[0].Sha256 = hex.EncodeToString(sum[:])
+		old := certOf
+		certOf = func(p string) (string, error) {
+			if strings.HasSuffix(p, "app-lite-release.apk") {
+				return tp.CertSha256, nil
+			}
+			return "cafe", nil
+		}
+		f.files["app-lite-release.apk"] = "top.rootu.lampa"
+		f.protect = map[string]string{"top.rootu.lampa": how}
+		var asks []Event
+		ch := Choices{Modules: map[string]bool{"lampa": true, "keymapper": false}}
+		res := runApply(f, nil, rec, m, ch, ApplyOpts{AllowDownload: true, BackupRoot: t.TempDir(), Emit: func(e Event) {
+			if e.Status == "ask" {
+				asks = append(asks, e)
+			}
+		}})
+		certOf = old
+		srv.Close()
+		if !res.Finished || len(asks) != 1 || !strings.Contains(asks[0].What, "Install anyway") || asks[0].Group != "Lampa" {
+			t.Fatalf("%s: %+v, просьбы %+v", how, res, asks)
+		}
+		_, lampa := f.pkgs["top.rootu.lampa"]
+		_, tile := f.pkgs["app.glasstv.tile.lampa"]
+		inLedger := false
+		for _, e := range ledgerOf(t, res.Backup) {
+			inLedger = inLedger || strings.Contains(e.What, "top.rootu.lampa")
+		}
+		protects := 0
+		for _, c := range f.ran {
+			if c == "play protect top.rootu.lampa" {
+				protects++
+			}
+		}
+		if how == "decline" && (lampa || tile || inLedger || res.Warnings == 0 || protects != 1) {
+			t.Fatalf("отказ: Lampa %v, плитка %v, в журнале %v, предупреждений %d, окно %d раз", lampa, tile, inLedger, res.Warnings, protects)
+		}
+		if how == "allow" && (!lampa || !tile || !inLedger) {
+			t.Fatalf("разрешил: Lampa %v, плитка %v, в журнале %v", lampa, tile, inLedger)
+		}
+		cs, _ := runVerify(f, res.Backup)
+		for _, c := range cs {
+			if !c.OK {
+				t.Fatalf("%s: проверка %s (%s)", how, c.What, c.Detail)
+			}
+		}
+	}
+}
+
 // Приложения по желанию (Lampa): качается файл под процессор ТВ со сверкой суммы и подписи, ставится от имени «Сторожа»
 // (тогда он сам обновляет её дальше), вместе с ней встаёт её плитка, а откат её удаляет. Сборки под процессор ТВ нет
 // (LocalSend только для arm64 в тестовой описи): модуль недоступен, а не падает при установке

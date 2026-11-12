@@ -25,10 +25,10 @@ Open the **[release page](https://github.com/artemhyde/artemhyde_TV/releases/lat
 
 | Your computer | File to download |
 |---|---|
-| Windows | **HYDE-TV-1.2.0-Windows.zip** |
-| Mac with Apple silicon (M1 and newer) | **HYDE-TV-1.2.0-macOS-Apple.zip** |
-| Mac with Intel | **HYDE-TV-1.2.0-macOS-Intel.zip** |
-| Linux | **HYDE-TV-1.2.0-Linux-x64.tar.gz** |
+| Windows | **HYDE-TV-1.2.1-Windows.zip** |
+| Mac with Apple silicon (M1 and newer) | **HYDE-TV-1.2.1-macOS-Apple.zip** |
+| Mac with Intel | **HYDE-TV-1.2.1-macOS-Intel.zip** |
+| Linux | **HYDE-TV-1.2.1-Linux-x64.tar.gz** |
 
 ### 2. Unpack it
 

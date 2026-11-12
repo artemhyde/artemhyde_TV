@@ -126,8 +126,8 @@
       "package": "com.brouken.player",
       "version_seen": "0.218",
       "releases": "https://github.com/moneytoo/Player/releases",
-      "license": "GPL-3.0",
-      "license_checked": false,
+      "license": "Unlicense",
+      "license_checked": true,
       "cert_sha256": "3cb97dba57d3d0bc190bae5f1f3a841643bcd9399bc31028ce25775d93d0109d",
       "cert_subject": "C=CZ",
       "note": "Видеоплеер. На проверенном ТВ был поставлен из Google Play."
@@ -138,7 +138,7 @@
       "version_seen": "4.8.4",
       "releases": "https://f-droid.org/packages/com.aurora.store/",
       "license": "GPL-3.0",
-      "license_checked": false,
+      "license_checked": true,
       "cert_sha256": "5c83c7672b929955dc0a1db89a5e6ae4389e2eae7ec939956041694e5815f532",
       "cert_subject": "CN=FDroid",
       "note": "Каталог Google Play без входа в аккаунт Google. Серая зона условий сервиса: по желанию. Подпись магазина F-Droid. Самообновление внутри Aurora поверх сборки F-Droid не встанет: обновлять с компьютера."
@@ -195,7 +195,7 @@
       "version_seen": "0.29.1",
       "releases": "https://github.com/TeamNewPipe/NewPipe/releases",
       "license": "GPL-3.0",
-      "license_checked": false,
+      "license_checked": true,
       "cert_sha256": "cb84069bd68116bafae5ee4ee5b08a567aa6d898404e7cb12f9e756df5cf5cab",
       "cert_subject": "CN=Christian Schabesberger",
       "note": "YouTube в маленьком окне поверх всего. Серая зона условий сервиса: по желанию."

@@ -192,11 +192,18 @@ func reportFromSession(dir, kind, via, lang string, checks []Check, restoreOK bo
 	if r.Modules == nil {
 		r.Modules = []string{} // в отчёте пустой список, а не null
 	}
+	var bad []string // что не держится: без названий в таблице видно только «36 из 37» (12.11, Philips и Google TV)
 	for _, ch := range checks {
 		r.VerifyTotal++
 		if ch.OK {
 			r.VerifyOK++
+			continue
 		}
+		w := ch.What
+		if ch.Detail != "" {
+			w += " (" + ch.Detail + ")"
+		}
+		bad = append(bad, w)
 	}
 	finished := ss.Finished != ""
 	r.HomeSwitched = finished && (ss.HomePlanned || (ss.Installed == nil && ss.Home != nil && *ss.Home))
@@ -208,6 +215,8 @@ func reportFromSession(dir, kind, via, lang string, checks []Check, restoreOK bo
 		r.Result, r.FailedStep = "failed", "вернуть как было"
 	case finished && r.VerifyOK < r.VerifyTotal:
 		r.Result = "partial"
+		r.FailedStep = "проверка после установки"
+		r.Error = cleanError("не держится: " + strings.Join(bad, "; "))
 	case finished && update:
 		r.Result = "update_ok"
 	case finished:

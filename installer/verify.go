@@ -42,6 +42,9 @@ func (l *tvLook) holds(do string) (ok, known bool, detail string) {
 		return strings.Contains(l.sh("dumpsys package "+f[2]+" | grep '"+f[3]+": granted=true'"), "granted=true"), true, ""
 	case len(f) >= 5 && f[0] == "appops" && f[1] == "set":
 		got := strings.TrimSpace(l.sh("appops get " + f[2] + " " + f[3]))
+		if unknownOp(got) {
+			return false, false, "" // прошивка не знает такого разрешения: проверять нечего (журналы установщика 1.2.0)
+		}
 		return strings.Contains(got, ": "+f[4]), true, "сейчас " + firstLine(got)
 	case len(f) >= 4 && f[0] == "dumpsys" && f[1] == "deviceidle" && strings.HasPrefix(f[3], "+"):
 		if l.whitelist == "" {

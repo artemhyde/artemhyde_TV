@@ -163,7 +163,36 @@ final class Ping {
         i.keys = Health.keysField(c, up.getLong("ping.last", 0));
         i.home = Health.homeField(c);
         i.reenabled = Health.reenabledCount(c);
+        String[] hs = PingRules.homeState(homeState(c));
+        i.weather = hs[0];
+        i.rates = hs[1];
         return i;
+    }
+
+    // Погода и курсы у «Дома» (12.11): упорядоченная рассылка его приёмнику Now, только между приложениями HYDE (право по
+    // подписи в обе стороны). Ответ ждём в своей нитке до 5 с: зовут из нитки обновлений, команды с ПК и отчёта для обслуживания
+    static String homeState(Context c) {
+        if (!Health.installed(c, HydeRules.HOME)) return null;
+        final String[] res = {null};
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        android.os.HandlerThread t = new android.os.HandlerThread("guard-home-state");
+        t.start();
+        try {
+            c.sendOrderedBroadcast(new Intent().setClassName(HydeRules.HOME, HydeRules.HOME + ".Now").putExtra("do", "state")
+                            .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES), GuardService.HYDE_PERMISSION,
+                    new android.content.BroadcastReceiver() {
+                        @Override public void onReceive(Context x, Intent r) {
+                            res[0] = getResultData();
+                            done.countDown();
+                        }
+                    }, new android.os.Handler(t.getLooper()), 0, null, null);
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            Log.w("guard", "состояние «Дома» не получено", e);
+        } finally {
+            t.quitSafely();
+        }
+        return res[0];
     }
 
     // POST, переход Google на второй адрес (302) читается уже обычным GET. Ответ: {код, тело}

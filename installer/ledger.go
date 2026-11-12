@@ -37,6 +37,31 @@ func appendLedger(path string, e LedgerEntry) error {
 	return err
 }
 
+// dropLedger: убрать последнюю строку с этой командой. Только сразу после неё и только когда команда точно ничего не
+// сделала (установку отклонил человек в окне Play Защиты): файл переписывается целиком через временный
+func dropLedger(path, do string) error {
+	es, err := readLedger(path)
+	if err != nil {
+		return err
+	}
+	for i := len(es) - 1; i >= 0; i-- {
+		if es[i].Do == do {
+			es = append(es[:i], es[i+1:]...)
+			break
+		}
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(ledgerHeader), 0o644); err != nil {
+		return err
+	}
+	for _, e := range es {
+		if err := appendLedger(tmp, e); err != nil {
+			return err
+		}
+	}
+	return os.Rename(tmp, path)
+}
+
 func readLedger(path string) ([]LedgerEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
